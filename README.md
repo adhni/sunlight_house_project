@@ -1,18 +1,24 @@
 # Sunlight House Simulation
 
-This project is a compact Python prototype for solar position and direct-sunlight entry in a simple rectangular room. It keeps the geometry deliberately small and readable while staying physically meaningful enough to compare Melbourne winter and summer behavior.
+This project is a compact Python prototype for solar position and direct-sunlight entry in a simple rectangular room. It now includes both:
 
-## What the prototype does
+- a CLI demo that regenerates the example PNG outputs
+- a small Flask web app that lets you explore the same model interactively
+
+The goal stays deliberately narrow: physically meaningful solar angles, simple wall-window geometry, direct-sunlight checks, and easy-to-read plots.
+
+## What the project does
 
 - computes solar elevation and azimuth for a fixed location
-- treats azimuth as degrees clockwise from north
-- treats elevation as degrees above the horizon
+- uses azimuth in degrees clockwise from north
+- uses elevation in degrees above the horizon
 - converts solar angles into a unit sun vector in local ENU coordinates
-- models a rectangular room with one or more wall windows
+- models a rectangular room with one or more axis-aligned wall windows
 - ignores windows when the sun is behind the glazing
 - projects direct sunlight rays from the window corners onto the floor
-- produces Melbourne examples for the June 21 winter solstice and December 21 summer solstice
-- generates an hourly yearly solar-angle summary and daily room-sunlight plots
+- compares Melbourne winter and summer behavior
+- produces daily and yearly visualizations
+- exposes the model through a simple web interface suitable for Render deployment
 
 ## Coordinate system and conventions
 
@@ -42,7 +48,7 @@ y = cos(elevation) * cos(azimuth)
 z = sin(elevation)
 ```
 
-For Melbourne in the southern hemisphere, the sun is generally to the north around solar noon, especially in winter. The default demo uses that convention consistently.
+For Melbourne in the southern hemisphere, the sun is typically north of the building around solar noon, especially in winter. The default model uses that convention consistently.
 
 ## Room model
 
@@ -54,12 +60,14 @@ The default room is:
 
 The default window is on the north wall:
 
-- center: `(3.0, 5.0, 1.5)`
+- wall: north
+- horizontal center: `x = 3.0 m`
+- center height: `z = 1.5 m`
 - width: `2.4 m`
 - height: `1.6 m`
 - outward normal: `(0, 1, 0)`
 
-Because the room interior is south of that wall, sunlight only enters when the sun vector has a positive dot product with the window's outward normal. That dot product is also used as a simple direct-sunlight intensity proxy.
+Sunlight only enters when the sun vector has a positive dot product with the window's outward normal. That dot product is also used as a simple direct-sunlight intensity proxy.
 
 ## Main functions
 
@@ -74,12 +82,19 @@ The core API is intentionally small:
 
 ```text
 sunlight_house_project/
+├── app.py
 ├── README.md
+├── render.yaml
 ├── requirements.txt
 ├── run_demo.py
 ├── outputs/
+├── static/
+│   └── styles.css
+├── templates/
+│   └── index.html
 └── sunlight_house/
     ├── __init__.py
+    ├── analysis.py
     ├── config.py
     ├── geometry.py
     ├── plotting.py
@@ -94,25 +109,51 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-If you do not want a virtual environment, `pip install -r requirements.txt` is enough.
-
-## Run the demo
+## Run the CLI demo
 
 ```bash
 python3 run_demo.py
 ```
 
-The demo will:
+The demo:
 
-1. print sample Melbourne sun positions for solstice and equinox dates
-2. simulate one full day every 10 minutes for June 21 and December 21
-3. simulate a full year hourly for Melbourne
-4. save all plots into `outputs/`
-5. print whether direct sunlight entered for the default Melbourne room on the key daily examples
+1. prints sample Melbourne sun positions for solstice and equinox dates
+2. simulates one full day every 10 minutes for June 21 and December 21
+3. simulates a full year hourly for Melbourne
+4. saves plots into `outputs/`
+5. prints whether direct sunlight entered for the default Melbourne room
+
+## Run the web app locally
+
+```bash
+python3 app.py
+```
+
+Then open `http://127.0.0.1:5000`.
+
+The web app includes:
+
+- controls for location, timezone, date, time, room, and window geometry
+- a top-down room snapshot for the selected moment
+- a daily window-intensity plot
+- a daily floor-patch plot
+- a yearly peak-elevation plot
+- a seasonal comparison plot for summer solstice, equinox, and winter solstice
+
+## Render deployment
+
+The repo includes `render.yaml` for a simple Python web service.
+
+Render uses:
+
+- build command: `pip install -r requirements.txt`
+- start command: `python3 -m gunicorn app:app`
+
+If you prefer to configure Render manually instead of using `render.yaml`, use the same commands.
 
 ## Output plots
 
-Running the demo regenerates these example files in `outputs/`:
+Running the CLI demo regenerates these example files in `outputs/`:
 
 - `june_21_winter_solstice_intensity.png`
   Direct sunlight factor on the default window every 10 minutes.
@@ -141,9 +182,9 @@ The script overwrites the standard example outputs with fresh results.
 
 - Solar position uses a NOAA-style calculation from latitude, longitude, local datetime, and timezone.
 - Naive datetimes are interpreted in the configured IANA timezone.
-- Timezone handling uses `zoneinfo`, so Melbourne standard time and daylight saving time are both respected.
-- The yearly summary is sampled hourly.
-- The daily solstice runs are sampled every 10 minutes.
+- Timezone handling uses `zoneinfo`, so daylight saving changes are respected.
+- The yearly summary is sampled hourly by default.
+- The daily plots are sampled every 10 minutes by default.
 
 ## Notes on the geometry model
 

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
+from io import BufferedIOBase
 from pathlib import Path
+from typing import Any
 
 _MPL_DIR = Path(".mplconfig")
 _MPL_DIR.mkdir(exist_ok=True)
@@ -19,12 +21,20 @@ from .geometry import Room, SunlightPatch, Window
 from .solar import SunPosition
 
 
+OutputTarget = Any
+
+
+def _save_figure(fig: plt.Figure, output_target: OutputTarget) -> None:
+    fig.savefig(output_target, dpi=180)
+    plt.close(fig)
+
+
 def plot_floor_patches(
     room: Room,
     windows: tuple[Window, ...],
     patches_over_time: list[tuple[datetime, list[SunlightPatch]]],
     title: str,
-    output_path: str,
+    output_path: OutputTarget,
 ) -> None:
     fig, ax = plt.subplots(figsize=(8.5, 6.5))
     ax.add_patch(Rectangle((0, 0), room.width, room.depth, fill=False, linewidth=2.0, edgecolor="black"))
@@ -68,15 +78,14 @@ def plot_floor_patches(
         ax.legend(handles=handles, loc="upper left")
 
     fig.tight_layout()
-    fig.savefig(output_path, dpi=180)
-    plt.close(fig)
+    _save_figure(fig, output_path)
 
 
 def plot_daily_intensity(
     times: list[datetime],
     intensities_by_window: dict[str, list[float]],
     title: str,
-    output_path: str,
+    output_path: OutputTarget,
 ) -> None:
     fig, ax = plt.subplots(figsize=(9.5, 4.8))
     for window_name, intensities in intensities_by_window.items():
@@ -93,8 +102,7 @@ def plot_daily_intensity(
         ax.legend()
     fig.autofmt_xdate()
     fig.tight_layout()
-    fig.savefig(output_path, dpi=180)
-    plt.close(fig)
+    _save_figure(fig, output_path)
 
 
 def plot_yearly_noon_elevation(
@@ -102,7 +110,7 @@ def plot_yearly_noon_elevation(
     positions: list[SunPosition],
     key_dates: dict[str, datetime],
     title: str,
-    output_path: str,
+    output_path: OutputTarget,
 ) -> None:
     elevations = [p.elevation_deg for p in positions]
     fig, ax = plt.subplots(figsize=(10, 4.8))
@@ -122,14 +130,13 @@ def plot_yearly_noon_elevation(
 
     fig.autofmt_xdate()
     fig.tight_layout()
-    fig.savefig(output_path, dpi=180)
-    plt.close(fig)
+    _save_figure(fig, output_path)
 
 
 def plot_key_date_solar_angles(
     daily_positions: dict[str, list[tuple[datetime, SunPosition]]],
     title: str,
-    output_path: str,
+    output_path: OutputTarget,
 ) -> None:
     fig, (ax_el, ax_az) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
     colors = ["#1f4e79", "#2f855a", "#b85c38"]
@@ -155,5 +162,4 @@ def plot_key_date_solar_angles(
     ax_az.set_xticklabels([f"{hour:02d}:00" for hour in tick_hours])
 
     fig.tight_layout()
-    fig.savefig(output_path, dpi=180)
-    plt.close(fig)
+    _save_figure(fig, output_path)

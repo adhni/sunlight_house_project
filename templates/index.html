@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sunlight House Lab</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Solar Position + Room Geometry</p>
+          <h1>Sunlight House Lab</h1>
+          <p class="hero-copy">
+            A small interactive view of direct sunlight entry, floor projection, and seasonal solar-angle change.
+            The app keeps the same physical assumptions as the Python prototype: ENU coordinates, azimuth from north clockwise,
+            and simple axis-aligned wall windows.
+          </p>
+        </div>
+        <div class="preset-strip">
+          <span>Jump to key dates</span>
+          <a href="{{ preset_urls['Winter solstice'] }}">Winter solstice</a>
+          <a href="{{ preset_urls['Summer solstice'] }}">Summer solstice</a>
+          <a href="{{ preset_urls['Equinox'] }}">Equinox</a>
+        </div>
+      </header>
+
+      {% if error %}
+      <section class="alert">
+        {{ error }}
+      </section>
+      {% endif %}
+
+      <main class="layout">
+        <aside class="control-panel">
+          <form method="get" class="control-form">
+            <section class="panel-card">
+              <h2>Location</h2>
+              <label>
+                <span>Location label</span>
+                <input type="text" name="location_name" value="{{ form_values.location_name }}">
+              </label>
+              <div class="field-row">
+                <label>
+                  <span>Latitude</span>
+                  <input type="number" step="0.0001" name="latitude" value="{{ form_values.latitude }}">
+                </label>
+                <label>
+                  <span>Longitude</span>
+                  <input type="number" step="0.0001" name="longitude" value="{{ form_values.longitude }}">
+                </label>
+              </div>
+              <label>
+                <span>Timezone</span>
+                <input type="text" name="timezone_name" value="{{ form_values.timezone_name }}">
+              </label>
+              <div class="field-row">
+                <label>
+                  <span>Year</span>
+                  <input type="number" step="1" name="year" value="{{ form_values.year }}">
+                </label>
+                <label>
+                  <span>Selected date</span>
+                  <input type="date" name="selected_date" value="{{ form_values.selected_date }}">
+                </label>
+              </div>
+              <label>
+                <span>Selected time</span>
+                <input type="time" name="selected_time" value="{{ form_values.selected_time }}">
+              </label>
+            </section>
+
+            <section class="panel-card">
+              <h2>Room</h2>
+              <div class="field-row">
+                <label>
+                  <span>Width x (m)</span>
+                  <input type="number" step="0.1" name="room_width" value="{{ form_values.room_width }}">
+                </label>
+                <label>
+                  <span>Depth y (m)</span>
+                  <input type="number" step="0.1" name="room_depth" value="{{ form_values.room_depth }}">
+                </label>
+              </div>
+              <label>
+                <span>Height z (m)</span>
+                <input type="number" step="0.1" name="room_height" value="{{ form_values.room_height }}">
+              </label>
+            </section>
+
+            <section class="panel-card">
+              <h2>Window</h2>
+              <label>
+                <span>Window name</span>
+                <input type="text" name="window_name" value="{{ form_values.window_name }}">
+              </label>
+              <label>
+                <span>Wall</span>
+                <select name="window_wall">
+                  {% for wall in ['north', 'south', 'east', 'west'] %}
+                  <option value="{{ wall }}" {% if form_values.window_wall == wall %}selected{% endif %}>{{ wall|title }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <p class="field-help">{{ window_wall_description }}</p>
+              <div class="field-row">
+                <label>
+                  <span>Horizontal center (m)</span>
+                  <input type="number" step="0.1" name="window_span_center" value="{{ form_values.window_span_center }}">
+                </label>
+                <label>
+                  <span>Center height (m)</span>
+                  <input type="number" step="0.1" name="window_center_height" value="{{ form_values.window_center_height }}">
+                </label>
+              </div>
+              <div class="field-row">
+                <label>
+                  <span>Window width (m)</span>
+                  <input type="number" step="0.1" name="window_width" value="{{ form_values.window_width }}">
+                </label>
+                <label>
+                  <span>Window height (m)</span>
+                  <input type="number" step="0.1" name="window_height" value="{{ form_values.window_height }}">
+                </label>
+              </div>
+            </section>
+
+            <section class="panel-card">
+              <h2>Simulation</h2>
+              <div class="field-row">
+                <label>
+                  <span>Day step (min)</span>
+                  <input type="number" step="1" name="day_step_minutes" value="{{ form_values.day_step_minutes }}">
+                </label>
+                <label>
+                  <span>Year step (hr)</span>
+                  <input type="number" step="1" name="year_step_hours" value="{{ form_values.year_step_hours }}">
+                </label>
+              </div>
+            </section>
+
+            <button type="submit" class="primary-button">Update Simulation</button>
+          </form>
+        </aside>
+
+        <section class="results">
+          <div class="metric-grid">
+            <article class="metric-card">
+              <span class="metric-label">Elevation</span>
+              <strong>{{ "%.2f"|format(snapshot.position.elevation_deg) }} deg</strong>
+              <p>Degrees above the horizon at the selected local time.</p>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">Azimuth</span>
+              <strong>{{ "%.2f"|format(snapshot.position.azimuth_deg) }} deg</strong>
+              <p>Clockwise from north in the local ENU coordinate system.</p>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">Sunlight Entry</span>
+              <strong>{{ "Yes" if snapshot.entered_direct_sun else "No" }}</strong>
+              <p>Direct sunlight enters only if the sun is in front of the selected wall window.</p>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">Strongest Window Factor</span>
+              <strong>{{ strongest_window or "None" }} {% if strongest_window %}({{ "%.3f"|format(strongest_intensity) }}){% endif %}</strong>
+              <p>Simple intensity proxy using the dot product with the window normal.</p>
+            </article>
+          </div>
+
+          <div class="vector-card panel-card">
+            <h2>Current Snapshot</h2>
+            <p class="snapshot-time">{{ snapshot.moment.strftime('%d %b %Y %H:%M %Z') }}</p>
+            <div class="vector-grid">
+              <div>
+                <span class="metric-label">Sun Vector</span>
+                <strong>({{ "%.3f"|format(snapshot.vector[0]) }}, {{ "%.3f"|format(snapshot.vector[1]) }}, {{ "%.3f"|format(snapshot.vector[2]) }})</strong>
+              </div>
+              <div>
+                <span class="metric-label">Window Factors</span>
+                <ul class="clean-list">
+                  {% for name, intensity in snapshot.window_intensities.items() %}
+                  <li>{{ name }}: {{ "%.3f"|format(intensity) }}</li>
+                  {% endfor %}
+                </ul>
+              </div>
+              <div>
+                <span class="metric-label">Daily Peak</span>
+                <strong>
+                  {% if daily.peak_time %}
+                  {{ "%.3f"|format(daily.peak_intensity) }} at {{ daily.peak_time.strftime('%H:%M %Z') }}
+                  {% else %}
+                  No direct sun
+                  {% endif %}
+                </strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="plot-grid">
+            <article class="plot-card">
+              <h2>Top-Down Snapshot</h2>
+              <img src="{{ room_plot_uri }}" alt="Top-down room snapshot">
+            </article>
+            <article class="plot-card">
+              <h2>Daily Window Intensity</h2>
+              <img src="{{ daily_intensity_uri }}" alt="Daily window intensity plot">
+            </article>
+            <article class="plot-card">
+              <h2>Daily Floor Patches</h2>
+              <img src="{{ daily_patches_uri }}" alt="Daily floor patches plot">
+            </article>
+            <article class="plot-card">
+              <h2>Yearly Solar Elevation</h2>
+              <img src="{{ yearly_uri }}" alt="Yearly peak solar elevation plot">
+            </article>
+            <article class="plot-card plot-card-wide">
+              <h2>Seasonal Solar Angles</h2>
+              <img src="{{ key_dates_uri }}" alt="Seasonal solar angles plot">
+            </article>
+          </div>
+
+          <section class="panel-card table-card">
+            <h2>Sample Solar Positions</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Local time</th>
+                  <th>Elevation</th>
+                  <th>Azimuth</th>
+                  <th>Sun vector</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in sample_rows %}
+                <tr>
+                  <td>{{ row.label }}</td>
+                  <td>{{ "%.2f"|format(row.elevation) }} deg</td>
+                  <td>{{ "%.2f"|format(row.azimuth) }} deg</td>
+                  <td>({{ "%.3f"|format(row.vector[0]) }}, {{ "%.3f"|format(row.vector[1]) }}, {{ "%.3f"|format(row.vector[2]) }})</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </section>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
