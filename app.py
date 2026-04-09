@@ -44,26 +44,21 @@ def create_app() -> Flask:
         defaults = default_form_values()
         raw_values = defaults | {key: value for key, value in request.args.items() if value != ""}
         error: str | None = None
+        safe_values: dict[str, str] | None = None
 
         try:
             config, selected_moment = build_config_and_moment(raw_values)
             form_values = normalize_form_values(raw_values, config)
         except ValueError as exc:
-            error = f"{exc} Showing Melbourne defaults instead."
-            form_values = defaults
-            config, selected_moment = build_config_and_moment(form_values)
+            error = f"{exc} Keeping your current inputs below; the preview uses the nearest valid values."
+            form_values = dict(raw_values)
+            safe_values = build_safe_form_values(raw_values, defaults)
+            config, selected_moment = build_config_and_moment(safe_values)
 
         snapshot = analyze_snapshot(config, selected_moment)
         daily = analyze_day(config, selected_moment.date(), selected_moment.strftime("%B %d"))
         yearly_times, yearly_positions = yearly_peak_series(config)
 
-        room_plot_uri = figure_data_uri(
-            plot_floor_patches,
-            config.room,
-            config.windows,
-            [(selected_moment, snapshot.patches)] if snapshot.patches else [],
-            f"Selected time: {selected_moment.strftime('%d %b %Y %H:%M %Z')}",
-        )
         daily_intensity_uri = figure_data_uri(
             plot_daily_intensity,
             [dt for dt, _ in daily.positions],
@@ -101,11 +96,8 @@ def create_app() -> Flask:
             for dt, position, vector in sample_positions(config)
         ]
 
-        preset_urls = {
-            "Winter solstice": url_for("index", **(defaults | {"selected_date": f"{config.year}-06-21", "selected_time": "12:00"})),
-            "Summer solstice": url_for("index", **(defaults | {"selected_date": f"{config.year}-12-21", "selected_time": "12:00"})),
-            "Equinox": url_for("index", **(defaults | {"selected_date": f"{config.year}-03-20", "selected_time": "12:00"})),
-        }
+        season_base_values = normalize_form_values(safe_values or form_values, config)
+        preset_urls = seasonal_preset_urls(season_base_values, config.year)
 
         return render_template(
             "index.html",
@@ -116,7 +108,6 @@ def create_app() -> Flask:
             daily=daily,
             strongest_window=strongest_window,
             strongest_intensity=strongest_intensity,
-            room_plot_uri=room_plot_uri,
             daily_intensity_uri=daily_intensity_uri,
             daily_patches_uri=daily_patches_uri,
             yearly_uri=yearly_uri,
@@ -174,6 +165,8 @@ def default_form_values() -> dict[str, str]:
 
 
 def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConfig, datetime]:
+    selected_date = datetime.strptime(form_values["selected_date"], "%Y-%m-%d").date()
+    selected_time = datetime.strptime(form_values["selected_time"], "%H:%M").time()
     preset_key = form_values.get("location_preset", "custom").strip()
     if preset_key and preset_key != "custom":
         preset = location_from_preset(preset_key)
@@ -187,7 +180,7 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
         longitude = parse_float(form_values["longitude"], "Longitude")
         timezone_name = form_values["timezone_name"].strip()
 
-    ZoneInfo(timezone_name)
+    timezone = parse_timezone_name(timezone_name)
 
     room = Room(
         width=parse_positive_float(form_values["room_width"], "Room width"),
@@ -202,7 +195,7 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
         height=parse_positive_float(form_values["window_height"], "Window height"),
     )
 
-    year = int(parse_positive_float(form_values["year"], "Simulation year"))
+    year = selected_date.year
     config = SimulationConfig(
         location=Location(
             name=location_name,
@@ -218,9 +211,7 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
         window_facing_label=form_values["window_facing"].strip().upper(),
     )
 
-    selected_date = datetime.strptime(form_values["selected_date"], "%Y-%m-%d").date()
-    selected_time = datetime.strptime(form_values["selected_time"], "%H:%M").time()
-    moment = datetime.combine(selected_date, selected_time, tzinfo=ZoneInfo(timezone_name))
+    moment = datetime.combine(selected_date, selected_time, tzinfo=timezone)
     return config, moment
 
 
@@ -236,6 +227,13 @@ def parse_positive_float(raw_value: str, label: str) -> float:
     if value <= 0.0:
         raise ValueError(f"{label} must be positive.")
     return value
+
+
+def parse_timezone_name(raw_value: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(raw_value)
+    except Exception as exc:
+        raise ValueError("Timezone must be a valid IANA name.") from exc
 
 
 def figure_data_uri(plotter, *plot_args) -> str:
@@ -328,8 +326,99 @@ def normalize_form_values(form_values: dict[str, str], config: SimulationConfig)
     normalized["latitude"] = str(config.location.latitude)
     normalized["longitude"] = str(config.location.longitude)
     normalized["timezone_name"] = config.location.timezone_name
+    normalized["year"] = str(config.year)
     normalized["window_facing"] = config.window_facing_label
     return normalized
+
+
+def build_safe_form_values(form_values: dict[str, str], defaults: dict[str, str]) -> dict[str, str]:
+    safe = dict(defaults)
+    location_preset = form_values.get("location_preset", defaults["location_preset"]).strip()
+    if location_preset in LOCATION_PRESETS or location_preset == "custom":
+        safe["location_preset"] = location_preset
+
+    safe["location_name"] = form_values.get("location_name", defaults["location_name"]).strip() or defaults["location_name"]
+    safe["latitude"] = safe_float_string(form_values.get("latitude", defaults["latitude"]), defaults["latitude"])
+    safe["longitude"] = safe_float_string(form_values.get("longitude", defaults["longitude"]), defaults["longitude"])
+    safe["timezone_name"] = safe_timezone_name(form_values.get("timezone_name", defaults["timezone_name"]), defaults["timezone_name"])
+
+    safe["selected_date"] = safe_date_string(form_values.get("selected_date", defaults["selected_date"]), defaults["selected_date"])
+    safe["selected_time"] = safe_time_string(form_values.get("selected_time", defaults["selected_time"]), defaults["selected_time"])
+    safe["year"] = str(datetime.strptime(safe["selected_date"], "%Y-%m-%d").year)
+
+    for key in ("room_width", "room_depth", "room_height", "window_width", "window_height"):
+        safe[key] = safe_positive_float_string(form_values.get(key, defaults[key]), defaults[key])
+
+    for key in ("window_span_center", "window_center_height"):
+        safe[key] = safe_float_string(form_values.get(key, defaults[key]), defaults[key])
+
+    for key in ("day_step_minutes", "year_step_hours"):
+        safe[key] = safe_positive_int_string(form_values.get(key, defaults[key]), defaults[key])
+
+    window_facing = form_values.get("window_facing", defaults["window_facing"]).strip().upper()
+    valid_facings = {label for label, _ in COMPASS_OPTIONS}
+    safe["window_facing"] = window_facing if window_facing in valid_facings else defaults["window_facing"]
+    return safe
+
+
+def seasonal_preset_urls(base_values: dict[str, str], year: int) -> dict[str, str]:
+    def build_url(month_day: str) -> str:
+        return url_for(
+            "index",
+            **(base_values | {"selected_date": f"{year}-{month_day}", "selected_time": "12:00", "year": str(year)})
+        )
+
+    return {
+        "Winter solstice": build_url("06-21"),
+        "Summer solstice": build_url("12-21"),
+        "Equinox": build_url("03-20"),
+    }
+
+
+def safe_float_string(raw_value: str, default_value: str) -> str:
+    try:
+        return str(float(raw_value))
+    except (TypeError, ValueError):
+        return default_value
+
+
+def safe_positive_int_string(raw_value: str, default_value: str) -> str:
+    try:
+        value = int(float(raw_value))
+    except (TypeError, ValueError):
+        return default_value
+    return str(value) if value > 0 else default_value
+
+
+def safe_positive_float_string(raw_value: str, default_value: str) -> str:
+    try:
+        value = float(raw_value)
+    except (TypeError, ValueError):
+        return default_value
+    return str(value) if value > 0.0 else default_value
+
+
+def safe_date_string(raw_value: str, default_value: str) -> str:
+    try:
+        return datetime.strptime(raw_value, "%Y-%m-%d").date().isoformat()
+    except (TypeError, ValueError):
+        return default_value
+
+
+def safe_time_string(raw_value: str, default_value: str) -> str:
+    try:
+        return datetime.strptime(raw_value, "%H:%M").strftime("%H:%M")
+    except (TypeError, ValueError):
+        return default_value
+
+
+def safe_timezone_name(raw_value: str, default_value: str) -> str:
+    candidate = (raw_value or "").strip()
+    try:
+        ZoneInfo(candidate)
+    except Exception:
+        return default_value
+    return candidate
 
 
 def wall_name_for_window(window) -> str:

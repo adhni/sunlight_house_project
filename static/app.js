@@ -67,8 +67,14 @@
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
   }
 
+  function selectedYear() {
+    const dateYear = parseInt(selectedDateInput.value.slice(0, 4), 10);
+    return Number.isFinite(dateYear) ? dateYear : parseInt(yearInput.value, 10);
+  }
+
   function syncSlidersFromInputs() {
-    const year = parseInt(yearInput.value, 10);
+    const year = selectedYear();
+    yearInput.value = String(year);
     daySlider.max = String(dayOfYearMax(year));
     const boundedDay = Math.min(dayOfYearFromDateString(selectedDateInput.value), dayOfYearMax(year));
     daySlider.value = String(boundedDay);

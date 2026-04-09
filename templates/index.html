@@ -171,20 +171,19 @@
           </div>
         </details>
 
-        <section class="panel-card explore-card">
+        <section class="panel-card live-preview-card">
           <div class="section-header">
             <div>
-              <p class="section-kicker">Explore</p>
-              <h2>Date And Time</h2>
+              <p class="section-kicker">Live Preview</p>
+              <h2>Explore Date, Time, And Sunlight</h2>
             </div>
-            <div class="chip-row seasonal-row">
-              <a class="season-chip" href="{{ preset_urls['Winter solstice'] }}">Winter Noon</a>
-              <a class="season-chip" href="{{ preset_urls['Summer solstice'] }}">Summer Noon</a>
-              <a class="season-chip" href="{{ preset_urls['Equinox'] }}">Equinox Noon</a>
+            <div class="live-preview-copy">
+              <span>Live preview updates automatically.</span>
+              <span>Analysis plots update when you click the button below.</span>
             </div>
           </div>
 
-          <div class="explore-card-grid">
+          <div class="live-controls-grid">
             <div class="field-row">
               <label>
                 <span>Date</span>
@@ -211,14 +210,19 @@
               </div>
               <input id="time-of-day-slider" type="range" min="0" max="1430" step="10">
             </div>
-          </div>
-        </section>
 
-        <section class="workspace-grid">
-          <article class="panel-card room-workspace">
+            <div class="chip-row seasonal-row">
+              <a class="season-chip" href="{{ preset_urls['Winter solstice'] }}">Winter Noon</a>
+              <a class="season-chip" href="{{ preset_urls['Summer solstice'] }}">Summer Noon</a>
+              <a class="season-chip" href="{{ preset_urls['Equinox'] }}">Equinox Noon</a>
+            </div>
+          </div>
+
+          <section class="workspace-grid">
+          <article class="workspace-subcard room-workspace">
             <div class="workspace-header">
               <div>
-                <p class="section-kicker">Live Workspace</p>
+                <p class="section-kicker">Room Result</p>
                 <h2>Top-Down Room Snapshot</h2>
               </div>
               <div
@@ -251,7 +255,7 @@
           </article>
 
           <aside class="workspace-sidebar">
-            <section class="panel-card inspector-card">
+            <section class="workspace-subcard inspector-card">
               <div class="workspace-header">
                 <div>
                   <p class="section-kicker">Current Moment</p>
@@ -310,6 +314,7 @@
               </div>
             </section>
           </aside>
+          </section>
         </section>
 
         <section class="panel-card analysis-panel">
