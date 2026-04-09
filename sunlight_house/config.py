@@ -7,12 +7,48 @@ import numpy as np
 from .geometry import Room, Window
 
 
+COMPASS_OPTIONS: tuple[tuple[str, float], ...] = (
+    ("N", 0.0),
+    ("NE", 45.0),
+    ("E", 90.0),
+    ("SE", 135.0),
+    ("S", 180.0),
+    ("SW", 225.0),
+    ("W", 270.0),
+    ("NW", 315.0),
+)
+
+COMPASS_ANGLE_BY_LABEL = {label: angle for label, angle in COMPASS_OPTIONS}
+
+
 @dataclass(frozen=True)
 class Location:
     name: str
     latitude: float
     longitude: float
     timezone_name: str
+
+
+LOCATION_PRESETS: dict[str, Location] = {
+    "melbourne": Location(
+        name="Melbourne, Australia",
+        latitude=-37.8136,
+        longitude=144.9631,
+        timezone_name="Australia/Melbourne",
+    ),
+    "jakarta": Location(
+        name="Jakarta, Indonesia",
+        latitude=-6.2088,
+        longitude=106.8456,
+        timezone_name="Asia/Jakarta",
+    ),
+    "boston": Location(
+        name="Boston, United States",
+        latitude=42.3601,
+        longitude=-71.0589,
+        timezone_name="America/New_York",
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -23,6 +59,31 @@ class SimulationConfig:
     year: int = 2026
     day_step_minutes: int = 10
     year_step_hours: int = 1
+    window_facing_label: str = "N"
+
+    @property
+    def window_facing_deg(self) -> float:
+        return compass_angle(self.window_facing_label)
+
+
+def compass_angle(label: str) -> float:
+    try:
+        return COMPASS_ANGLE_BY_LABEL[label.upper()]
+    except KeyError as exc:
+        valid = ", ".join(name for name, _ in COMPASS_OPTIONS)
+        raise ValueError(f"Window facing must be one of: {valid}.") from exc
+
+
+def default_location_preset() -> str:
+    return "melbourne"
+
+
+def location_from_preset(preset: str) -> Location:
+    try:
+        return LOCATION_PRESETS[preset]
+    except KeyError as exc:
+        valid = ", ".join(sorted(LOCATION_PRESETS))
+        raise ValueError(f"Unknown location preset '{preset}'. Expected one of: {valid}.") from exc
 
 
 def wall_normal(wall: str) -> np.ndarray:
@@ -71,13 +132,32 @@ def window_on_wall(
     return window
 
 
+def main_window(
+    *,
+    room: Room,
+    span_center: float,
+    center_height: float,
+    width: float,
+    height: float,
+) -> Window:
+    # The room model keeps the main window on the local north wall.
+    # Window-facing presets rotate the room relative to the real-world sun.
+    return window_on_wall(
+        name="main_window",
+        room=room,
+        wall="north",
+        span_center=span_center,
+        center_height=center_height,
+        width=width,
+        height=height,
+    )
+
+
 def default_melbourne_scenario() -> SimulationConfig:
     room = Room(width=6.0, depth=5.0, height=3.0)
     windows = (
-        window_on_wall(
-            name="north_window",
+        main_window(
             room=room,
-            wall="north",
             span_center=3.0,
             center_height=1.5,
             width=2.4,
@@ -86,12 +166,8 @@ def default_melbourne_scenario() -> SimulationConfig:
     )
 
     return SimulationConfig(
-        location=Location(
-            name="Melbourne, Australia",
-            latitude=-37.8136,
-            longitude=144.9631,
-            timezone_name="Australia/Melbourne",
-        ),
+        location=location_from_preset(default_location_preset()),
         room=room,
         windows=windows,
+        window_facing_label="N",
     )

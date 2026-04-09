@@ -58,7 +58,7 @@ The default room is:
 - depth: `5.0 m` in the south-north direction
 - height: `3.0 m`
 
-The default window is on the north wall:
+The default window is on the room's local north wall:
 
 - wall: north
 - horizontal center: `x = 3.0 m`
@@ -67,7 +67,13 @@ The default window is on the north wall:
 - height: `1.6 m`
 - outward normal: `(0, 1, 0)`
 
-Sunlight only enters when the sun vector has a positive dot product with the window's outward normal. That dot product is also used as a simple direct-sunlight intensity proxy.
+In the interactive web app, you can keep the same rectangular geometry but choose one of 8 compass-facing options for the main window:
+
+- `N`, `NE`, `E`, `SE`, `S`, `SW`, `W`, `NW`
+
+Internally the room is rotated relative to the real-world sun, which keeps the math physically consistent while avoiding a more complex non-rectangular wall model.
+
+Sunlight only enters when the room-relative sun vector has a positive dot product with the window's outward normal. That dot product is also used as a simple direct-sunlight intensity proxy.
 
 ## Main functions
 
@@ -133,7 +139,10 @@ Then open `http://127.0.0.1:5000`.
 
 The web app includes:
 
+- preset city choices for Melbourne, Jakarta, and Boston
 - a draggable map marker for latitude and longitude
+- an 8-direction window-facing selector
+- simple room dimensions and one-window geometry controls
 - day-of-year and time-of-day levers for quick exploration
 - visible azimuth and elevation angle widgets
 - a client-side top-down room snapshot for the selected moment

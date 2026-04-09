@@ -13,10 +13,20 @@ from sunlight_house.analysis import (
     analyze_snapshot,
     key_date_daily_positions,
     key_dates,
+    room_relative_azimuth,
     sample_positions,
     yearly_peak_series,
 )
-from sunlight_house.config import Location, SimulationConfig, default_melbourne_scenario, window_on_wall
+from sunlight_house.config import (
+    COMPASS_OPTIONS,
+    LOCATION_PRESETS,
+    Location,
+    SimulationConfig,
+    default_location_preset,
+    default_melbourne_scenario,
+    location_from_preset,
+    main_window,
+)
 from sunlight_house.geometry import Room
 from sunlight_house.plotting import (
     plot_daily_intensity,
@@ -37,7 +47,7 @@ def create_app() -> Flask:
 
         try:
             config, selected_moment = build_config_and_moment(raw_values)
-            form_values = raw_values
+            form_values = normalize_form_values(raw_values, config)
         except ValueError as exc:
             error = f"{exc} Showing Melbourne defaults instead."
             form_values = defaults
@@ -112,8 +122,9 @@ def create_app() -> Flask:
             yearly_uri=yearly_uri,
             key_dates_uri=key_dates_uri,
             sample_rows=sample_rows,
-            window_wall_description=window_axis_description(form_values["window_wall"]),
             initial_snapshot_payload=snapshot_payload(config, selected_moment),
+            location_presets=location_presets_payload(),
+            compass_options=[label for label, _ in COMPASS_OPTIONS],
         )
 
     @app.get("/api/snapshot")
@@ -139,7 +150,9 @@ def default_form_values() -> dict[str, str]:
     scenario = default_melbourne_scenario()
     room = scenario.room
     window = scenario.windows[0]
+    preset = default_location_preset()
     return {
+        "location_preset": preset,
         "location_name": scenario.location.name,
         "latitude": f"{scenario.location.latitude}",
         "longitude": f"{scenario.location.longitude}",
@@ -150,8 +163,7 @@ def default_form_values() -> dict[str, str]:
         "room_width": f"{room.width}",
         "room_depth": f"{room.depth}",
         "room_height": f"{room.height}",
-        "window_name": window.name,
-        "window_wall": "north",
+        "window_facing": scenario.window_facing_label,
         "window_span_center": "3.0",
         "window_center_height": "1.5",
         "window_width": f"{window.width}",
@@ -162,7 +174,19 @@ def default_form_values() -> dict[str, str]:
 
 
 def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConfig, datetime]:
-    timezone_name = form_values["timezone_name"].strip()
+    preset_key = form_values.get("location_preset", "custom").strip()
+    if preset_key and preset_key != "custom":
+        preset = location_from_preset(preset_key)
+        location_name = preset.name
+        latitude = preset.latitude
+        longitude = preset.longitude
+        timezone_name = preset.timezone_name
+    else:
+        location_name = form_values["location_name"].strip() or "Custom location"
+        latitude = parse_float(form_values["latitude"], "Latitude")
+        longitude = parse_float(form_values["longitude"], "Longitude")
+        timezone_name = form_values["timezone_name"].strip()
+
     ZoneInfo(timezone_name)
 
     room = Room(
@@ -170,10 +194,8 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
         depth=parse_positive_float(form_values["room_depth"], "Room depth"),
         height=parse_positive_float(form_values["room_height"], "Room height"),
     )
-    window = window_on_wall(
-        name=form_values["window_name"].strip() or "window",
+    window = main_window(
         room=room,
-        wall=form_values["window_wall"].strip().lower(),
         span_center=parse_float(form_values["window_span_center"], "Window span center"),
         center_height=parse_float(form_values["window_center_height"], "Window center height"),
         width=parse_positive_float(form_values["window_width"], "Window width"),
@@ -183,9 +205,9 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
     year = int(parse_positive_float(form_values["year"], "Simulation year"))
     config = SimulationConfig(
         location=Location(
-            name=form_values["location_name"].strip() or "Custom location",
-            latitude=parse_float(form_values["latitude"], "Latitude"),
-            longitude=parse_float(form_values["longitude"], "Longitude"),
+            name=location_name,
+            latitude=latitude,
+            longitude=longitude,
             timezone_name=timezone_name,
         ),
         room=room,
@@ -193,6 +215,7 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
         year=year,
         day_step_minutes=int(parse_positive_float(form_values["day_step_minutes"], "Daily step")),
         year_step_hours=int(parse_positive_float(form_values["year_step_hours"], "Yearly step")),
+        window_facing_label=form_values["window_facing"].strip().upper(),
     )
 
     selected_date = datetime.strptime(form_values["selected_date"], "%Y-%m-%d").date()
@@ -227,8 +250,6 @@ def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dic
     snapshot = analyze_snapshot(config, selected_moment)
     daily = analyze_day(config, selected_moment.date(), selected_moment.strftime("%B %d"))
     strongest_window, strongest_intensity = snapshot.strongest_window
-    active_window = config.windows[0]
-    active_window_wall = wall_name_for_window(active_window)
     state = snapshot_state(snapshot.entered_direct_sun, strongest_intensity)
 
     return {
@@ -242,7 +263,9 @@ def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dic
         "snapshot": {
             "elevation_deg": snapshot.position.elevation_deg,
             "azimuth_deg": snapshot.position.azimuth_deg,
+            "room_azimuth_deg": room_relative_azimuth(config, snapshot.position.azimuth_deg),
             "vector": [float(value) for value in snapshot.vector],
+            "room_vector": [float(value) for value in snapshot.room_vector],
             "entered_direct_sun": snapshot.entered_direct_sun,
             "strongest_window": strongest_window,
             "strongest_intensity": strongest_intensity,
@@ -279,17 +302,34 @@ def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dic
             for window in config.windows
         ],
         "active_window": {
-            "name": active_window.name,
-            "wall": active_window_wall,
+            "name": config.windows[0].name,
+            "wall": wall_name_for_window(config.windows[0]),
+            "facing": config.window_facing_label,
         },
+        "window_facing_label": config.window_facing_label,
     }
 
 
-def window_axis_description(wall: str) -> str:
-    wall_name = wall.lower()
-    if wall_name in {"north", "south"}:
-        return "Horizontal center measured along the wall in x (east-west, metres)."
-    return "Horizontal center measured along the wall in y (south-north, metres)."
+def location_presets_payload() -> dict[str, dict[str, str | float]]:
+    return {
+        key: {
+            "name": preset.name,
+            "latitude": preset.latitude,
+            "longitude": preset.longitude,
+            "timezone_name": preset.timezone_name,
+        }
+        for key, preset in LOCATION_PRESETS.items()
+    }
+
+
+def normalize_form_values(form_values: dict[str, str], config: SimulationConfig) -> dict[str, str]:
+    normalized = dict(form_values)
+    normalized["location_name"] = config.location.name
+    normalized["latitude"] = str(config.location.latitude)
+    normalized["longitude"] = str(config.location.longitude)
+    normalized["timezone_name"] = config.location.timezone_name
+    normalized["window_facing"] = config.window_facing_label
+    return normalized
 
 
 def wall_name_for_window(window) -> str:

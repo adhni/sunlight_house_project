@@ -32,6 +32,7 @@ class SnapshotAnalysis:
     moment: datetime
     position: SunPosition
     vector: np.ndarray
+    room_vector: np.ndarray
     window_intensities: dict[str, float]
     patches: list[SunlightPatch]
 
@@ -63,6 +64,14 @@ def key_dates(config: SimulationConfig) -> dict[str, datetime]:
         "Spring equinox": local_datetime(config, 9, 22),
         "Summer solstice": local_datetime(config, 12, 21),
     }
+
+
+def room_relative_azimuth(config: SimulationConfig, world_azimuth_deg: float) -> float:
+    return (world_azimuth_deg - config.window_facing_deg) % 360.0
+
+
+def room_sun_vector(config: SimulationConfig, position: SunPosition) -> np.ndarray:
+    return sun_vector(position.elevation_deg, room_relative_azimuth(config, position.azimuth_deg))
 
 
 def sample_positions(config: SimulationConfig) -> list[tuple[datetime, SunPosition, np.ndarray]]:
@@ -103,7 +112,7 @@ def window_intensity_series(
 ) -> dict[str, list[float]]:
     series: dict[str, list[float]] = {window.name: [] for window in config.windows}
     for _, position in positions:
-        vector = sun_vector(position.elevation_deg, position.azimuth_deg)
+        vector = room_sun_vector(config, position)
         for window in config.windows:
             series[window.name].append(intersects_window(vector, window.outward_normal))
     return series
@@ -119,7 +128,7 @@ def patches_for_plot(
     for dt, position in positions:
         if dt.minute % sample_minutes != 0:
             continue
-        vector = sun_vector(position.elevation_deg, position.azimuth_deg)
+        vector = room_sun_vector(config, position)
         patches = patches_for_windows(config.room, config.windows, vector)
         if patches:
             patches_over_time.append((dt, patches))
@@ -163,14 +172,16 @@ def analyze_snapshot(config: SimulationConfig, moment: datetime) -> SnapshotAnal
         moment,
     )
     vector = sun_vector(position.elevation_deg, position.azimuth_deg)
+    room_vector = room_sun_vector(config, position)
     window_intensities = {
-        window.name: intersects_window(vector, window.outward_normal) for window in config.windows
+        window.name: intersects_window(room_vector, window.outward_normal) for window in config.windows
     }
-    patches = patches_for_windows(config.room, config.windows, vector)
+    patches = patches_for_windows(config.room, config.windows, room_vector)
     return SnapshotAnalysis(
         moment=moment,
         position=position,
         vector=vector,
+        room_vector=room_vector,
         window_intensities=window_intensities,
         patches=patches,
     )

@@ -51,11 +51,12 @@
           <div class="howto-card">
             <strong>How to use it</strong>
             <ol class="howto-list">
-              <li>Drag the map marker or click the map to choose a location.</li>
+              <li>Start with Melbourne, Jakarta, or Boston, then adjust the map only if needed.</li>
+              <li>Choose the window facing direction and size your room and window.</li>
               <li>Use the two levers for day of year and time of day.</li>
               <li>Watch the compass, elevation gauge, and room snapshot update live.</li>
             </ol>
-            <p class="howto-tip">Try Melbourne, June 21, around 12:00 for a clear floor patch through the north window.</p>
+            <p class="howto-tip">Try Melbourne, north-facing window, June 21, around 12:00 for a clear winter floor patch.</p>
           </div>
           <div id="location-map" class="location-map" aria-label="Location map"></div>
           <div class="lever-grid">
@@ -109,11 +110,11 @@
               </div>
               <div id="room-snapshot-svg" class="room-snapshot"></div>
               <div class="snapshot-facts">
-                <span id="snapshot-window-fact">Window: {{ form_values.window_wall|title }} wall</span>
+                <span id="snapshot-window-fact">Window facing: {{ form_values.window_facing }}</span>
                 <span id="snapshot-azimuth-fact">Azimuth: {{ "%.1f"|format(snapshot.position.azimuth_deg) }}°</span>
                 <span id="snapshot-elevation-fact">Elevation: {{ "%.1f"|format(snapshot.position.elevation_deg) }}°</span>
               </div>
-              <p class="angle-caption">Read it left to right: highlighted window, incoming rays, then the amber floor footprint.</p>
+              <p class="angle-caption">This panel stays in room-local coordinates. The top edge is the main window wall; the real-world compass facing is shown only in the metadata chips below.</p>
             </article>
           </div>
         </div>
@@ -124,6 +125,15 @@
           <form method="get" class="control-form" id="simulation-form">
             <section class="panel-card">
               <h2>Location</h2>
+              <label>
+                <span>Preset city</span>
+                <select id="location-preset-input" name="location_preset">
+                  {% for preset_key, preset in location_presets.items() %}
+                  <option value="{{ preset_key }}" {% if form_values.location_preset == preset_key %}selected{% endif %}>{{ preset.name }}</option>
+                  {% endfor %}
+                  <option value="custom" {% if form_values.location_preset == 'custom' %}selected{% endif %}>Custom</option>
+                </select>
+              </label>
               <label>
                 <span>Location label</span>
                 <input type="text" name="location_name" value="{{ form_values.location_name }}">
@@ -179,25 +189,21 @@
             <section class="panel-card">
               <h2>Window</h2>
               <label>
-                <span>Window name</span>
-                <input type="text" name="window_name" value="{{ form_values.window_name }}">
-              </label>
-              <label>
-                <span>Wall</span>
-                <select id="window-wall-input" name="window_wall">
-                  {% for wall in ['north', 'south', 'east', 'west'] %}
-                  <option value="{{ wall }}" {% if form_values.window_wall == wall %}selected{% endif %}>{{ wall|title }}</option>
+                <span>Window facing</span>
+                <select id="window-facing-input" name="window_facing">
+                  {% for facing in compass_options %}
+                  <option value="{{ facing }}" {% if form_values.window_facing == facing %}selected{% endif %}>{{ facing }}</option>
                   {% endfor %}
                 </select>
               </label>
-              <p id="window-axis-description" class="field-help">{{ window_wall_description }}</p>
+              <p class="field-help">This uses a single main window and rotates the room relative to the sun so you can test 8 compass-facing options without changing the rectangular geometry.</p>
               <div class="field-row">
                 <label>
-                  <span>Horizontal center (m)</span>
+                  <span>Position along wall (m)</span>
                   <input type="number" step="0.1" name="window_span_center" value="{{ form_values.window_span_center }}">
                 </label>
                 <label>
-                  <span>Center height (m)</span>
+                  <span>Window center height (m)</span>
                   <input type="number" step="0.1" name="window_center_height" value="{{ form_values.window_center_height }}">
                 </label>
               </div>
@@ -337,6 +343,7 @@
     </div>
 
     <script id="initial-snapshot-data" type="application/json">{{ initial_snapshot_payload|tojson }}</script>
+    <script id="location-presets-data" type="application/json">{{ location_presets|tojson }}</script>
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="

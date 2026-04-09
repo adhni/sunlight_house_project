@@ -1,12 +1,16 @@
 (function () {
   const initialData = JSON.parse(document.getElementById("initial-snapshot-data").textContent);
+  const locationPresets = JSON.parse(document.getElementById("location-presets-data").textContent);
   const form = document.getElementById("simulation-form");
+  const locationPresetInput = document.getElementById("location-preset-input");
   const latitudeInput = document.getElementById("latitude-input");
   const longitudeInput = document.getElementById("longitude-input");
+  const timezoneInput = form.querySelector('input[name="timezone_name"]');
+  const locationNameInput = form.querySelector('input[name="location_name"]');
   const yearInput = document.getElementById("year-input");
   const selectedDateInput = document.getElementById("selected-date-input");
   const selectedTimeInput = document.getElementById("selected-time-input");
-  const windowWallInput = document.getElementById("window-wall-input");
+  const windowFacingInput = document.getElementById("window-facing-input");
   const daySlider = document.getElementById("day-of-year-slider");
   const timeSlider = document.getElementById("time-of-day-slider");
   const dayReadout = document.getElementById("day-of-year-readout");
@@ -84,13 +88,6 @@
 
     dayReadout.textContent = formatDateReadout(selectedDateInput.value);
     timeReadout.textContent = selectedTimeInput.value;
-  }
-
-  function windowAxisDescription(wall) {
-    if (wall === "north" || wall === "south") {
-      return "Horizontal center measured along the wall in x (east-west, metres).";
-    }
-    return "Horizontal center measured along the wall in y (south-north, metres).";
   }
 
   function titleCase(value) {
@@ -186,7 +183,7 @@
       rays.push([sortedWindowPoints[0], sortedPatchPoints[0]]);
       rays.push([sortedWindowPoints[1], sortedPatchPoints[sortedPatchPoints.length - 1]]);
     } else {
-      const azimuthRad = payload.snapshot.azimuth_deg * Math.PI / 180;
+      const azimuthRad = payload.snapshot.room_azimuth_deg * Math.PI / 180;
       const planX = Math.sin(azimuthRad);
       const planY = Math.cos(azimuthRad);
       const rayLength = Math.min(width, depth) * 0.38;
@@ -217,14 +214,14 @@
     `).join("");
     const sourceMarker = `
       <circle cx="${windowMid[0]}" cy="${depth - windowMid[1]}" r="0.12" fill="#2b627a"></circle>
-      <text x="${windowMid[0]}" y="${depth - windowMid[1] - 0.28}" font-size="0.22" text-anchor="middle" fill="#2b627a">${titleCase(payload.active_window.wall)} window</text>
+      <text x="${windowMid[0]}" y="${depth - windowMid[1] - 0.28}" font-size="0.22" text-anchor="middle" fill="#2b627a">Main window</text>
     `;
     const compass = `
       <g transform="translate(0.35,0.45)">
         <circle cx="0.38" cy="0.38" r="0.26" fill="rgba(255,255,255,0.85)" stroke="#1f2732" stroke-width="0.03"></circle>
         <line x1="0.38" y1="0.56" x2="0.38" y2="0.18" stroke="#1f2732" stroke-width="0.03"></line>
         <polygon points="0.38,0.08 0.31,0.22 0.45,0.22" fill="#1f2732"></polygon>
-        <text x="0.38" y="-0.03" font-size="0.18" text-anchor="middle" fill="#1f2732">N</text>
+        <text x="0.38" y="-0.03" font-size="0.18" text-anchor="middle" fill="#1f2732">North</text>
       </g>
     `;
     const sourceLegend = `
@@ -299,11 +296,24 @@
     const snapshotStatus = document.getElementById("room-snapshot-status");
     snapshotStatus.textContent = snapshotStateLabel(snapshot.state);
     snapshotStatus.className = snapshotStateClass(snapshot.state);
-    document.getElementById("snapshot-window-fact").textContent = `Window: ${titleCase(payload.active_window.wall)} wall`;
+    document.getElementById("snapshot-window-fact").textContent = `Window facing: ${payload.active_window.facing}`;
     document.getElementById("snapshot-azimuth-fact").textContent = `Azimuth: ${snapshot.azimuth_deg.toFixed(1)}°`;
     document.getElementById("snapshot-elevation-fact").textContent = `Elevation: ${snapshot.elevation_deg.toFixed(1)}°`;
     document.getElementById("live-azimuth-text").textContent = `${snapshot.azimuth_deg.toFixed(2)} deg`;
     document.getElementById("live-elevation-text").textContent = `${snapshot.elevation_deg.toFixed(2)} deg`;
+  }
+
+  function applyLocationPreset() {
+    const preset = locationPresets[locationPresetInput.value];
+    if (!preset) {
+      return;
+    }
+    locationNameInput.value = preset.name;
+    latitudeInput.value = String(preset.latitude);
+    longitudeInput.value = String(preset.longitude);
+    timezoneInput.value = preset.timezone_name;
+    marker.setLatLng([preset.latitude, preset.longitude]);
+    map.setView([preset.latitude, preset.longitude], 5);
   }
 
   async function refreshSnapshot() {
@@ -327,12 +337,14 @@
 
   marker.on("dragend", () => {
     const { lat, lng } = marker.getLatLng();
+    locationPresetInput.value = "custom";
     latitudeInput.value = lat.toFixed(4);
     longitudeInput.value = lng.toFixed(4);
     debouncedRefresh();
   });
 
   map.on("click", (event) => {
+    locationPresetInput.value = "custom";
     marker.setLatLng(event.latlng);
     latitudeInput.value = event.latlng.lat.toFixed(4);
     longitudeInput.value = event.latlng.lng.toFixed(4);
@@ -366,24 +378,40 @@
   });
 
   latitudeInput.addEventListener("change", () => {
+    locationPresetInput.value = "custom";
     marker.setLatLng([parseFloat(latitudeInput.value), parseFloat(longitudeInput.value)]);
     map.panTo(marker.getLatLng());
     debouncedRefresh();
   });
 
   longitudeInput.addEventListener("change", () => {
+    locationPresetInput.value = "custom";
     marker.setLatLng([parseFloat(latitudeInput.value), parseFloat(longitudeInput.value)]);
     map.panTo(marker.getLatLng());
     debouncedRefresh();
   });
 
-  windowWallInput.addEventListener("change", () => {
-    document.getElementById("window-axis-description").textContent = windowAxisDescription(windowWallInput.value);
+  locationNameInput.addEventListener("change", () => {
+    locationPresetInput.value = "custom";
+    debouncedRefresh();
+  });
+
+  timezoneInput.addEventListener("change", () => {
+    locationPresetInput.value = "custom";
+    debouncedRefresh();
+  });
+
+  locationPresetInput.addEventListener("change", () => {
+    applyLocationPreset();
+    debouncedRefresh();
+  });
+
+  windowFacingInput.addEventListener("change", () => {
     debouncedRefresh();
   });
 
   form.querySelectorAll("input, select").forEach((input) => {
-    if (input === daySlider || input === timeSlider || input === selectedDateInput || input === selectedTimeInput || input === yearInput || input === latitudeInput || input === longitudeInput || input === windowWallInput) {
+    if (input === daySlider || input === timeSlider || input === selectedDateInput || input === selectedTimeInput || input === yearInput || input === latitudeInput || input === longitudeInput || input === windowFacingInput || input === locationPresetInput) {
       return;
     }
     input.addEventListener("change", debouncedRefresh);
