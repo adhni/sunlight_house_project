@@ -17,3 +17,6 @@ dist/
 
 .DS_Store
 .mplconfig/
+
+outputs/*
+!outputs/.gitkeep
