@@ -1,11 +1,11 @@
-# Sunlight House Simulation
+# Sunlight House Lab
 
 This project is a compact Python prototype for solar position and direct-sunlight entry in a simple rectangular room. It now includes both:
 
 - a CLI demo that regenerates the example PNG outputs
 - a small Flask web app that lets you explore the same model interactively
 
-The goal stays deliberately narrow: physically meaningful solar angles, simple wall-window geometry, direct-sunlight checks, and easy-to-read plots.
+The goal stays deliberately narrow: physically meaningful solar angles, simple wall-window geometry, direct-sunlight checks, and easy-to-read room views.
 
 ## What the project does
 
@@ -17,7 +17,7 @@ The goal stays deliberately narrow: physically meaningful solar angles, simple w
 - ignores windows when the sun is behind the glazing
 - projects direct sunlight rays from the window corners onto the floor
 - compares Melbourne winter and summer behavior
-- produces daily and yearly visualizations
+- produces daily and yearly CLI visualizations
 - exposes the model through a simple web interface suitable for Render deployment
 
 ## Coordinate system and conventions
@@ -132,10 +132,10 @@ The demo:
 ## Run the web app locally
 
 ```bash
-python3 app.py
+PORT=5001 python3 app.py
 ```
 
-Then open `http://127.0.0.1:5000`.
+Then open `http://127.0.0.1:5001`.
 
 The web app includes:
 
@@ -144,13 +144,9 @@ The web app includes:
 - an 8-direction window-facing selector
 - simple room dimensions and one-window geometry controls
 - day-of-year and time-of-day levers for quick exploration
-- visible azimuth and elevation angle widgets
 - a client-side top-down room snapshot for the selected moment
-- form controls for location, timezone, room, and window geometry
-- a daily window-intensity plot
-- a daily floor-patch plot
-- a yearly peak-elevation plot
-- a seasonal comparison plot for summer solstice, equinox, and winter solstice
+- a live `Direct Sun Hours Today` floor map
+- live controls for location, timezone, room, and window geometry
 
 The live explorer is inspired by tools such as SunCalc, but it remains focused on this project's own direct-sunlight room model rather than trying to clone the full SunCalc feature set.
 
@@ -161,11 +157,22 @@ The repo includes `render.yaml` for a simple Python web service.
 Render uses:
 
 - build command: `pip install -r requirements.txt`
-- start command: `python3 -m gunicorn app:app`
+- start command: `python3 -m gunicorn app:app --bind 0.0.0.0:$PORT`
+- health check path: `/healthz`
 
 If you prefer to configure Render manually instead of using `render.yaml`, use the same commands.
 
-## Output plots
+Basic manual setup in the Render dashboard:
+
+1. Create a new `Web Service`.
+2. Connect the GitHub repo and choose the `main` branch.
+3. Set runtime to `Python`.
+4. Use build command `pip install -r requirements.txt`.
+5. Use start command `python3 -m gunicorn app:app --bind 0.0.0.0:$PORT`.
+6. Set health check path to `/healthz`.
+7. Deploy.
+
+## CLI output plots
 
 Running the CLI demo regenerates these example files in `outputs/`:
 
@@ -184,7 +191,7 @@ Running the CLI demo regenerates these example files in `outputs/`:
 
 ## Regenerating outputs
 
-Delete or keep the existing PNG files in `outputs/`, then rerun:
+The `outputs/` folder is kept in the repo, but generated images are no longer tracked by Git. To regenerate them locally, run:
 
 ```bash
 python3 run_demo.py

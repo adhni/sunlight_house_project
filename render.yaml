@@ -1,7 +1,8 @@
 services:
   - type: web
     name: sunlight-house-project
-    env: python
+    runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python3 -m gunicorn app:app
+    startCommand: python3 -m gunicorn app:app --bind 0.0.0.0:$PORT
+    healthCheckPath: /healthz
     plan: free
