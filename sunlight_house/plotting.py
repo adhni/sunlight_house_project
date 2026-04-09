@@ -7,6 +7,7 @@ from pathlib import Path
 _MPL_DIR = Path(".mplconfig")
 _MPL_DIR.mkdir(exist_ok=True)
 os.environ.setdefault("MPLCONFIGDIR", str(_MPL_DIR.resolve()))
+os.environ.setdefault("MPLBACKEND", "Agg")
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
