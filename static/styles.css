@@ -272,6 +272,60 @@ input[type="range"] {
   gap: 8px;
 }
 
+.date-time-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.slider-reference {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.slider-landmarks {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.slider-landmarks span:nth-child(2),
+.slider-landmarks span:nth-child(3) {
+  text-align: center;
+}
+
+.slider-landmarks span:last-child {
+  text-align: right;
+}
+
+.daylight-markers {
+  position: relative;
+  height: 28px;
+  margin-top: 2px;
+}
+
+.daylight-marker {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  padding-top: 10px;
+  font-size: 0.76rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.daylight-marker::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 1px;
+  height: 8px;
+  transform: translateX(-50%);
+  background: rgba(200, 101, 48, 0.5);
+}
+
 .slider-header {
   display: flex;
   justify-content: space-between;
@@ -294,10 +348,26 @@ input[type="range"] {
 }
 
 .subtle-details summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
   cursor: pointer;
   font-weight: 700;
   color: var(--ink);
   list-style: none;
+}
+
+.subtle-details summary::after {
+  content: "\203a";
+  font-size: 1.1rem;
+  color: var(--muted);
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+
+.subtle-details[open] summary::after {
+  transform: rotate(270deg);
 }
 
 .subtle-details summary::-webkit-details-marker {
@@ -311,8 +381,16 @@ input[type="range"] {
   margin-top: 12px;
 }
 
+.custom-location-fields {
+  gap: 14px;
+}
+
+.custom-location-advanced {
+  margin-top: 0;
+}
+
 .location-map {
-  min-height: 220px;
+  min-height: 280px;
   border-radius: 18px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -399,6 +477,21 @@ input[type="range"] {
   margin-bottom: 0;
 }
 
+.current-moment-details summary {
+  align-items: baseline;
+}
+
+.current-moment-details summary strong {
+  font-size: 0.96rem;
+  letter-spacing: -0.02em;
+}
+
+.current-moment-content {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -474,6 +567,15 @@ input[type="range"] {
   .controls-note {
     justify-items: start;
     text-align: left;
+  }
+
+  .current-moment-details summary {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .date-time-actions {
+    justify-content: flex-start;
   }
 
   .room-snapshot-large {

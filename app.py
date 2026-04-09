@@ -89,20 +89,24 @@ def default_form_values() -> dict[str, str]:
     room = scenario.room
     window = scenario.windows[0]
     preset = default_location_preset()
+    timezone = ZoneInfo(scenario.location.timezone_name)
+    current_moment = datetime.now(timezone).replace(second=0, microsecond=0)
+    rounded_minute = current_moment.minute - (current_moment.minute % 15)
+    current_moment = current_moment.replace(minute=rounded_minute)
     return {
         "location_preset": preset,
         "location_name": scenario.location.name,
         "latitude": f"{scenario.location.latitude}",
         "longitude": f"{scenario.location.longitude}",
         "timezone_name": scenario.location.timezone_name,
-        "year": str(scenario.year),
-        "selected_date": f"{scenario.year}-06-21",
-        "selected_time": "12:00",
+        "year": str(current_moment.year),
+        "selected_date": current_moment.date().isoformat(),
+        "selected_time": current_moment.strftime("%H:%M"),
         "room_width": f"{room.width}",
         "room_depth": f"{room.depth}",
         "room_height": f"{room.height}",
         "window_facing": scenario.window_facing_label,
-        "window_span_center": "3.0",
+        "window_span_center": f"{window.center[0]:.1f}",
         "window_sill_height": f"{window.center[2] - window.height / 2.0:.1f}",
         "window_width": f"{window.width}",
         "window_height": f"{window.height}",
@@ -190,6 +194,7 @@ def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dic
     exposure_grid = daily_exposure_grid(config, daily.patches_over_time)
     strongest_window, strongest_intensity = snapshot.strongest_window
     state = snapshot_state(snapshot.entered_direct_sun, strongest_intensity)
+    daylight_times = daylight_window(daily.positions)
 
     return {
         "location": {
@@ -226,6 +231,8 @@ def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dic
             "peak_window_name": daily.peak_window_name,
             "peak_intensity": daily.peak_intensity,
             "peak_time": daily.peak_time.isoformat() if daily.peak_time else None,
+            "sunrise_time": daylight_times[0].isoformat() if daylight_times[0] else None,
+            "sunset_time": daylight_times[1].isoformat() if daylight_times[1] else None,
             "exposure_grid": exposure_grid,
         },
         "room": {
@@ -381,6 +388,13 @@ def snapshot_state(has_patch: bool, strongest_intensity: float) -> str:
     if strongest_intensity > 0.0:
         return "through_window_no_floor_hit"
     return "behind_window"
+
+
+def daylight_window(positions) -> tuple[datetime | None, datetime | None]:
+    above_horizon = [dt for dt, position in positions if position.elevation_deg > 0.0]
+    if not above_horizon:
+        return None, None
+    return above_horizon[0], above_horizon[-1]
 
 
 app = create_app()

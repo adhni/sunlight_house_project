@@ -154,14 +154,14 @@ def main_window(
 
 
 def default_melbourne_scenario() -> SimulationConfig:
-    room = Room(width=6.0, depth=5.0, height=3.0)
+    room = Room(width=4.0, depth=5.0, height=3.0)
     windows = (
         main_window(
             room=room,
             span_center=3.0,
-            center_height=1.5,
-            width=2.4,
-            height=1.6,
+            center_height=1.1,
+            width=1.5,
+            height=2.0,
         ),
     )
 
@@ -169,5 +169,5 @@ def default_melbourne_scenario() -> SimulationConfig:
         location=location_from_preset(default_location_preset()),
         room=room,
         windows=windows,
-        window_facing_label="N",
+        window_facing_label="E",
     )

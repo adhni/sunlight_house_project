@@ -4,6 +4,10 @@
   const form = document.getElementById("simulation-form");
   const roomWorkspace = document.querySelector(".room-workspace");
   const updateStatus = document.getElementById("update-status");
+  const sunriseMarker = document.getElementById("sunrise-marker");
+  const sunsetMarker = document.getElementById("sunset-marker");
+  const timeScrubberReference = document.getElementById("time-scrubber-reference");
+  const setNowButton = document.getElementById("set-now-button");
 
   const locationPresetInput = document.getElementById("location-preset-input");
   const windowFacingInput = document.getElementById("window-facing-input");
@@ -75,6 +79,28 @@
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  }
+
+  function roundedNowInTimezone(timezoneName) {
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezoneName,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+    const parts = Object.fromEntries(
+      formatter.formatToParts(new Date())
+        .filter((part) => part.type !== "literal")
+        .map((part) => [part.type, part.value])
+    );
+    const roundedMinute = Math.floor(parseInt(parts.minute, 10) / 15) * 15;
+    return {
+      date: `${parts.year}-${parts.month}-${parts.day}`,
+      time: `${parts.hour}:${String(roundedMinute).padStart(2, "0")}`,
+    };
   }
 
   function selectedYear() {
@@ -196,6 +222,7 @@
       marker.setLatLng([preset.latitude, preset.longitude]);
       map.setView([preset.latitude, preset.longitude], 5);
     }
+    updateTimeScrubberReference(preset.timezone_name);
   }
 
   function setLocationPreset(presetKey, options = {}) {
@@ -204,6 +231,7 @@
     setActiveButtons(locationChipButtons, "locationPreset", presetKey);
 
     if (presetKey === "custom") {
+      locationNameInput.value = "Custom location";
       customLocationPanel.open = true;
       ensureMap();
       invalidateMapSoon();
@@ -252,12 +280,90 @@
     return Number.isFinite(parsed) ? parsed : null;
   }
 
+  function compassLabelForDegrees(degrees) {
+    const labels = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+    const normalized = ((degrees % 360) + 360) % 360;
+    const index = Math.round(normalized / 45) % labels.length;
+    return labels[index];
+  }
+
+  function roomEdgeLabels(windowFacingLabel) {
+    const baseAngles = [0, 90, 180, 270];
+    const facingAngles = {
+      N: 0,
+      NE: 45,
+      E: 90,
+      SE: 135,
+      S: 180,
+      SW: 225,
+      W: 270,
+      NW: 315,
+    };
+    const baseWorldAngle = facingAngles[windowFacingLabel] ?? 0;
+    return baseAngles.map((angle) => `${angle}\u00b0 / ${compassLabelForDegrees(baseWorldAngle + angle)}`);
+  }
+
+  function localMinutesFromIso(isoString) {
+    if (!isoString) {
+      return null;
+    }
+    const hours = parseInt(isoString.slice(11, 13), 10);
+    const minutes = parseInt(isoString.slice(14, 16), 10);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+      return null;
+    }
+    return hours * 60 + minutes;
+  }
+
+  function formatIsoLocalTime(isoString) {
+    const totalMinutes = localMinutesFromIso(isoString);
+    return totalMinutes === null ? "\u2014" : formatTimeReadout(totalMinutes);
+  }
+
+  function setDaylightMarker(element, isoString, label) {
+    if (!element) {
+      return;
+    }
+    const totalMinutes = localMinutesFromIso(isoString);
+    if (totalMinutes === null) {
+      element.hidden = true;
+      return;
+    }
+    element.hidden = false;
+    element.textContent = `${label} ${formatIsoLocalTime(isoString)}`;
+    element.style.left = `${(totalMinutes / 1440) * 100}%`;
+  }
+
+  function createDimensionGuides(width, depth) {
+    const widthLineY = -0.42;
+    const depthLineX = width + 0.42;
+    return `
+      <g stroke="rgba(95,109,119,0.55)" stroke-width="0.03" fill="none">
+        <line x1="0" y1="${widthLineY}" x2="${width}" y2="${widthLineY}"></line>
+        <line x1="0" y1="${widthLineY - 0.08}" x2="0" y2="${widthLineY + 0.08}"></line>
+        <line x1="${width}" y1="${widthLineY - 0.08}" x2="${width}" y2="${widthLineY + 0.08}"></line>
+        <line x1="${depthLineX}" y1="0" x2="${depthLineX}" y2="${depth}"></line>
+        <line x1="${depthLineX - 0.08}" y1="0" x2="${depthLineX + 0.08}" y2="0"></line>
+        <line x1="${depthLineX - 0.08}" y1="${depth}" x2="${depthLineX + 0.08}" y2="${depth}"></line>
+      </g>
+      <text x="${width / 2}" y="${widthLineY - 0.1}" font-size="0.18" text-anchor="middle" fill="#616a68">${width.toFixed(1)} m wide</text>
+      <text x="${depthLineX + 0.12}" y="${depth / 2}" font-size="0.18" text-anchor="middle" fill="#616a68" transform="rotate(90 ${depthLineX + 0.12} ${depth / 2})">${depth.toFixed(1)} m deep</text>
+    `;
+  }
+
   function setUpdateStatus(message, state = "idle") {
     if (!updateStatus) {
       return;
     }
     updateStatus.textContent = message;
     updateStatus.dataset.state = state;
+  }
+
+  function updateTimeScrubberReference(timezoneName) {
+    if (!timeScrubberReference) {
+      return;
+    }
+    timeScrubberReference.textContent = `Reference timezone: ${timezoneName}`;
   }
 
   function isCompleteDateValue() {
@@ -301,7 +407,7 @@
   function createRoomSvg(payload) {
     const width = payload.room.width;
     const depth = payload.room.depth;
-    const pad = 0.45;
+    const pad = 0.95;
     const viewBox = `${-pad} ${-pad} ${width + pad * 2} ${depth + pad * 2}`;
     const mapPoint = (point) => `${point[0]},${depth - point[1]}`;
     const activeWindow = payload.windows[0];
@@ -347,11 +453,13 @@
     const noPatch = payload.snapshot.patches.length === 0
       ? `<text x="${width / 2}" y="${depth / 2 + 0.6}" font-size="0.28" text-anchor="middle" fill="#616a68">No direct floor patch</text>`
       : "";
+    const [topLabel, rightLabel, bottomLabel, leftLabel] = roomEdgeLabels(payload.window_facing_label);
+    const dimensionGuides = createDimensionGuides(width, depth);
     const sideLabels = `
-      <text x="${width / 2}" y="-0.16" font-size="0.2" text-anchor="middle" fill="#5f6d77">0°</text>
-      <text x="${width + 0.22}" y="${depth / 2}" font-size="0.2" text-anchor="middle" fill="#5f6d77" transform="rotate(90 ${width + 0.22} ${depth / 2})">90°</text>
-      <text x="${width / 2}" y="${depth + 0.28}" font-size="0.2" text-anchor="middle" fill="#5f6d77">180°</text>
-      <text x="-0.22" y="${depth / 2}" font-size="0.2" text-anchor="middle" fill="#5f6d77" transform="rotate(-90 -0.22 ${depth / 2})">270°</text>
+      <text x="${width / 2}" y="-0.16" font-size="0.2" text-anchor="middle" fill="#5f6d77">${topLabel}</text>
+      <text x="${width + 0.22}" y="${depth / 2}" font-size="0.2" text-anchor="middle" fill="#5f6d77" transform="rotate(90 ${width + 0.22} ${depth / 2})">${rightLabel}</text>
+      <text x="${width / 2}" y="${depth + 0.28}" font-size="0.2" text-anchor="middle" fill="#5f6d77">${bottomLabel}</text>
+      <text x="-0.22" y="${depth / 2}" font-size="0.2" text-anchor="middle" fill="#5f6d77" transform="rotate(-90 -0.22 ${depth / 2})">${leftLabel}</text>
     `;
     const sourceLegend = `<text x="${width - 0.25}" y="${depth - 0.15}" font-size="0.18" text-anchor="end" fill="#616a68">Window → Rays → Floor patch</text>`;
     const defs = `
@@ -372,6 +480,7 @@
         ${windowLine}
         ${sourceMarker}
         ${noPatch}
+        ${dimensionGuides}
         ${sideLabels}
         ${sourceLegend}
       </svg>
@@ -381,7 +490,7 @@
   function createExposureMapSvg(payload) {
     const width = payload.room.width;
     const depth = payload.room.depth;
-    const pad = 0.45;
+    const pad = 0.95;
     const viewBox = `${-pad} ${-pad} ${width + pad * 2} ${depth + pad * 2}`;
     const activeWindow = payload.windows[0];
     const [windowA, windowB] = activeWindow.wall_segment_xy;
@@ -391,6 +500,8 @@
     const cellWidth = grid.cell_width;
     const cellHeight = grid.cell_height;
     const peakHours = Math.max(grid.peak_hours || 0, 0.0001);
+    const [topLabel, rightLabel, bottomLabel, leftLabel] = roomEdgeLabels(payload.window_facing_label);
+    const dimensionGuides = createDimensionGuides(width, depth);
 
     const cells = [];
     for (let row = 0; row < rows; row += 1) {
@@ -408,12 +519,13 @@
         <rect x="0" y="0" width="${width}" height="${depth}" fill="#fffdf8" stroke="#1f2732" stroke-width="0.06"></rect>
         ${cells.join("")}
         <line x1="${windowA[0]}" y1="${depth - windowA[1]}" x2="${windowB[0]}" y2="${depth - windowB[1]}" stroke="#2b627a" stroke-width="0.17" stroke-linecap="round"></line>
+        ${dimensionGuides}
         <text x="${0.12}" y="${0.25}" font-size="0.18" fill="#616a68">0 h</text>
         <text x="${width - 0.12}" y="${0.25}" font-size="0.18" text-anchor="end" fill="#8e3b18">${grid.peak_hours.toFixed(1)} h max</text>
-        <text x="${width / 2}" y="-0.16" font-size="0.2" text-anchor="middle" fill="#5f6d77">0°</text>
-        <text x="${width + 0.22}" y="${depth / 2}" font-size="0.2" text-anchor="middle" fill="#5f6d77" transform="rotate(90 ${width + 0.22} ${depth / 2})">90°</text>
-        <text x="${width / 2}" y="${depth + 0.28}" font-size="0.2" text-anchor="middle" fill="#5f6d77">180°</text>
-        <text x="-0.22" y="${depth / 2}" font-size="0.2" text-anchor="middle" fill="#5f6d77" transform="rotate(-90 -0.22 ${depth / 2})">270°</text>
+        <text x="${width / 2}" y="-0.16" font-size="0.2" text-anchor="middle" fill="#5f6d77">${topLabel}</text>
+        <text x="${width + 0.22}" y="${depth / 2}" font-size="0.2" text-anchor="middle" fill="#5f6d77" transform="rotate(90 ${width + 0.22} ${depth / 2})">${rightLabel}</text>
+        <text x="${width / 2}" y="${depth + 0.28}" font-size="0.2" text-anchor="middle" fill="#5f6d77">${bottomLabel}</text>
+        <text x="-0.22" y="${depth / 2}" font-size="0.2" text-anchor="middle" fill="#5f6d77" transform="rotate(-90 -0.22 ${depth / 2})">${leftLabel}</text>
       </svg>
     `;
   }
@@ -461,6 +573,10 @@
     setText("snapshot-window-fact", `Window facing: ${payload.active_window.facing}`);
     setText("snapshot-azimuth-fact", `Azimuth: ${snapshot.azimuth_deg.toFixed(1)}°`);
     setText("snapshot-elevation-fact", `Elevation: ${snapshot.elevation_deg.toFixed(1)}°`);
+    const [topLabel, rightLabel, bottomLabel, leftLabel] = roomEdgeLabels(payload.window_facing_label);
+    setText("room-angle-caption", `Room edges: top ${topLabel}, right ${rightLabel}, bottom ${bottomLabel}, left ${leftLabel}.`);
+    setDaylightMarker(sunriseMarker, payload.daily.sunrise_time, "Sunrise");
+    setDaylightMarker(sunsetMarker, payload.daily.sunset_time, "Sunset");
     setText(
       "daily-exposure-caption",
       `${Math.round(payload.daily.exposure_grid.sunlit_fraction * 100)}% of the room gets some direct sun today. Darker cells mean more direct-sun hours. Peak floor cell: ${payload.daily.exposure_grid.peak_hours.toFixed(1)} h.`
@@ -517,12 +633,30 @@
 
   function refreshTimezone() {
     setLocationPreset("custom", { applyPreset: false, openPanel: true, refresh: false });
+    updateTimeScrubberReference(timezoneInput.value.trim() || "Custom timezone");
     scheduleRefresh();
   }
 
   function refreshLocationName() {
     setLocationPreset("custom", { applyPreset: false, openPanel: true, refresh: false });
     scheduleRefresh();
+  }
+
+  function setInputsToNow() {
+    const timezoneName = timezoneInput.value.trim();
+    if (!timezoneName) {
+      setUpdateStatus("Set a timezone first.", "draft");
+      return;
+    }
+    try {
+      const now = roundedNowInTimezone(timezoneName);
+      selectedDateInput.value = now.date;
+      selectedTimeInput.value = now.time;
+      syncSlidersFromInputs();
+      scheduleRefresh("Set to now...");
+    } catch (error) {
+      setUpdateStatus("Timezone is not valid for 'Now'.", "error");
+    }
   }
 
   function refreshFromNumberField(input) {
@@ -629,6 +763,7 @@
   });
 
   timezoneInput.addEventListener("input", () => {
+    updateTimeScrubberReference(timezoneInput.value.trim() || "Custom timezone");
     setUpdateStatus("Finish the current field to update.", "draft");
   });
   timezoneInput.addEventListener("change", refreshTimezone);
@@ -646,6 +781,10 @@
     input.addEventListener("change", () => refreshFromNumberField(input));
   });
 
+  if (setNowButton) {
+    setNowButton.addEventListener("click", setInputsToNow);
+  }
+
   syncSlidersFromInputs();
   setActiveButtons(locationChipButtons, "locationPreset", locationPresetInput.value);
   setActiveButtons(windowFacingButtons, "windowFacing", windowFacingInput.value);
@@ -654,5 +793,6 @@
     invalidateMapSoon();
   }
   updateSnapshotDom(initialData);
+  updateTimeScrubberReference(timezoneInput.value);
   setUpdateStatus(defaultUpdateMessage, "idle");
 })();
