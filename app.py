@@ -6,7 +6,7 @@ from datetime import datetime
 from io import BytesIO
 from zoneinfo import ZoneInfo
 
-from flask import Flask, render_template, request, url_for
+from flask import Flask, jsonify, render_template, request, url_for
 
 from sunlight_house.analysis import (
     analyze_day,
@@ -113,7 +113,20 @@ def create_app() -> Flask:
             key_dates_uri=key_dates_uri,
             sample_rows=sample_rows,
             window_wall_description=window_axis_description(form_values["window_wall"]),
+            initial_snapshot_payload=snapshot_payload(config, selected_moment),
         )
+
+    @app.get("/api/snapshot")
+    def api_snapshot():
+        defaults = default_form_values()
+        raw_values = defaults | {key: value for key, value in request.args.items() if value != ""}
+
+        try:
+            config, selected_moment = build_config_and_moment(raw_values)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        return jsonify(snapshot_payload(config, selected_moment))
 
     @app.get("/healthz")
     def healthz() -> tuple[str, int]:
@@ -208,6 +221,59 @@ def figure_data_uri(plotter, *plot_args) -> str:
     buffer.seek(0)
     encoded = base64.b64encode(buffer.read()).decode("ascii")
     return f"data:image/png;base64,{encoded}"
+
+
+def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dict[str, object]:
+    snapshot = analyze_snapshot(config, selected_moment)
+    daily = analyze_day(config, selected_moment.date(), selected_moment.strftime("%B %d"))
+    strongest_window, strongest_intensity = snapshot.strongest_window
+
+    return {
+        "location": {
+            "name": config.location.name,
+            "latitude": config.location.latitude,
+            "longitude": config.location.longitude,
+            "timezone_name": config.location.timezone_name,
+        },
+        "selected_moment": selected_moment.isoformat(),
+        "snapshot": {
+            "elevation_deg": snapshot.position.elevation_deg,
+            "azimuth_deg": snapshot.position.azimuth_deg,
+            "vector": [float(value) for value in snapshot.vector],
+            "entered_direct_sun": snapshot.entered_direct_sun,
+            "strongest_window": strongest_window,
+            "strongest_intensity": strongest_intensity,
+            "window_intensities": [
+                {"name": name, "intensity": intensity} for name, intensity in snapshot.window_intensities.items()
+            ],
+            "patches": [
+                {
+                    "window_name": patch.window_name,
+                    "intensity": patch.intensity,
+                    "polygon_xy": patch.polygon_xy.tolist(),
+                }
+                for patch in snapshot.patches
+            ],
+        },
+        "daily": {
+            "entered_direct_sun": daily.entered_direct_sun,
+            "peak_window_name": daily.peak_window_name,
+            "peak_intensity": daily.peak_intensity,
+            "peak_time": daily.peak_time.isoformat() if daily.peak_time else None,
+        },
+        "room": {
+            "width": config.room.width,
+            "depth": config.room.depth,
+            "height": config.room.height,
+        },
+        "windows": [
+            {
+                "name": window.name,
+                "wall_segment_xy": window.wall_segment_xy().tolist(),
+            }
+            for window in config.windows
+        ],
+    }
 
 
 def window_axis_description(wall: str) -> str:

@@ -133,12 +133,17 @@ Then open `http://127.0.0.1:5000`.
 
 The web app includes:
 
-- controls for location, timezone, date, time, room, and window geometry
-- a top-down room snapshot for the selected moment
+- a draggable map marker for latitude and longitude
+- day-of-year and time-of-day levers for quick exploration
+- visible azimuth and elevation angle widgets
+- a client-side top-down room snapshot for the selected moment
+- form controls for location, timezone, room, and window geometry
 - a daily window-intensity plot
 - a daily floor-patch plot
 - a yearly peak-elevation plot
 - a seasonal comparison plot for summer solstice, equinox, and winter solstice
+
+The live explorer is inspired by tools such as SunCalc, but it remains focused on this project's own direct-sunlight room model rather than trying to clone the full SunCalc feature set.
 
 ## Render deployment
 
