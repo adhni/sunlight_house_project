@@ -19,7 +19,7 @@
           <p class="eyebrow">Solar Position + Room Geometry</p>
           <h1>Sunlight House Lab</h1>
           <p class="hero-copy">
-            Define a simple room, pick a time, and see where direct sunlight reaches the floor.
+            Change the room and time on the right, then watch where direct sunlight lands in the room.
           </p>
         </div>
       </header>
@@ -31,199 +31,12 @@
       {% endif %}
 
       <form method="get" id="simulation-form" class="workspace-form">
-        <section class="panel-card setup-card">
-          <div class="section-header">
-            <div>
-              <p class="section-kicker">Setup</p>
-              <h2>Room And Window</h2>
-            </div>
-          </div>
-
-          <div class="setup-card-grid">
-            <section class="setup-block">
-              <span class="explorer-label">Location</span>
-              <div class="chip-row" id="location-chip-row">
-                {% for preset_key, preset in location_presets.items() %}
-                <button
-                  type="button"
-                  class="chip-button {% if form_values.location_preset == preset_key %}is-active{% endif %}"
-                  data-location-preset="{{ preset_key }}"
-                >
-                  {{ preset.name.split(',')[0] }}
-                </button>
-                {% endfor %}
-                <button
-                  type="button"
-                  id="custom-location-toggle"
-                  class="chip-button chip-button-soft {% if form_values.location_preset == 'custom' %}is-active{% endif %}"
-                  data-location-preset="custom"
-                >
-                  Custom location
-                </button>
-              </div>
-            </section>
-
-            <section class="setup-block">
-              <span class="explorer-label">Window Facing</span>
-              <div class="chip-row" id="window-facing-chip-row">
-                {% for facing in compass_options %}
-                <button
-                  type="button"
-                  class="chip-button {% if form_values.window_facing == facing %}is-active{% endif %}"
-                  data-window-facing="{{ facing }}"
-                >
-                  {{ facing }}
-                </button>
-                {% endfor %}
-              </div>
-            </section>
-
-            <section class="setup-block">
-              <span class="explorer-label">Room Dimensions</span>
-              <div class="field-row field-row-3">
-                <label>
-                  <span>Width x (m)</span>
-                  <input type="number" step="0.1" name="room_width" value="{{ form_values.room_width }}">
-                </label>
-                <label>
-                  <span>Depth y (m)</span>
-                  <input type="number" step="0.1" name="room_depth" value="{{ form_values.room_depth }}">
-                </label>
-                <label>
-                  <span>Height z (m)</span>
-                  <input type="number" step="0.1" name="room_height" value="{{ form_values.room_height }}">
-                </label>
-              </div>
-            </section>
-
-            <section class="setup-block">
-              <span class="explorer-label">Window Geometry</span>
-              <div class="field-row field-row-4">
-                <label>
-                  <span>Position (m)</span>
-                  <input type="number" step="0.1" name="window_span_center" value="{{ form_values.window_span_center }}">
-                </label>
-                <label>
-                  <span>Center height (m)</span>
-                  <input type="number" step="0.1" name="window_center_height" value="{{ form_values.window_center_height }}">
-                </label>
-                <label>
-                  <span>Width (m)</span>
-                  <input type="number" step="0.1" name="window_width" value="{{ form_values.window_width }}">
-                </label>
-                <label>
-                  <span>Height (m)</span>
-                  <input type="number" step="0.1" name="window_height" value="{{ form_values.window_height }}">
-                </label>
-              </div>
-              <p class="field-help">One main window for now. The facing selector rotates the room relative to the sun while keeping the geometry rectangular.</p>
-            </section>
-
-            <section class="setup-block setup-block-sampling">
-              <span class="explorer-label">Sampling</span>
-              <div class="field-row">
-                <label>
-                  <span>Day step (min)</span>
-                  <input type="number" step="1" name="day_step_minutes" value="{{ form_values.day_step_minutes }}">
-                </label>
-                <label>
-                  <span>Year step (hr)</span>
-                  <input type="number" step="1" name="year_step_hours" value="{{ form_values.year_step_hours }}">
-                </label>
-              </div>
-            </section>
-          </div>
-
-          <input type="hidden" id="location-preset-input" name="location_preset" value="{{ form_values.location_preset }}">
-          <input type="hidden" id="window-facing-input" name="window_facing" value="{{ form_values.window_facing }}">
-        </section>
-
-        <details id="custom-location-panel" class="panel-card custom-location-panel" {% if form_values.location_preset == 'custom' %}open{% endif %}>
-          <summary>Custom Location</summary>
-          <div class="custom-location-grid">
-            <div class="custom-location-fields">
-              <label>
-                <span>Location label</span>
-                <input type="text" name="location_name" value="{{ form_values.location_name }}">
-              </label>
-              <div class="field-row">
-                <label>
-                  <span>Latitude</span>
-                  <input id="latitude-input" type="number" step="0.0001" name="latitude" value="{{ form_values.latitude }}">
-                </label>
-                <label>
-                  <span>Longitude</span>
-                  <input id="longitude-input" type="number" step="0.0001" name="longitude" value="{{ form_values.longitude }}">
-                </label>
-              </div>
-              <div class="field-row">
-                <label>
-                  <span>Timezone</span>
-                  <input type="text" name="timezone_name" value="{{ form_values.timezone_name }}">
-                </label>
-                <label>
-                  <span>Simulation year</span>
-                  <input id="year-input" type="number" step="1" name="year" value="{{ form_values.year }}">
-                </label>
-              </div>
-            </div>
-            <div id="location-map" class="location-map location-map-compact" aria-label="Location map"></div>
-          </div>
-        </details>
-
-        <section class="panel-card live-preview-card">
-          <div class="section-header">
-            <div>
-              <p class="section-kicker">Live Preview</p>
-              <h2>Explore Date, Time, And Sunlight</h2>
-            </div>
-            <div class="live-preview-copy">
-              <span>Live preview updates automatically.</span>
-              <span>Analysis plots update when you click the button below.</span>
-            </div>
-          </div>
-
-          <div class="live-controls-grid">
-            <div class="field-row">
-              <label>
-                <span>Date</span>
-                <input id="selected-date-input" type="date" name="selected_date" value="{{ form_values.selected_date }}">
-              </label>
-              <label>
-                <span>Time</span>
-                <input id="selected-time-input" type="time" name="selected_time" value="{{ form_values.selected_time }}">
-              </label>
-            </div>
-
-            <div class="explore-slider-group">
-              <div class="slider-header">
-                <span class="explorer-label">Day Of Year</span>
-                <strong id="day-of-year-readout"></strong>
-              </div>
-              <input id="day-of-year-slider" type="range" min="1" max="366" step="1">
-            </div>
-
-            <div class="explore-slider-group">
-              <div class="slider-header">
-                <span class="explorer-label">Time Scrubber</span>
-                <strong id="time-of-day-readout"></strong>
-              </div>
-              <input id="time-of-day-slider" type="range" min="0" max="1430" step="10">
-            </div>
-
-            <div class="chip-row seasonal-row">
-              <a class="season-chip" href="{{ preset_urls['Winter solstice'] }}">Winter Noon</a>
-              <a class="season-chip" href="{{ preset_urls['Summer solstice'] }}">Summer Noon</a>
-              <a class="season-chip" href="{{ preset_urls['Equinox'] }}">Equinox Noon</a>
-            </div>
-          </div>
-
-          <section class="workspace-grid">
-          <article class="workspace-subcard room-workspace">
+        <section class="workspace-grid workspace-grid-main">
+          <article class="panel-card room-workspace">
             <div class="workspace-header">
               <div>
                 <p class="section-kicker">Room Result</p>
-                <h2>Top-Down Room Snapshot</h2>
+                <h2>Sunlight In The Room</h2>
               </div>
               <div
                 id="room-snapshot-status"
@@ -239,135 +52,250 @@
               </div>
             </div>
 
-            <div class="room-snapshot-shell">
-              <div id="room-snapshot-svg" class="room-snapshot room-snapshot-large"></div>
+            <div class="chip-row result-tab-row">
+              <button type="button" class="chip-button is-active" data-result-tab="current">Current Moment</button>
+              <button type="button" class="chip-button" data-result-tab="sunlight-map">Direct Sun Hours Today</button>
             </div>
 
-            <div class="snapshot-facts">
-              <span id="snapshot-window-fact">Window facing: {{ form_values.window_facing }}</span>
-              <span id="snapshot-azimuth-fact">Azimuth: {{ "%.1f"|format(snapshot.position.azimuth_deg) }}°</span>
-              <span id="snapshot-elevation-fact">Elevation: {{ "%.1f"|format(snapshot.position.elevation_deg) }}°</span>
+            <div class="result-view is-active" data-result-panel="current">
+              <div class="room-snapshot-shell">
+                <div id="room-snapshot-svg" class="room-snapshot room-snapshot-large"></div>
+              </div>
+
+              <div class="snapshot-facts">
+                <span id="snapshot-window-fact">Window facing: {{ form_values.window_facing }}</span>
+                <span id="snapshot-azimuth-fact">Azimuth: {{ "%.1f"|format(snapshot.position.azimuth_deg) }}°</span>
+                <span id="snapshot-elevation-fact">Elevation: {{ "%.1f"|format(snapshot.position.elevation_deg) }}°</span>
+              </div>
+
+              <p class="angle-caption room-caption">
+                Room-local view only: top edge 0°, right 90°, bottom 180°, left 270°.
+              </p>
             </div>
 
-            <p class="angle-caption room-caption">
-              Room-local view only: top edge 0°, right 90°, bottom 180°, left 270°. Real-world facing stays in the setup chips above.
-            </p>
+            <div class="result-view" data-result-panel="sunlight-map">
+              <div class="room-snapshot-shell">
+                <div id="daily-exposure-svg" class="room-snapshot room-snapshot-large"></div>
+              </div>
+              <p id="daily-exposure-caption" class="angle-caption room-caption">
+                Direct sun hours for the selected day.
+              </p>
+            </div>
           </article>
 
           <aside class="workspace-sidebar">
-            <section class="workspace-subcard inspector-card">
-              <div class="workspace-header">
+            <section class="panel-card controls-card">
+              <div class="section-header controls-header">
                 <div>
-                  <p class="section-kicker">Current Moment</p>
-                  <h2 id="selected-moment-label">{{ snapshot.moment.strftime('%d %b %Y %H:%M %Z') }}</h2>
+                  <p class="section-kicker">Controls</p>
+                  <h2>Settings And Time</h2>
+                </div>
+                <div class="controls-note">
+                  <span>Live preview updates automatically.</span>
+                  <span>Daily views update automatically too.</span>
                 </div>
               </div>
 
-              <div class="metric-grid metric-grid-compact">
-                <article class="metric-card">
-                  <span class="metric-label">Elevation</span>
-                  <strong id="live-elevation">{{ "%.2f"|format(snapshot.position.elevation_deg) }} deg</strong>
-                </article>
-                <article class="metric-card">
-                  <span class="metric-label">Azimuth</span>
-                  <strong id="live-azimuth">{{ "%.2f"|format(snapshot.position.azimuth_deg) }} deg</strong>
-                </article>
-                <article class="metric-card">
-                  <span class="metric-label">Sunlight Entry</span>
-                  <strong id="live-entry">{{ "Yes" if snapshot.entered_direct_sun else "No" }}</strong>
-                </article>
-                <article class="metric-card">
-                  <span class="metric-label">Strongest Window</span>
-                  <strong id="live-strongest">
-                    {{ strongest_window or "None" }} {% if strongest_window %}({{ "%.3f"|format(strongest_intensity) }}){% endif %}
-                  </strong>
-                </article>
-              </div>
+              <section class="control-group">
+                <span class="explorer-label">Date And Time</span>
+                <div class="field-row">
+                  <label>
+                    <span>Date</span>
+                    <input id="selected-date-input" type="date" name="selected_date" value="{{ form_values.selected_date }}">
+                  </label>
+                  <label>
+                    <span>Time</span>
+                    <input id="selected-time-input" type="time" name="selected_time" value="{{ form_values.selected_time }}">
+                  </label>
+                </div>
+                <div class="explore-slider-group">
+                  <div class="slider-header">
+                    <span class="explorer-label">Day Of Year</span>
+                    <strong id="day-of-year-readout"></strong>
+                  </div>
+                  <input id="day-of-year-slider" type="range" min="1" max="366" step="1">
+                </div>
+                <div class="explore-slider-group">
+                  <div class="slider-header">
+                    <span class="explorer-label">Time Scrubber</span>
+                    <strong id="time-of-day-readout"></strong>
+                  </div>
+                  <input id="time-of-day-slider" type="range" min="0" max="1430" step="10">
+                </div>
+                <div class="chip-row seasonal-row">
+                  <a class="season-chip" href="{{ preset_urls['Winter solstice'] }}">Winter Noon</a>
+                  <a class="season-chip" href="{{ preset_urls['Summer solstice'] }}">Summer Noon</a>
+                  <a class="season-chip" href="{{ preset_urls['Equinox'] }}">Equinox Noon</a>
+                </div>
+              </section>
 
-              <details class="angle-details">
-                <summary>Angle visuals</summary>
-                <div class="angle-grid angle-grid-stacked">
-                  <article class="angle-card">
-                    <h3>Azimuth Compass</h3>
-                    <div id="azimuth-compass" class="angle-visual"></div>
-                    <p id="live-azimuth-text" class="angle-caption">{{ "%.2f"|format(snapshot.position.azimuth_deg) }} deg</p>
-                  </article>
-                  <article class="angle-card">
-                    <h3>Elevation Gauge</h3>
-                    <div id="elevation-gauge" class="angle-visual"></div>
-                    <p id="live-elevation-text" class="angle-caption">{{ "%.2f"|format(snapshot.position.elevation_deg) }} deg</p>
-                  </article>
+              <section class="control-group">
+                <span class="explorer-label">Where Is The Room?</span>
+                <div class="chip-row" id="location-chip-row">
+                  {% for preset_key, preset in location_presets.items() %}
+                  <button
+                    type="button"
+                    class="chip-button {% if form_values.location_preset == preset_key %}is-active{% endif %}"
+                    data-location-preset="{{ preset_key }}"
+                  >
+                    {{ preset.name.split(',')[0] }}
+                  </button>
+                  {% endfor %}
+                  <button
+                    type="button"
+                    id="custom-location-toggle"
+                    class="chip-button chip-button-soft {% if form_values.location_preset == 'custom' %}is-active{% endif %}"
+                    data-location-preset="custom"
+                  >
+                    Custom
+                  </button>
+                </div>
+              </section>
+
+              <details id="custom-location-panel" class="subtle-details" {% if form_values.location_preset == 'custom' %}open{% endif %}>
+                <summary>Custom location</summary>
+                <div class="custom-location-fields">
+                  <label>
+                    <span>Location label</span>
+                    <input type="text" name="location_name" value="{{ form_values.location_name }}">
+                  </label>
+                  <div class="field-row">
+                    <label>
+                      <span>Latitude</span>
+                      <input id="latitude-input" type="number" step="0.0001" name="latitude" value="{{ form_values.latitude }}">
+                    </label>
+                    <label>
+                      <span>Longitude</span>
+                      <input id="longitude-input" type="number" step="0.0001" name="longitude" value="{{ form_values.longitude }}">
+                    </label>
+                  </div>
+                  <label>
+                    <span>Timezone</span>
+                    <input type="text" name="timezone_name" value="{{ form_values.timezone_name }}">
+                  </label>
+                  <label>
+                    <span>Simulation year</span>
+                    <input id="year-input" type="number" step="1" name="year" value="{{ form_values.year }}">
+                  </label>
+                  <div id="location-map" class="location-map location-map-compact" aria-label="Location map"></div>
                 </div>
               </details>
 
-              <div class="vector-card vector-card-compact">
-                <span class="metric-label">Sun Vector</span>
-                <strong id="live-vector">({{ "%.3f"|format(snapshot.vector[0]) }}, {{ "%.3f"|format(snapshot.vector[1]) }}, {{ "%.3f"|format(snapshot.vector[2]) }})</strong>
-                <span class="metric-label">Daily Peak</span>
-                <strong id="live-daily-peak">
-                  {% if daily.peak_time %}
-                  {{ "%.3f"|format(daily.peak_intensity) }} at {{ daily.peak_time.strftime('%H:%M %Z') }}
-                  {% else %}
-                  No direct sun
-                  {% endif %}
-                </strong>
-              </div>
+              <section class="control-group">
+                <span class="explorer-label">Which Way Does The Window Face?</span>
+                <div class="chip-row" id="window-facing-chip-row">
+                  {% for facing in compass_options %}
+                  <button
+                    type="button"
+                    class="chip-button {% if form_values.window_facing == facing %}is-active{% endif %}"
+                    data-window-facing="{{ facing }}"
+                  >
+                    {{ facing }}
+                  </button>
+                  {% endfor %}
+                </div>
+              </section>
+
+              <section class="control-group">
+                <span class="explorer-label">How Big Is The Room?</span>
+                <div class="field-row field-row-3">
+                  <label>
+                    <span>Width (m)</span>
+                    <input type="number" step="0.1" name="room_width" value="{{ form_values.room_width }}">
+                  </label>
+                  <label>
+                    <span>Depth (m)</span>
+                    <input type="number" step="0.1" name="room_depth" value="{{ form_values.room_depth }}">
+                  </label>
+                  <label>
+                    <span>Ceiling (m)</span>
+                    <input type="number" step="0.1" name="room_height" value="{{ form_values.room_height }}">
+                  </label>
+                </div>
+              </section>
+
+              <section class="control-group">
+                <span class="explorer-label">Window Size And Placement</span>
+                <div class="field-row field-row-2">
+                  <label>
+                    <span>Position along wall (m)</span>
+                    <input type="number" step="0.1" name="window_span_center" value="{{ form_values.window_span_center }}">
+                  </label>
+                  <label>
+                    <span>Sill height (m)</span>
+                    <input type="number" step="0.1" name="window_sill_height" value="{{ form_values.window_sill_height }}">
+                  </label>
+                  <label>
+                    <span>Window width (m)</span>
+                    <input type="number" step="0.1" name="window_width" value="{{ form_values.window_width }}">
+                  </label>
+                  <label>
+                    <span>Window height (m)</span>
+                    <input type="number" step="0.1" name="window_height" value="{{ form_values.window_height }}">
+                  </label>
+                </div>
+                <p class="field-help">Position is measured along the selected wall. Sill height is measured from the floor to the bottom of the window.</p>
+              </section>
+
+              <details class="subtle-details">
+                <summary>Advanced sampling</summary>
+                <div class="field-row advanced-fields">
+                  <label>
+                    <span>Day step (min)</span>
+                    <input type="number" step="1" name="day_step_minutes" value="{{ form_values.day_step_minutes }}">
+                  </label>
+                  <label>
+                    <span>Year step (hr)</span>
+                    <input type="number" step="1" name="year_step_hours" value="{{ form_values.year_step_hours }}">
+                  </label>
+                </div>
+              </details>
+
+              <section class="control-group control-summary">
+                <div class="workspace-header compact-header">
+                  <div>
+                    <p class="section-kicker">Current Moment</p>
+                    <h2 id="selected-moment-label">{{ snapshot.moment.strftime('%d %b %Y %H:%M %Z') }}</h2>
+                  </div>
+                </div>
+                <div class="metric-grid metric-grid-compact">
+                  <article class="metric-card">
+                    <span class="metric-label">Elevation</span>
+                    <strong id="live-elevation">{{ "%.2f"|format(snapshot.position.elevation_deg) }} deg</strong>
+                  </article>
+                  <article class="metric-card">
+                    <span class="metric-label">Azimuth</span>
+                    <strong id="live-azimuth">{{ "%.2f"|format(snapshot.position.azimuth_deg) }} deg</strong>
+                  </article>
+                  <article class="metric-card">
+                    <span class="metric-label">Sunlight Entry</span>
+                    <strong id="live-entry">{{ "Yes" if snapshot.entered_direct_sun else "No" }}</strong>
+                  </article>
+                  <article class="metric-card">
+                    <span class="metric-label">Strongest Window</span>
+                    <strong id="live-strongest">
+                      {{ strongest_window or "None" }} {% if strongest_window %}({{ "%.3f"|format(strongest_intensity) }}){% endif %}
+                    </strong>
+                  </article>
+                </div>
+                <div class="vector-card vector-card-compact">
+                  <span class="metric-label">Sun Vector</span>
+                  <strong id="live-vector">({{ "%.3f"|format(snapshot.vector[0]) }}, {{ "%.3f"|format(snapshot.vector[1]) }}, {{ "%.3f"|format(snapshot.vector[2]) }})</strong>
+                  <span class="metric-label">Daily Peak</span>
+                  <strong id="live-daily-peak">
+                    {% if daily.peak_time %}
+                    {{ "%.3f"|format(daily.peak_intensity) }} at {{ daily.peak_time.strftime('%H:%M %Z') }}
+                    {% else %}
+                    No direct sun
+                    {% endif %}
+                  </strong>
+                </div>
+              </section>
+
+              <input type="hidden" id="location-preset-input" name="location_preset" value="{{ form_values.location_preset }}">
+              <input type="hidden" id="window-facing-input" name="window_facing" value="{{ form_values.window_facing }}">
             </section>
           </aside>
-          </section>
-        </section>
-
-        <section class="panel-card analysis-panel">
-          <div class="analysis-header">
-            <div>
-              <p class="section-kicker">Detailed Analysis</p>
-              <h2>Plots And Reference Views</h2>
-            </div>
-            <div class="chip-row analysis-tab-row">
-              <button type="button" class="chip-button is-active" data-analysis-tab="daily-intensity">Daily Intensity</button>
-              <button type="button" class="chip-button" data-analysis-tab="daily-floor">Daily Floor Patches</button>
-              <button type="button" class="chip-button" data-analysis-tab="yearly">Yearly Elevation</button>
-              <button type="button" class="chip-button" data-analysis-tab="seasonal">Seasonal Angles</button>
-              <button type="button" class="chip-button" data-analysis-tab="samples">Sample Positions</button>
-            </div>
-          </div>
-
-          <div class="analysis-tab is-active" data-analysis-panel="daily-intensity">
-            <img src="{{ daily_intensity_uri }}" alt="Daily window intensity plot">
-          </div>
-          <div class="analysis-tab" data-analysis-panel="daily-floor">
-            <img src="{{ daily_patches_uri }}" alt="Daily floor patches plot">
-          </div>
-          <div class="analysis-tab" data-analysis-panel="yearly">
-            <img src="{{ yearly_uri }}" alt="Yearly peak solar elevation plot">
-          </div>
-          <div class="analysis-tab" data-analysis-panel="seasonal">
-            <img src="{{ key_dates_uri }}" alt="Seasonal solar angles plot">
-          </div>
-          <div class="analysis-tab analysis-tab-table" data-analysis-panel="samples">
-            <table>
-              <thead>
-                <tr>
-                  <th>Local time</th>
-                  <th>Elevation</th>
-                  <th>Azimuth</th>
-                  <th>Sun vector</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in sample_rows %}
-                <tr>
-                  <td>{{ row.label }}</td>
-                  <td>{{ "%.2f"|format(row.elevation) }} deg</td>
-                  <td>{{ "%.2f"|format(row.azimuth) }} deg</td>
-                  <td>({{ "%.3f"|format(row.vector[0]) }}, {{ "%.3f"|format(row.vector[1]) }}, {{ "%.3f"|format(row.vector[2]) }})</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-
-          <button type="submit" class="primary-button analysis-refresh">Refresh Analysis Plots</button>
         </section>
       </form>
     </div>

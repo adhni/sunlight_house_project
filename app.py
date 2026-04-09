@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import base64
 import os
 from datetime import datetime
-from io import BytesIO
 from zoneinfo import ZoneInfo
 
 from flask import Flask, jsonify, render_template, request, url_for
@@ -11,11 +9,8 @@ from flask import Flask, jsonify, render_template, request, url_for
 from sunlight_house.analysis import (
     analyze_day,
     analyze_snapshot,
-    key_date_daily_positions,
-    key_dates,
+    daily_exposure_grid,
     room_relative_azimuth,
-    sample_positions,
-    yearly_peak_series,
 )
 from sunlight_house.config import (
     COMPASS_OPTIONS,
@@ -28,12 +23,6 @@ from sunlight_house.config import (
     main_window,
 )
 from sunlight_house.geometry import Room
-from sunlight_house.plotting import (
-    plot_daily_intensity,
-    plot_floor_patches,
-    plot_key_date_solar_angles,
-    plot_yearly_noon_elevation,
-)
 
 
 def create_app() -> Flask:
@@ -57,45 +46,8 @@ def create_app() -> Flask:
 
         snapshot = analyze_snapshot(config, selected_moment)
         daily = analyze_day(config, selected_moment.date(), selected_moment.strftime("%B %d"))
-        yearly_times, yearly_positions = yearly_peak_series(config)
-
-        daily_intensity_uri = figure_data_uri(
-            plot_daily_intensity,
-            [dt for dt, _ in daily.positions],
-            daily.intensity_series,
-            f"{selected_moment.strftime('%d %b %Y')}: window sunlight factor",
-        )
-        daily_patches_uri = figure_data_uri(
-            plot_floor_patches,
-            config.room,
-            config.windows,
-            daily.patches_over_time,
-            f"{selected_moment.strftime('%d %b %Y')}: top-down sunlight patches",
-        )
-        yearly_uri = figure_data_uri(
-            plot_yearly_noon_elevation,
-            yearly_times,
-            yearly_positions,
-            key_dates(config),
-            f"{config.location.name} {config.year}: daily peak solar elevation",
-        )
-        key_dates_uri = figure_data_uri(
-            plot_key_date_solar_angles,
-            key_date_daily_positions(config),
-            f"{config.location.name} {config.year}: seasonal solar angle comparison",
-        )
 
         strongest_window, strongest_intensity = snapshot.strongest_window
-        sample_rows = [
-            {
-                "label": dt.strftime("%d %b %Y %H:%M %Z"),
-                "elevation": position.elevation_deg,
-                "azimuth": position.azimuth_deg,
-                "vector": vector,
-            }
-            for dt, position, vector in sample_positions(config)
-        ]
-
         season_base_values = normalize_form_values(safe_values or form_values, config)
         preset_urls = seasonal_preset_urls(season_base_values, config.year)
 
@@ -108,11 +60,6 @@ def create_app() -> Flask:
             daily=daily,
             strongest_window=strongest_window,
             strongest_intensity=strongest_intensity,
-            daily_intensity_uri=daily_intensity_uri,
-            daily_patches_uri=daily_patches_uri,
-            yearly_uri=yearly_uri,
-            key_dates_uri=key_dates_uri,
-            sample_rows=sample_rows,
             initial_snapshot_payload=snapshot_payload(config, selected_moment),
             location_presets=location_presets_payload(),
             compass_options=[label for label, _ in COMPASS_OPTIONS],
@@ -156,7 +103,7 @@ def default_form_values() -> dict[str, str]:
         "room_height": f"{room.height}",
         "window_facing": scenario.window_facing_label,
         "window_span_center": "3.0",
-        "window_center_height": "1.5",
+        "window_sill_height": f"{window.center[2] - window.height / 2.0:.1f}",
         "window_width": f"{window.width}",
         "window_height": f"{window.height}",
         "day_step_minutes": str(scenario.day_step_minutes),
@@ -190,7 +137,8 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
     window = main_window(
         room=room,
         span_center=parse_float(form_values["window_span_center"], "Window span center"),
-        center_height=parse_float(form_values["window_center_height"], "Window center height"),
+        center_height=parse_float(form_values["window_sill_height"], "Window sill height")
+        + 0.5 * parse_positive_float(form_values["window_height"], "Window height"),
         width=parse_positive_float(form_values["window_width"], "Window width"),
         height=parse_positive_float(form_values["window_height"], "Window height"),
     )
@@ -236,17 +184,10 @@ def parse_timezone_name(raw_value: str) -> ZoneInfo:
         raise ValueError("Timezone must be a valid IANA name.") from exc
 
 
-def figure_data_uri(plotter, *plot_args) -> str:
-    buffer = BytesIO()
-    plotter(*plot_args, output_path=buffer)
-    buffer.seek(0)
-    encoded = base64.b64encode(buffer.read()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
-
-
 def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dict[str, object]:
     snapshot = analyze_snapshot(config, selected_moment)
     daily = analyze_day(config, selected_moment.date(), selected_moment.strftime("%B %d"))
+    exposure_grid = daily_exposure_grid(config, daily.patches_over_time)
     strongest_window, strongest_intensity = snapshot.strongest_window
     state = snapshot_state(snapshot.entered_direct_sun, strongest_intensity)
 
@@ -285,6 +226,7 @@ def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dic
             "peak_window_name": daily.peak_window_name,
             "peak_intensity": daily.peak_intensity,
             "peak_time": daily.peak_time.isoformat() if daily.peak_time else None,
+            "exposure_grid": exposure_grid,
         },
         "room": {
             "width": config.room.width,
@@ -328,6 +270,7 @@ def normalize_form_values(form_values: dict[str, str], config: SimulationConfig)
     normalized["timezone_name"] = config.location.timezone_name
     normalized["year"] = str(config.year)
     normalized["window_facing"] = config.window_facing_label
+    normalized["window_sill_height"] = f"{config.windows[0].center[2] - config.windows[0].height / 2.0:.1f}"
     return normalized
 
 
@@ -349,7 +292,7 @@ def build_safe_form_values(form_values: dict[str, str], defaults: dict[str, str]
     for key in ("room_width", "room_depth", "room_height", "window_width", "window_height"):
         safe[key] = safe_positive_float_string(form_values.get(key, defaults[key]), defaults[key])
 
-    for key in ("window_span_center", "window_center_height"):
+    for key in ("window_span_center", "window_sill_height"):
         safe[key] = safe_float_string(form_values.get(key, defaults[key]), defaults[key])
 
     for key in ("day_step_minutes", "year_step_hours"):

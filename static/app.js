@@ -8,8 +8,8 @@
   const windowFacingInput = document.getElementById("window-facing-input");
   const locationChipButtons = document.querySelectorAll("[data-location-preset]");
   const windowFacingButtons = document.querySelectorAll("[data-window-facing]");
-  const analysisTabButtons = document.querySelectorAll("[data-analysis-tab]");
-  const analysisPanels = document.querySelectorAll("[data-analysis-panel]");
+  const resultTabButtons = document.querySelectorAll("[data-result-tab]");
+  const resultPanels = document.querySelectorAll("[data-result-panel]");
 
   const customLocationPanel = document.getElementById("custom-location-panel");
   const customLocationToggle = document.getElementById("custom-location-toggle");
@@ -25,6 +25,12 @@
   const timeSlider = document.getElementById("time-of-day-slider");
   const dayReadout = document.getElementById("day-of-year-readout");
   const timeReadout = document.getElementById("time-of-day-readout");
+  const roomWidthInput = form.querySelector('input[name="room_width"]');
+  const roomDepthInput = form.querySelector('input[name="room_depth"]');
+  const windowWidthInput = form.querySelector('input[name="window_width"]');
+  const windowHeightInput = form.querySelector('input[name="window_height"]');
+  const windowSpanCenterInput = form.querySelector('input[name="window_span_center"]');
+  const windowSillHeightInput = form.querySelector('input[name="window_sill_height"]');
 
   const mapElement = document.getElementById("location-map");
   let map = null;
@@ -219,47 +225,18 @@
     }
   }
 
-  function createCompassSvg(azimuthDeg) {
-    const radius = 96;
-    const center = 120;
-    const angleRad = ((azimuthDeg - 90) * Math.PI) / 180;
-    const arrowX = center + radius * Math.cos(angleRad);
-    const arrowY = center + radius * Math.sin(angleRad);
-    return `
-      <svg viewBox="0 0 240 240" role="img" aria-label="Azimuth compass">
-        <circle cx="${center}" cy="${center}" r="${radius}" fill="#fff7ea" stroke="#355364" stroke-width="4"></circle>
-        <circle cx="${center}" cy="${center}" r="6" fill="#355364"></circle>
-        <line x1="${center}" y1="${center}" x2="${arrowX}" y2="${arrowY}" stroke="#c86530" stroke-width="8" stroke-linecap="round"></line>
-        <circle cx="${arrowX}" cy="${arrowY}" r="10" fill="#f2c48e" stroke="#8e3b18" stroke-width="3"></circle>
-        <text x="${center}" y="28" text-anchor="middle" font-size="18" fill="#1f2732" font-weight="700">N</text>
-        <text x="${center}" y="228" text-anchor="middle" font-size="18" fill="#1f2732" font-weight="700">S</text>
-        <text x="22" y="${center + 6}" text-anchor="middle" font-size="18" fill="#1f2732" font-weight="700">W</text>
-        <text x="218" y="${center + 6}" text-anchor="middle" font-size="18" fill="#1f2732" font-weight="700">E</text>
-      </svg>
-    `;
+  function setText(id, value) {
+    const element = document.getElementById(id);
+    if (element) {
+      element.textContent = value;
+    }
   }
 
-  function createElevationSvg(elevationDeg) {
-    const clamped = Math.max(0, Math.min(90, elevationDeg));
-    const fillHeight = 24 + (clamped / 90) * 156;
-    const sunY = 196 - (clamped / 90) * 156;
-    return `
-      <svg viewBox="0 0 240 240" role="img" aria-label="Elevation gauge">
-        <rect x="94" y="20" width="52" height="180" rx="26" fill="#fff7ea" stroke="#355364" stroke-width="4"></rect>
-        <rect x="98" y="${200 - fillHeight}" width="44" height="${fillHeight}" rx="22" fill="url(#sunGradient)"></rect>
-        <circle cx="120" cy="${sunY}" r="16" fill="#f2c48e" stroke="#8e3b18" stroke-width="3"></circle>
-        <line x1="70" y1="200" x2="170" y2="200" stroke="#355364" stroke-width="4"></line>
-        <text x="188" y="32" font-size="16" fill="#1f2732" font-weight="700">90°</text>
-        <text x="188" y="118" font-size="16" fill="#1f2732" font-weight="700">45°</text>
-        <text x="188" y="205" font-size="16" fill="#1f2732" font-weight="700">0°</text>
-        <defs>
-          <linearGradient id="sunGradient" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stop-color="#f5d486"></stop>
-            <stop offset="100%" stop-color="#c86530"></stop>
-          </linearGradient>
-        </defs>
-      </svg>
-    `;
+  function setHtml(id, value) {
+    const element = document.getElementById(id);
+    if (element) {
+      element.innerHTML = value;
+    }
   }
 
   function createRoomSvg(payload) {
@@ -342,12 +319,52 @@
     `;
   }
 
+  function createExposureMapSvg(payload) {
+    const width = payload.room.width;
+    const depth = payload.room.depth;
+    const pad = 0.45;
+    const viewBox = `${-pad} ${-pad} ${width + pad * 2} ${depth + pad * 2}`;
+    const activeWindow = payload.windows[0];
+    const [windowA, windowB] = activeWindow.wall_segment_xy;
+    const grid = payload.daily.exposure_grid;
+    const rows = grid.rows;
+    const cols = grid.cols;
+    const cellWidth = grid.cell_width;
+    const cellHeight = grid.cell_height;
+    const peakHours = Math.max(grid.peak_hours || 0, 0.0001);
+
+    const cells = [];
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        const value = grid.values[row][col];
+        const alpha = value > 0 ? 0.12 + (value / peakHours) * 0.72 : 0;
+        const x = col * cellWidth;
+        const y = depth - (row + 1) * cellHeight;
+        cells.push(`<rect x="${x}" y="${y}" width="${cellWidth}" height="${cellHeight}" fill="rgba(200,101,48,${alpha})" stroke="rgba(255,255,255,0.12)" stroke-width="0.01"></rect>`);
+      }
+    }
+
+    return `
+      <svg viewBox="${viewBox}" role="img" aria-label="Daily sunlight map">
+        <rect x="0" y="0" width="${width}" height="${depth}" fill="#fffdf8" stroke="#1f2732" stroke-width="0.06"></rect>
+        ${cells.join("")}
+        <line x1="${windowA[0]}" y1="${depth - windowA[1]}" x2="${windowB[0]}" y2="${depth - windowB[1]}" stroke="#2b627a" stroke-width="0.17" stroke-linecap="round"></line>
+        <text x="${0.12}" y="${0.25}" font-size="0.18" fill="#616a68">0 h</text>
+        <text x="${width - 0.12}" y="${0.25}" font-size="0.18" text-anchor="end" fill="#8e3b18">${grid.peak_hours.toFixed(1)} h max</text>
+        <text x="${width / 2}" y="-0.16" font-size="0.2" text-anchor="middle" fill="#5f6d77">0°</text>
+        <text x="${width + 0.22}" y="${depth / 2}" font-size="0.2" text-anchor="middle" fill="#5f6d77" transform="rotate(90 ${width + 0.22} ${depth / 2})">90°</text>
+        <text x="${width / 2}" y="${depth + 0.28}" font-size="0.2" text-anchor="middle" fill="#5f6d77">180°</text>
+        <text x="-0.22" y="${depth / 2}" font-size="0.2" text-anchor="middle" fill="#5f6d77" transform="rotate(-90 -0.22 ${depth / 2})">270°</text>
+      </svg>
+    `;
+  }
+
   function updateSnapshotDom(payload) {
     const snapshot = payload.snapshot;
     const daily = payload.daily;
     const timeZone = payload.location.timezone_name;
 
-    document.getElementById("selected-moment-label").textContent = new Date(payload.selected_moment).toLocaleString(undefined, {
+    setText("selected-moment-label", new Date(payload.selected_moment).toLocaleString(undefined, {
       day: "2-digit",
       month: "short",
       year: "numeric",
@@ -355,37 +372,40 @@
       minute: "2-digit",
       timeZone,
       timeZoneName: "short",
-    });
+    }));
 
-    document.getElementById("live-elevation").textContent = `${snapshot.elevation_deg.toFixed(2)} deg`;
-    document.getElementById("live-azimuth").textContent = `${snapshot.azimuth_deg.toFixed(2)} deg`;
-    document.getElementById("live-entry").textContent = snapshot.entered_direct_sun ? "Yes" : "No";
-    document.getElementById("live-strongest").textContent = snapshot.strongest_window
+    setText("live-elevation", `${snapshot.elevation_deg.toFixed(2)} deg`);
+    setText("live-azimuth", `${snapshot.azimuth_deg.toFixed(2)} deg`);
+    setText("live-entry", snapshot.entered_direct_sun ? "Yes" : "No");
+    setText("live-strongest", snapshot.strongest_window
       ? `${snapshot.strongest_window} (${snapshot.strongest_intensity.toFixed(3)})`
-      : "None";
-    document.getElementById("live-vector").textContent = `(${snapshot.vector.map((value) => value.toFixed(3)).join(", ")})`;
-    document.getElementById("live-daily-peak").textContent = daily.peak_time
+      : "None");
+    setText("live-vector", `(${snapshot.vector.map((value) => value.toFixed(3)).join(", ")})`);
+    setText("live-daily-peak", daily.peak_time
       ? `${daily.peak_intensity.toFixed(3)} at ${new Date(daily.peak_time).toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",
           timeZone,
           timeZoneName: "short",
         })}`
-      : "No direct sun";
+      : "No direct sun");
 
-    document.getElementById("azimuth-compass").innerHTML = createCompassSvg(snapshot.azimuth_deg);
-    document.getElementById("elevation-gauge").innerHTML = createElevationSvg(snapshot.elevation_deg);
-    document.getElementById("room-snapshot-svg").innerHTML = createRoomSvg(payload);
+    setHtml("room-snapshot-svg", createRoomSvg(payload));
+    setHtml("daily-exposure-svg", createExposureMapSvg(payload));
 
     const snapshotStatus = document.getElementById("room-snapshot-status");
-    snapshotStatus.textContent = snapshotStateLabel(snapshot.state);
-    snapshotStatus.className = snapshotStateClass(snapshot.state);
+    if (snapshotStatus) {
+      snapshotStatus.textContent = snapshotStateLabel(snapshot.state);
+      snapshotStatus.className = snapshotStateClass(snapshot.state);
+    }
 
-    document.getElementById("snapshot-window-fact").textContent = `Window facing: ${payload.active_window.facing}`;
-    document.getElementById("snapshot-azimuth-fact").textContent = `Azimuth: ${snapshot.azimuth_deg.toFixed(1)}°`;
-    document.getElementById("snapshot-elevation-fact").textContent = `Elevation: ${snapshot.elevation_deg.toFixed(1)}°`;
-    document.getElementById("live-azimuth-text").textContent = `${snapshot.azimuth_deg.toFixed(2)} deg`;
-    document.getElementById("live-elevation-text").textContent = `${snapshot.elevation_deg.toFixed(2)} deg`;
+    setText("snapshot-window-fact", `Window facing: ${payload.active_window.facing}`);
+    setText("snapshot-azimuth-fact", `Azimuth: ${snapshot.azimuth_deg.toFixed(1)}°`);
+    setText("snapshot-elevation-fact", `Elevation: ${snapshot.elevation_deg.toFixed(1)}°`);
+    setText(
+      "daily-exposure-caption",
+      `${Math.round(payload.daily.exposure_grid.sunlit_fraction * 100)}% of the room gets some direct sun today. Darker cells mean more direct-sun hours. Peak floor cell: ${payload.daily.exposure_grid.peak_hours.toFixed(1)} h.`
+    );
   }
 
   async function refreshSnapshot() {
@@ -419,14 +439,14 @@
     });
   });
 
-  analysisTabButtons.forEach((button) => {
+  resultTabButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      const selectedTab = button.dataset.analysisTab;
-      analysisTabButtons.forEach((item) => {
+      const selectedTab = button.dataset.resultTab;
+      resultTabButtons.forEach((item) => {
         item.classList.toggle("is-active", item === button);
       });
-      analysisPanels.forEach((panel) => {
-        panel.classList.toggle("is-active", panel.dataset.analysisPanel === selectedTab);
+      resultPanels.forEach((panel) => {
+        panel.classList.toggle("is-active", panel.dataset.resultPanel === selectedTab);
       });
     });
   });

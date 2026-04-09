@@ -135,10 +135,57 @@ def patches_for_plot(
     return patches_over_time
 
 
+def point_in_polygon(point_xy: np.ndarray, polygon_xy: np.ndarray) -> bool:
+    x, y = float(point_xy[0]), float(point_xy[1])
+    inside = False
+    total = len(polygon_xy)
+    for idx in range(total):
+        x1, y1 = polygon_xy[idx]
+        x2, y2 = polygon_xy[(idx + 1) % total]
+        intersects = ((y1 > y) != (y2 > y)) and (
+            x < (x2 - x1) * (y - y1) / ((y2 - y1) if abs(y2 - y1) > 1e-12 else 1e-12) + x1
+        )
+        if intersects:
+            inside = not inside
+    return inside
+
+
+def daily_exposure_grid(
+    config: SimulationConfig,
+    patches_over_time: list[tuple[datetime, list[SunlightPatch]]],
+    *,
+    cols: int = 18,
+    rows: int = 15,
+) -> dict[str, object]:
+    values = np.zeros((rows, cols), dtype=float)
+    cell_width = config.room.width / cols
+    cell_height = config.room.depth / rows
+    hours_per_sample = config.day_step_minutes / 60.0
+
+    for row in range(rows):
+        for col in range(cols):
+            point = np.array([(col + 0.5) * cell_width, (row + 0.5) * cell_height], dtype=float)
+            sunlight_hours = 0.0
+            for _, patches in patches_over_time:
+                if any(point_in_polygon(point, patch.polygon_xy) for patch in patches):
+                    sunlight_hours += hours_per_sample
+            values[row, col] = sunlight_hours
+
+    return {
+        "cols": cols,
+        "rows": rows,
+        "values": values.tolist(),
+        "cell_width": cell_width,
+        "cell_height": cell_height,
+        "sunlit_fraction": float(np.count_nonzero(values > 0.0) / values.size),
+        "peak_hours": float(np.max(values)) if values.size else 0.0,
+    }
+
+
 def analyze_day(config: SimulationConfig, target_date: date, label: str) -> DailyAnalysis:
     positions = day_positions(config, target_date)
     intensity_series = window_intensity_series(config, positions)
-    sampled_patches = patches_for_plot(config, positions)
+    sampled_patches = patches_for_plot(config, positions, sample_minutes=config.day_step_minutes)
 
     peak_window_name = ""
     peak_intensity = 0.0
