@@ -3,6 +3,7 @@
   const locationPresets = JSON.parse(document.getElementById("location-presets-data").textContent);
   const form = document.getElementById("simulation-form");
   const roomWorkspace = document.querySelector(".room-workspace");
+  const updateStatus = document.getElementById("update-status");
 
   const locationPresetInput = document.getElementById("location-preset-input");
   const windowFacingInput = document.getElementById("window-facing-input");
@@ -35,6 +36,9 @@
   const mapElement = document.getElementById("location-map");
   let map = null;
   let marker = null;
+  let latestRequestId = 0;
+  let activeSnapshotController = null;
+  const defaultUpdateMessage = "Preview is up to date.";
 
   function isLeapYear(year) {
     return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
@@ -159,7 +163,7 @@
       setLocationPreset("custom", { applyPreset: false, openPanel: true, refresh: false });
       latitudeInput.value = lat.toFixed(4);
       longitudeInput.value = lng.toFixed(4);
-      debouncedRefresh();
+      scheduleRefresh();
     });
 
     map.on("click", (event) => {
@@ -167,7 +171,7 @@
       marker.setLatLng(event.latlng);
       latitudeInput.value = event.latlng.lat.toFixed(4);
       longitudeInput.value = event.latlng.lng.toFixed(4);
-      debouncedRefresh();
+      scheduleRefresh();
     });
   }
 
@@ -213,7 +217,7 @@
     }
 
     if (refresh) {
-      debouncedRefresh();
+      scheduleRefresh();
     }
   }
 
@@ -221,7 +225,7 @@
     windowFacingInput.value = facing;
     setActiveButtons(windowFacingButtons, "windowFacing", facing);
     if (refresh) {
-      debouncedRefresh();
+      scheduleRefresh();
     }
   }
 
@@ -237,6 +241,61 @@
     if (element) {
       element.innerHTML = value;
     }
+  }
+
+  function setPendingState(isPending) {
+    roomWorkspace.classList.toggle("loading-state", isPending);
+  }
+
+  function parseFiniteNumber(value) {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function setUpdateStatus(message, state = "idle") {
+    if (!updateStatus) {
+      return;
+    }
+    updateStatus.textContent = message;
+    updateStatus.dataset.state = state;
+  }
+
+  function isCompleteDateValue() {
+    return /^\d{4}-\d{2}-\d{2}$/.test(selectedDateInput.value);
+  }
+
+  function isCompleteTimeValue() {
+    return /^\d{2}:\d{2}$/.test(selectedTimeInput.value);
+  }
+
+  function isReadyToRefresh() {
+    if (!form.checkValidity()) {
+      return false;
+    }
+    if (!isCompleteDateValue() || !isCompleteTimeValue()) {
+      return false;
+    }
+    if (!/^\d{4}$/.test(yearInput.value)) {
+      return false;
+    }
+    if (locationPresetInput.value === "custom") {
+      if (parseFiniteNumber(latitudeInput.value) === null || parseFiniteNumber(longitudeInput.value) === null) {
+        return false;
+      }
+      if (!timezoneInput.value.trim()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function scheduleRefresh(message = "Changes pending...") {
+    if (!isReadyToRefresh()) {
+      setUpdateStatus("Finish the current field to update.", "draft");
+      return;
+    }
+    setUpdateStatus(message, "pending");
+    debouncedRefresh();
   }
 
   function createRoomSvg(payload) {
@@ -409,23 +468,70 @@
   }
 
   async function refreshSnapshot() {
-    roomWorkspace.classList.add("loading-state");
+    latestRequestId += 1;
+    const requestId = latestRequestId;
+    if (activeSnapshotController) {
+      activeSnapshotController.abort();
+    }
+    activeSnapshotController = new AbortController();
+    setPendingState(true);
+    setUpdateStatus("Updating preview...", "pending");
     const params = new URLSearchParams(new FormData(form));
     try {
-      const response = await fetch(`/api/snapshot?${params.toString()}`);
+      const response = await fetch(`/api/snapshot?${params.toString()}`, {
+        signal: activeSnapshotController.signal,
+      });
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error || "Snapshot request failed.");
       }
-      updateSnapshotDom(payload);
+      if (requestId === latestRequestId) {
+        updateSnapshotDom(payload);
+        setUpdateStatus(defaultUpdateMessage, "idle");
+      }
     } catch (error) {
+      if (error.name === "AbortError") {
+        return;
+      }
       console.error(error);
+      setUpdateStatus("Could not update preview.", "error");
     } finally {
-      roomWorkspace.classList.remove("loading-state");
+      if (requestId === latestRequestId) {
+        setPendingState(false);
+      }
     }
   }
 
   const debouncedRefresh = debounce(refreshSnapshot, 180);
+
+  function refreshCustomCoordinates() {
+    setLocationPreset("custom", { applyPreset: false, openPanel: true, refresh: false });
+    const latitude = parseFiniteNumber(latitudeInput.value);
+    const longitude = parseFiniteNumber(longitudeInput.value);
+    if (marker && map && latitude !== null && longitude !== null) {
+      marker.setLatLng([latitude, longitude]);
+      map.panTo(marker.getLatLng());
+    }
+    scheduleRefresh();
+  }
+
+  function refreshTimezone() {
+    setLocationPreset("custom", { applyPreset: false, openPanel: true, refresh: false });
+    scheduleRefresh();
+  }
+
+  function refreshLocationName() {
+    setLocationPreset("custom", { applyPreset: false, openPanel: true, refresh: false });
+    scheduleRefresh();
+  }
+
+  function refreshFromNumberField(input) {
+    if (input.value === "" || !input.validity.valid) {
+      setUpdateStatus("Finish the current field to update.", "draft");
+      return;
+    }
+    scheduleRefresh();
+  }
 
   locationChipButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -467,47 +573,77 @@
 
   daySlider.addEventListener("input", () => {
     syncInputsFromSliders();
-    debouncedRefresh();
+    scheduleRefresh();
   });
 
   timeSlider.addEventListener("input", () => {
     syncInputsFromSliders();
-    debouncedRefresh();
+    scheduleRefresh();
   });
 
-  selectedDateInput.addEventListener("change", () => {
+  function refreshFromDateInput() {
+    if (!isCompleteDateValue()) {
+      setUpdateStatus("Finish the current field to update.", "draft");
+      return;
+    }
     syncSlidersFromInputs();
-    debouncedRefresh();
-  });
+    scheduleRefresh();
+  }
 
-  selectedTimeInput.addEventListener("change", () => {
+  function refreshFromTimeInput() {
+    if (!isCompleteTimeValue()) {
+      setUpdateStatus("Finish the current field to update.", "draft");
+      return;
+    }
     syncSlidersFromInputs();
-    debouncedRefresh();
-  });
+    scheduleRefresh();
+  }
 
-  yearInput.addEventListener("change", () => {
-    const boundedDay = Math.min(parseInt(daySlider.value, 10), dayOfYearMax(parseInt(yearInput.value, 10)));
-    selectedDateInput.value = dateStringFromDayOfYear(parseInt(yearInput.value, 10), boundedDay);
+  selectedDateInput.addEventListener("input", refreshFromDateInput);
+  selectedDateInput.addEventListener("change", refreshFromDateInput);
+
+  selectedTimeInput.addEventListener("input", refreshFromTimeInput);
+  selectedTimeInput.addEventListener("change", refreshFromTimeInput);
+
+  function refreshFromYearInput() {
+    if (!/^\d{4}$/.test(yearInput.value)) {
+      setUpdateStatus("Finish the current field to update.", "draft");
+      return;
+    }
+    const parsedYear = parseInt(yearInput.value, 10);
+    if (!Number.isFinite(parsedYear)) {
+      return;
+    }
+    const boundedDay = Math.min(parseInt(daySlider.value, 10), dayOfYearMax(parsedYear));
+    selectedDateInput.value = dateStringFromDayOfYear(parsedYear, boundedDay);
     syncSlidersFromInputs();
-    debouncedRefresh();
+    scheduleRefresh();
+  }
+
+  yearInput.addEventListener("input", refreshFromYearInput);
+  yearInput.addEventListener("change", refreshFromYearInput);
+
+  [latitudeInput, longitudeInput].forEach((input) => {
+    input.addEventListener("input", refreshCustomCoordinates);
+    input.addEventListener("change", refreshCustomCoordinates);
   });
 
-  [latitudeInput, longitudeInput, timezoneInput, locationNameInput].forEach((input) => {
-    input.addEventListener("change", () => {
-      setLocationPreset("custom", { applyPreset: false, openPanel: true, refresh: false });
-      if (marker && map) {
-        marker.setLatLng([parseFloat(latitudeInput.value), parseFloat(longitudeInput.value)]);
-        map.panTo(marker.getLatLng());
-      }
-      debouncedRefresh();
-    });
+  timezoneInput.addEventListener("input", () => {
+    setUpdateStatus("Finish the current field to update.", "draft");
   });
+  timezoneInput.addEventListener("change", refreshTimezone);
+
+  locationNameInput.addEventListener("input", () => {
+    setUpdateStatus("Finish the current field to update.", "draft");
+  });
+  locationNameInput.addEventListener("change", refreshLocationName);
 
   form.querySelectorAll('input[type="number"]').forEach((input) => {
     if (input === latitudeInput || input === longitudeInput || input === yearInput) {
       return;
     }
-    input.addEventListener("change", debouncedRefresh);
+    input.addEventListener("input", () => refreshFromNumberField(input));
+    input.addEventListener("change", () => refreshFromNumberField(input));
   });
 
   syncSlidersFromInputs();
@@ -518,4 +654,5 @@
     invalidateMapSoon();
   }
   updateSnapshotDom(initialData);
+  setUpdateStatus(defaultUpdateMessage, "idle");
 })();

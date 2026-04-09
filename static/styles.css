@@ -136,6 +136,26 @@ summary {
   text-align: right;
 }
 
+.update-status {
+  font-weight: 700;
+}
+
+.update-status[data-state="idle"] {
+  color: #2b627a;
+}
+
+.update-status[data-state="pending"] {
+  color: #8e3b18;
+}
+
+.update-status[data-state="draft"] {
+  color: #8a6a1f;
+}
+
+.update-status[data-state="error"] {
+  color: #9a2f2f;
+}
+
 .control-group {
   display: grid;
   gap: 10px;
