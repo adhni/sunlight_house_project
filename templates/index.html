@@ -76,6 +76,31 @@
             <div class="result-view" data-result-panel="sunlight-map">
               <div class="room-snapshot-shell">
                 <div id="daily-exposure-svg" class="room-snapshot room-snapshot-large"></div>
+                <div id="daily-exposure-tooltip" class="chart-tooltip" hidden></div>
+              </div>
+              <div class="daily-map-meta">
+                <div class="daily-map-legend">
+                  <span class="explorer-label">Legend</span>
+                  <div class="legend-ramp" aria-hidden="true"></div>
+                  <div class="legend-labels">
+                    <span>0 h</span>
+                    <span id="legend-max-hours">Max</span>
+                  </div>
+                </div>
+              </div>
+              <div class="daily-map-stats">
+                <article class="metric-card">
+                  <span class="metric-label">Peak Floor Cell</span>
+                  <strong id="daily-stat-peak-hours">0.0 h</strong>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">Room With Any Sun</span>
+                  <strong id="daily-stat-sunlit-fraction">0%</strong>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">Average Over Sunlit Cells</span>
+                  <strong id="daily-stat-avg-sunlit-hours">0.0 h</strong>
+                </article>
               </div>
               <p id="daily-exposure-caption" class="angle-caption room-caption">
                 Direct sun hours for the selected day.

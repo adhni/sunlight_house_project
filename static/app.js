@@ -8,6 +8,7 @@
   const sunsetMarker = document.getElementById("sunset-marker");
   const timeScrubberReference = document.getElementById("time-scrubber-reference");
   const setNowButton = document.getElementById("set-now-button");
+  const dailyExposureTooltip = document.getElementById("daily-exposure-tooltip");
 
   const locationPresetInput = document.getElementById("location-preset-input");
   const windowFacingInput = document.getElementById("window-facing-input");
@@ -351,6 +352,50 @@
     `;
   }
 
+  function exposureGridStats(grid) {
+    const values = grid.values.flat();
+    const sunlitValues = values.filter((value) => value > 0);
+    const avgSunlitHours = sunlitValues.length
+      ? sunlitValues.reduce((sum, value) => sum + value, 0) / sunlitValues.length
+      : 0;
+    return {
+      peakHours: grid.peak_hours,
+      sunlitFraction: grid.sunlit_fraction,
+      avgSunlitHours,
+    };
+  }
+
+  function hideDailyExposureTooltip() {
+    if (!dailyExposureTooltip) {
+      return;
+    }
+    dailyExposureTooltip.hidden = true;
+  }
+
+  function showDailyExposureTooltip(message, event) {
+    if (!dailyExposureTooltip) {
+      return;
+    }
+    const containerRect = document.getElementById("daily-exposure-svg").getBoundingClientRect();
+    const offsetX = event.clientX - containerRect.left;
+    const offsetY = event.clientY - containerRect.top;
+    const tooltipWidth = 180;
+    const left = Math.min(Math.max(12, offsetX + 14), Math.max(12, containerRect.width - tooltipWidth - 12));
+    const top = Math.max(12, offsetY - 52);
+    dailyExposureTooltip.textContent = message;
+    dailyExposureTooltip.style.left = `${left}px`;
+    dailyExposureTooltip.style.top = `${top}px`;
+    dailyExposureTooltip.hidden = false;
+  }
+
+  function updateExposureLegendAndStats(grid) {
+    const stats = exposureGridStats(grid);
+    setText("legend-max-hours", `${stats.peakHours.toFixed(1)} h`);
+    setText("daily-stat-peak-hours", `${stats.peakHours.toFixed(1)} h`);
+    setText("daily-stat-sunlit-fraction", `${Math.round(stats.sunlitFraction * 100)}%`);
+    setText("daily-stat-avg-sunlit-hours", `${stats.avgSunlitHours.toFixed(1)} h`);
+  }
+
   function setUpdateStatus(message, state = "idle") {
     if (!updateStatus) {
       return;
@@ -510,7 +555,7 @@
         const alpha = value > 0 ? 0.12 + (value / peakHours) * 0.72 : 0;
         const x = col * cellWidth;
         const y = depth - (row + 1) * cellHeight;
-        cells.push(`<rect x="${x}" y="${y}" width="${cellWidth}" height="${cellHeight}" fill="rgba(200,101,48,${alpha})" stroke="rgba(255,255,255,0.12)" stroke-width="0.01"></rect>`);
+        cells.push(`<rect x="${x}" y="${y}" width="${cellWidth}" height="${cellHeight}" fill="rgba(200,101,48,${alpha})" stroke="rgba(255,255,255,0.12)" stroke-width="0.01" data-cell-row="${row + 1}" data-cell-col="${col + 1}" data-cell-hours="${value.toFixed(2)}"></rect>`);
       }
     }
 
@@ -563,6 +608,8 @@
 
     setHtml("room-snapshot-svg", createRoomSvg(payload));
     setHtml("daily-exposure-svg", createExposureMapSvg(payload));
+    updateExposureLegendAndStats(payload.daily.exposure_grid);
+    hideDailyExposureTooltip();
 
     const snapshotStatus = document.getElementById("room-snapshot-status");
     if (snapshotStatus) {
@@ -581,6 +628,40 @@
       "daily-exposure-caption",
       `${Math.round(payload.daily.exposure_grid.sunlit_fraction * 100)}% of the room gets some direct sun today. Darker cells mean more direct-sun hours. Peak floor cell: ${payload.daily.exposure_grid.peak_hours.toFixed(1)} h.`
     );
+  }
+
+  function handleExposureReadout(event) {
+    const cell = event.target.closest("[data-cell-hours]");
+    if (!cell) {
+      clearExposureHoverState();
+      hideDailyExposureTooltip();
+      return;
+    }
+    clearExposureHoverState();
+    const row = cell.dataset.cellRow;
+    const col = cell.dataset.cellCol;
+    const hours = parseFloat(cell.dataset.cellHours || "0");
+    cell.setAttribute("stroke", "rgba(31,39,50,0.28)");
+    cell.setAttribute("stroke-width", "0.03");
+    showDailyExposureTooltip(`Row ${row}, column ${col}: ${hours.toFixed(1)} h direct sun.`, event);
+  }
+
+  function pinExposureReadout(event) {
+    const cell = event.target.closest("[data-cell-hours]");
+    if (!cell) {
+      return;
+    }
+    const row = cell.dataset.cellRow;
+    const col = cell.dataset.cellCol;
+    const hours = parseFloat(cell.dataset.cellHours || "0");
+    showDailyExposureTooltip(`Selected row ${row}, column ${col}: ${hours.toFixed(1)} h direct sun.`, event);
+  }
+
+  function clearExposureHoverState() {
+    document.querySelectorAll("#daily-exposure-svg [data-cell-hours]").forEach((cell) => {
+      cell.setAttribute("stroke", "rgba(255,255,255,0.12)");
+      cell.setAttribute("stroke-width", "0.01");
+    });
   }
 
   async function refreshSnapshot() {
@@ -690,6 +771,16 @@
       });
     });
   });
+
+  const dailyExposureSvg = document.getElementById("daily-exposure-svg");
+  if (dailyExposureSvg) {
+    dailyExposureSvg.addEventListener("mousemove", handleExposureReadout);
+    dailyExposureSvg.addEventListener("mouseleave", () => {
+      clearExposureHoverState();
+      hideDailyExposureTooltip();
+    });
+    dailyExposureSvg.addEventListener("click", pinExposureReadout);
+  }
 
   customLocationToggle.addEventListener("click", () => {
     if (locationPresetInput.value === "custom") {

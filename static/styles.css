@@ -424,6 +424,7 @@ input[type="range"] {
 
 .room-snapshot-shell {
   margin-top: 18px;
+  position: relative;
 }
 
 .result-tab-row {
@@ -475,6 +476,54 @@ input[type="range"] {
 
 .room-caption {
   margin-bottom: 0;
+}
+
+.daily-map-meta {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.daily-map-legend {
+  display: grid;
+  gap: 8px;
+}
+
+.legend-ramp {
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(200, 101, 48, 0.06) 0%, rgba(200, 101, 48, 0.28) 35%, rgba(200, 101, 48, 0.58) 70%, rgba(142, 59, 24, 0.9) 100%);
+}
+
+.legend-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.chart-tooltip {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  max-width: 180px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(31, 39, 50, 0.12);
+  background: rgba(31, 39, 50, 0.92);
+  color: #fffaf3;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  box-shadow: 0 12px 22px rgba(31, 39, 50, 0.2);
+}
+
+.daily-map-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
 }
 
 .current-moment-details summary {
@@ -583,6 +632,10 @@ input[type="range"] {
   }
 
   .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-map-stats {
     grid-template-columns: 1fr;
   }
 }
