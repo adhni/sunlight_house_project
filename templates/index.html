@@ -48,6 +48,15 @@
               The marker updates latitude and longitude directly. The levers below drive the live snapshot without reloading the page.
             </p>
           </div>
+          <div class="howto-card">
+            <strong>How to use it</strong>
+            <ol class="howto-list">
+              <li>Drag the map marker or click the map to choose a location.</li>
+              <li>Use the two levers for day of year and time of day.</li>
+              <li>Watch the compass, elevation gauge, and room snapshot update live.</li>
+            </ol>
+            <p class="howto-tip">Try Melbourne, June 21, around 12:00 for a clear floor patch through the north window.</p>
+          </div>
           <div id="location-map" class="location-map" aria-label="Location map"></div>
           <div class="lever-grid">
             <label class="lever-card">
@@ -86,8 +95,25 @@
             </article>
             <article class="angle-card angle-card-wide">
               <h3>Top-Down Room Snapshot</h3>
+              <div
+                id="room-snapshot-status"
+                class="status-chip {% if snapshot.entered_direct_sun %}status-chip-active{% elif strongest_intensity > 0 %}status-chip-mid{% else %}status-chip-off{% endif %}"
+              >
+                {% if snapshot.entered_direct_sun %}
+                Sun reaches floor
+                {% elif strongest_intensity > 0 %}
+                Sun enters window but misses floor
+                {% else %}
+                Sun does not enter this window
+                {% endif %}
+              </div>
               <div id="room-snapshot-svg" class="room-snapshot"></div>
-              <p class="angle-caption">North is up. Window edges are thick dark lines. Sun patches are filled in amber.</p>
+              <div class="snapshot-facts">
+                <span id="snapshot-window-fact">Window: {{ form_values.window_wall|title }} wall</span>
+                <span id="snapshot-azimuth-fact">Azimuth: {{ "%.1f"|format(snapshot.position.azimuth_deg) }}°</span>
+                <span id="snapshot-elevation-fact">Elevation: {{ "%.1f"|format(snapshot.position.elevation_deg) }}°</span>
+              </div>
+              <p class="angle-caption">Read it left to right: highlighted window, incoming rays, then the amber floor footprint.</p>
             </article>
           </div>
         </div>

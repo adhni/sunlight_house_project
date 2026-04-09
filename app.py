@@ -227,6 +227,9 @@ def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dic
     snapshot = analyze_snapshot(config, selected_moment)
     daily = analyze_day(config, selected_moment.date(), selected_moment.strftime("%B %d"))
     strongest_window, strongest_intensity = snapshot.strongest_window
+    active_window = config.windows[0]
+    active_window_wall = wall_name_for_window(active_window)
+    state = snapshot_state(snapshot.entered_direct_sun, strongest_intensity)
 
     return {
         "location": {
@@ -243,6 +246,7 @@ def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dic
             "entered_direct_sun": snapshot.entered_direct_sun,
             "strongest_window": strongest_window,
             "strongest_intensity": strongest_intensity,
+            "state": state,
             "window_intensities": [
                 {"name": name, "intensity": intensity} for name, intensity in snapshot.window_intensities.items()
             ],
@@ -269,10 +273,15 @@ def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dic
         "windows": [
             {
                 "name": window.name,
+                "wall": wall_name_for_window(window),
                 "wall_segment_xy": window.wall_segment_xy().tolist(),
             }
             for window in config.windows
         ],
+        "active_window": {
+            "name": active_window.name,
+            "wall": active_window_wall,
+        },
     }
 
 
@@ -281,6 +290,25 @@ def window_axis_description(wall: str) -> str:
     if wall_name in {"north", "south"}:
         return "Horizontal center measured along the wall in x (east-west, metres)."
     return "Horizontal center measured along the wall in y (south-north, metres)."
+
+
+def wall_name_for_window(window) -> str:
+    normal = tuple(round(float(value), 3) for value in window.outward_normal)
+    mapping = {
+        (0.0, 1.0, 0.0): "north",
+        (0.0, -1.0, 0.0): "south",
+        (1.0, 0.0, 0.0): "east",
+        (-1.0, 0.0, 0.0): "west",
+    }
+    return mapping.get(normal, "unknown")
+
+
+def snapshot_state(has_patch: bool, strongest_intensity: float) -> str:
+    if has_patch:
+        return "floor_hit"
+    if strongest_intensity > 0.0:
+        return "through_window_no_floor_hit"
+    return "behind_window"
 
 
 app = create_app()

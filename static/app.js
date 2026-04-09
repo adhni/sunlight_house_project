@@ -93,6 +93,30 @@
     return "Horizontal center measured along the wall in y (south-north, metres).";
   }
 
+  function titleCase(value) {
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+
+  function snapshotStateLabel(state) {
+    if (state === "floor_hit") {
+      return "Sun reaches floor";
+    }
+    if (state === "through_window_no_floor_hit") {
+      return "Sun enters window but misses floor";
+    }
+    return "Sun does not enter this window";
+  }
+
+  function snapshotStateClass(state) {
+    if (state === "floor_hit") {
+      return "status-chip status-chip-active";
+    }
+    if (state === "through_window_no_floor_hit") {
+      return "status-chip status-chip-mid";
+    }
+    return "status-chip status-chip-off";
+  }
+
   function debounce(fn, waitMs) {
     let timeoutId = null;
     return function debounced(...args) {
@@ -151,28 +175,84 @@
     const pad = 0.45;
     const viewBox = `${-pad} ${-pad} ${width + pad * 2} ${depth + pad * 2}`;
     const mapPoint = (point) => `${point[0]},${depth - point[1]}`;
+    const activeWindow = payload.windows[0];
+    const [windowA, windowB] = activeWindow.wall_segment_xy;
+    const windowMid = [(windowA[0] + windowB[0]) / 2, (windowA[1] + windowB[1]) / 2];
+    const rays = [];
+    if (payload.snapshot.patches.length > 0) {
+      const patchPoints = payload.snapshot.patches[0].polygon_xy;
+      const sortedPatchPoints = [...patchPoints].sort((left, right) => left[1] - right[1] || left[0] - right[0]);
+      const sortedWindowPoints = [windowA, windowB].sort((left, right) => left[1] - right[1] || left[0] - right[0]);
+      rays.push([sortedWindowPoints[0], sortedPatchPoints[0]]);
+      rays.push([sortedWindowPoints[1], sortedPatchPoints[sortedPatchPoints.length - 1]]);
+    } else {
+      const azimuthRad = payload.snapshot.azimuth_deg * Math.PI / 180;
+      const planX = Math.sin(azimuthRad);
+      const planY = Math.cos(azimuthRad);
+      const rayLength = Math.min(width, depth) * 0.38;
+      rays.push([
+        windowMid,
+        [
+          windowMid[0] - planX * rayLength,
+          windowMid[1] - planY * rayLength,
+        ],
+      ]);
+    }
+
     const windowLines = payload.windows.map((windowData) => {
       const [a, b] = windowData.wall_segment_xy;
-      return `<line x1="${a[0]}" y1="${depth - a[1]}" x2="${b[0]}" y2="${depth - b[1]}" stroke="#22384a" stroke-width="0.14" stroke-linecap="round"></line>`;
+      const isActive = windowData.name === payload.active_window.name;
+      return `<line x1="${a[0]}" y1="${depth - a[1]}" x2="${b[0]}" y2="${depth - b[1]}" stroke="${isActive ? "#2b627a" : "#8ea0ab"}" stroke-width="${isActive ? "0.17" : "0.09"}" stroke-linecap="round"></line>`;
     }).join("");
     const patchPolygons = payload.snapshot.patches.map((patch, index) => {
       const points = patch.polygon_xy.map(mapPoint).join(" ");
       const alpha = Math.max(0.24, Math.min(0.74, patch.intensity));
-      return `<polygon points="${points}" fill="rgba(200,101,48,${alpha})" stroke="#8e3b18" stroke-width="0.04"></polygon>
-              <text x="${patch.polygon_xy.reduce((sum, point) => sum + point[0], 0) / patch.polygon_xy.length}" y="${depth - patch.polygon_xy.reduce((sum, point) => sum + point[1], 0) / patch.polygon_xy.length}" font-size="0.22" text-anchor="middle" fill="#1f2732">${index + 1}</text>`;
+      return `<polygon points="${points}" fill="rgba(200,101,48,${alpha})" stroke="#8e3b18" stroke-width="0.04"></polygon>`;
     }).join("");
     const noPatch = payload.snapshot.patches.length === 0
-      ? `<text x="${width / 2}" y="${depth / 2}" font-size="0.28" text-anchor="middle" fill="#616a68">No direct floor patch</text>`
+      ? `<text x="${width / 2}" y="${depth / 2 + 0.6}" font-size="0.28" text-anchor="middle" fill="#616a68">No direct floor patch</text>`
       : "";
+    const rayLines = rays.map(([start, end]) => `
+      <line x1="${start[0]}" y1="${depth - start[1]}" x2="${end[0]}" y2="${depth - end[1]}" stroke="#f0b24f" stroke-width="0.06" stroke-linecap="round" stroke-dasharray="0.12 0.08"></line>
+    `).join("");
+    const sourceMarker = `
+      <circle cx="${windowMid[0]}" cy="${depth - windowMid[1]}" r="0.12" fill="#2b627a"></circle>
+      <text x="${windowMid[0]}" y="${depth - windowMid[1] - 0.28}" font-size="0.22" text-anchor="middle" fill="#2b627a">${titleCase(payload.active_window.wall)} window</text>
+    `;
+    const compass = `
+      <g transform="translate(0.35,0.45)">
+        <circle cx="0.38" cy="0.38" r="0.26" fill="rgba(255,255,255,0.85)" stroke="#1f2732" stroke-width="0.03"></circle>
+        <line x1="0.38" y1="0.56" x2="0.38" y2="0.18" stroke="#1f2732" stroke-width="0.03"></line>
+        <polygon points="0.38,0.08 0.31,0.22 0.45,0.22" fill="#1f2732"></polygon>
+        <text x="0.38" y="-0.03" font-size="0.18" text-anchor="middle" fill="#1f2732">N</text>
+      </g>
+    `;
+    const sourceLegend = `
+      <text x="${width - 0.25}" y="${depth - 0.15}" font-size="0.18" text-anchor="end" fill="#616a68">Window → Rays → Floor patch</text>
+    `;
+    const windowGlow = `
+      <line x1="${windowA[0]}" y1="${depth - windowA[1]}" x2="${windowB[0]}" y2="${depth - windowB[1]}" stroke="rgba(240,178,79,0.35)" stroke-width="0.32" stroke-linecap="round"></line>
+    `;
+    const defs = `
+      <defs>
+        <filter id="patchShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="0.05" stdDeviation="0.04" flood-color="#8e3b18" flood-opacity="0.18"></feDropShadow>
+        </filter>
+      </defs>
+    `;
 
     return `
       <svg viewBox="${viewBox}" role="img" aria-label="Top-down room snapshot">
+        ${defs}
         <rect x="0" y="0" width="${width}" height="${depth}" fill="#fffdf8" stroke="#1f2732" stroke-width="0.06"></rect>
-        ${patchPolygons}
+        ${windowGlow}
+        ${rayLines}
+        <g filter="url(#patchShadow)">${patchPolygons}</g>
         ${windowLines}
+        ${sourceMarker}
         ${noPatch}
-        <text x="${width / 2}" y="-0.14" font-size="0.24" text-anchor="middle" fill="#1f2732">North</text>
-        <text x="${width + 0.18}" y="${depth / 2}" font-size="0.24" fill="#1f2732" transform="rotate(90 ${width + 0.18} ${depth / 2})">East</text>
+        ${compass}
+        ${sourceLegend}
       </svg>
     `;
   }
@@ -216,6 +296,12 @@
     document.getElementById("azimuth-compass").innerHTML = createCompassSvg(snapshot.azimuth_deg);
     document.getElementById("elevation-gauge").innerHTML = createElevationSvg(snapshot.elevation_deg);
     document.getElementById("room-snapshot-svg").innerHTML = createRoomSvg(payload);
+    const snapshotStatus = document.getElementById("room-snapshot-status");
+    snapshotStatus.textContent = snapshotStateLabel(snapshot.state);
+    snapshotStatus.className = snapshotStateClass(snapshot.state);
+    document.getElementById("snapshot-window-fact").textContent = `Window: ${titleCase(payload.active_window.wall)} wall`;
+    document.getElementById("snapshot-azimuth-fact").textContent = `Azimuth: ${snapshot.azimuth_deg.toFixed(1)}°`;
+    document.getElementById("snapshot-elevation-fact").textContent = `Elevation: ${snapshot.elevation_deg.toFixed(1)}°`;
     document.getElementById("live-azimuth-text").textContent = `${snapshot.azimuth_deg.toFixed(2)} deg`;
     document.getElementById("live-elevation-text").textContent = `${snapshot.elevation_deg.toFixed(2)} deg`;
   }
