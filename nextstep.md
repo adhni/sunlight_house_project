@@ -2,125 +2,120 @@
 
 ## Current product state
 
-The prototype is now in a solid interactive state:
+The prototype is now in a stronger interactive state:
 
 - live room snapshot
-- live direct-sun-hours map for the selected day
-- preset cities and simple room/window controls
-- cleaner Git state with generated `outputs/` ignored
+- live `Direct Sun Hours Today` map with legend, stats, and in-chart hover
+- yearly / seasonal floor maps with `Year`, `Winter`, `Spring`, `Summer`, and `Fall`
+- preset cities, custom map-based location, and simpler room/window controls
+- long-range exposure performance improved for deployment
 
-The next work should focus on making the sunlight map easier to read, then extending the same idea across a full year.
+The next work should shift from pure sunlight geometry toward sunlight interpretation.
 
-## Priority 1: Improve the daily sunlight map
+## Priority 1: Add a lightweight sun-context layer
 
-This is the best immediate step because the data is already there.
-
-### Goal
-
-Make `Direct Sun Hours Today` easy to interpret without explanation.
-
-### Improvements
-
-- add a visible legend with hour bands
-- add hover or click readout for a floor cell
-- add simple summary stats near the map:
-  - peak direct sun hours
-  - percent of room with any direct sun
-  - average direct sun hours over sunlit cells
-- tighten the caption so it explains the map in one sentence
-- use a more intentional warm color scale from `0 h` to `max h`
-
-### Why this matters
-
-- users can understand the result faster
-- the app becomes more useful for planning desk, sofa, plant, or TV placement
-- this prepares the UI pattern for yearly maps later
-
-## Priority 2: Add a yearly sunlight-hours floor map
-
-This is the highest-value next feature.
+This is the best next step because the model already shows where and how long sunlight lands, but not whether that sunlight is helpful or punishing.
 
 ### Goal
 
-Show which parts of the room get the most direct sun across longer periods.
-
-### Suggested views
-
-- yearly total direct-sun hours
-- winter direct-sun hours
-- summer direct-sun hours
-- optional morning / afternoon filters later
-
-### Output
-
-- same top-down room view
-- same grid-based heatmap style as the daily map
-- same legend model, but in yearly or seasonal hours
-
-### Why this matters
-
-- this is the first genuinely useful furniture-planning feature
-- users can compare protected zones vs high-exposure zones over time
-- it avoids relying on one selected day only
-
-## Priority 3: Add simple furniture-planning overlays
-
-Only do this after the yearly map exists.
+Add just enough climate context to interpret direct sun as beneficial, neutral, or harsh.
 
 ### First version
 
-- simple rectangular blocks
-- desk
-- sofa
-- bed
-- dining table
-
-### User interaction
-
-- drag or place a block in the room
-- show exposure summary for that block footprint
-
-### Example summary
-
-- `Desk: 2.1 h direct sun on selected day`
-- `Sofa zone: high summer afternoon exposure`
+- add a small `Sun Context` card near the results
+- combine:
+  - direct sun hours from the existing model
+  - temperature context
+  - UV context
+- generate a short interpretation such as:
+  - `Helpful winter sun`
+  - `High UV caution`
+  - `Likely overheating risk`
+  - `Mostly mild sun`
 
 ### Constraint
 
-Do not turn this into a CAD tool.
+Do not turn this into a full weather dashboard.
 
-## Priority 4: Render deployment polish
+### Why this matters
 
-The app is already deployable, but a public prototype should be tightened a little.
+- users care about whether sun is desirable, not only whether it exists
+- it makes the app feel more useful without changing the core room model
+- it creates a more human framing for the yearly / seasonal maps
+
+## Priority 2: Keep the added data layer minimal
+
+The project likely needs extra data, but the smallest useful version is enough.
+
+### Recommended data
+
+- temperature context
+- UV context
+
+### Recommended source style
+
+- monthly or seasonal climate normals first
+- avoid live forecasts in the first version
+
+### Avoid for now
+
+- precipitation
+- wind
+- humidity
+- cloud cover
+- hourly forecast panels
+- a separate weather dashboard
+
+### Why this matters
+
+- keeps the UI focused
+- avoids introducing a second product inside the product
+- makes the interpretation layer easier to explain and maintain
+
+## Priority 3: Decide how to express the interpretation
+
+The new layer should stay lightweight and readable.
+
+### Options
+
+- one compact summary card
+- one short caption under the daily and long-range maps
+- a small badge system for `helpful`, `neutral`, and `harsh`
+
+### Recommended direction
+
+- start with one compact summary card
+- keep the copy simple and high-level
+- do not add another large chart unless needed later
+
+## Priority 4: Continue deployment validation
+
+The long-range performance work is now in place, so the next operational step is to observe real behavior on Render.
 
 ### Deployment tasks
 
-- verify the Render service from `main`
-- check homepage load time
-- verify `/healthz`
-- verify `/api/snapshot`
-- verify the live daily map works after cold start
+- verify yearly / seasonal tab load time on Render
+- check the new long-range timing logs
+- confirm the long-range request no longer fails
+- verify the coarser yearly grid still feels believable
 
-### Likely issue
+### Why this matters
 
-- Render cold starts may make the first load feel slow
-
-### Mitigation
-
-- keep the homepage lightweight
-- avoid unnecessary server-side plot generation on first load
+- this confirms whether the recent performance fixes are enough
+- it prevents more product work from piling onto an unstable long-range feature
 
 ## Suggested execution order
 
-1. Improve daily sunlight map readability
-2. Deploy or verify on Render
-3. Build yearly sunlight-hours map
-4. Add simple furniture overlays
+1. Define the smallest useful temperature + UV context layer
+2. Decide where the interpretation appears in the UI
+3. Add the first lightweight `Sun Context` card
+4. Validate Render behavior after the long-range optimization
 
 ## Definition of next milestone
 
 The next milestone is done when:
 
-- the daily map has a clear legend and summaries
-- the app is live on Render
-- a user can compare direct sun hours for a selected day without needing explanation
+- the app can frame sunlight as helpful, neutral, or harsh
+- the new context layer stays compact and easy to understand
+- yearly / seasonal maps remain usable on Render
+- the product still feels like a sunlight planner, not a weather dashboard
