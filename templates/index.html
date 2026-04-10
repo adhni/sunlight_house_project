@@ -58,6 +58,57 @@
               <button type="button" class="chip-button" data-result-tab="long-range">Yearly / Seasonal</button>
             </div>
 
+            <div class="result-status-row">
+              <span id="update-status" class="update-status" data-state="idle">Preview is up to date.</span>
+            </div>
+
+            <section class="baseline-result-panel">
+              <div class="baseline-panel-header">
+                <div class="chip-row baseline-actions">
+                  <button id="save-baseline-button" type="button" class="chip-button chip-button-soft">Save as baseline</button>
+                  <button id="clear-baseline-button" type="button" class="chip-button chip-button-soft">Clear baseline</button>
+                </div>
+              </div>
+              <div id="baseline-empty-state" class="baseline-empty-state">
+                Save the current scenario as a baseline to compare changes.
+              </div>
+              <details id="baseline-details" class="subtle-details baseline-details" hidden>
+                <summary>Baseline vs Current</summary>
+                <div id="baseline-comparison-panel" class="baseline-comparison-panel">
+                  <div class="baseline-grid baseline-grid-header">
+                    <span class="metric-label">Metric</span>
+                    <span class="metric-label">Baseline</span>
+                    <span class="metric-label">Current</span>
+                    <span class="metric-label">Delta</span>
+                  </div>
+                  <div class="baseline-grid">
+                    <span class="baseline-metric-name">Selected moment</span>
+                    <strong id="baseline-selected-moment-baseline">-</strong>
+                    <strong id="baseline-selected-moment-current">-</strong>
+                    <strong id="baseline-selected-moment-delta">-</strong>
+                  </div>
+                  <div class="baseline-grid">
+                    <span class="baseline-metric-name">Daily peak intensity</span>
+                    <strong id="baseline-peak-intensity-baseline">-</strong>
+                    <strong id="baseline-peak-intensity-current">-</strong>
+                    <strong id="baseline-peak-intensity-delta">-</strong>
+                  </div>
+                  <div class="baseline-grid">
+                    <span class="baseline-metric-name">Room with any sun</span>
+                    <strong id="baseline-sunlit-fraction-baseline">-</strong>
+                  <strong id="baseline-sunlit-fraction-current">-</strong>
+                  <strong id="baseline-sunlit-fraction-delta">-</strong>
+                </div>
+                  <div class="baseline-grid">
+                    <span class="baseline-metric-name">Peak sunlit cell</span>
+                    <strong id="baseline-peak-hours-baseline">-</strong>
+                    <strong id="baseline-peak-hours-current">-</strong>
+                    <strong id="baseline-peak-hours-delta">-</strong>
+                  </div>
+                </div>
+              </details>
+            </section>
+
             <div class="result-view" data-result-panel="current">
               <div class="room-snapshot-shell">
                 <div id="room-snapshot-svg" class="room-snapshot room-snapshot-large"></div>
@@ -160,7 +211,6 @@
                 <div class="controls-note">
                   <span>Live preview updates automatically.</span>
                   <span>Daily views update automatically too.</span>
-                  <span id="update-status" class="update-status" data-state="idle">Preview is up to date.</span>
                 </div>
               </div>
 

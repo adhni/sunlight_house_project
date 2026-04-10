@@ -88,6 +88,7 @@ The app currently includes:
 - a `Current Moment` room snapshot
 - a `Direct Sun Hours Today` floor map with legend, stats, and in-chart tooltip
 - a `Yearly / Seasonal` floor map with `Year`, `Winter`, `Spring`, `Summer`, and `Fall`
+- a frontend-only baseline compare tool using `localStorage`
 
 ## Long-Range Exposure Logic
 

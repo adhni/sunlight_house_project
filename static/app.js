@@ -10,6 +10,11 @@
   const setNowButton = document.getElementById("set-now-button");
   const dailyExposureTooltip = document.getElementById("daily-exposure-tooltip");
   const longRangeExposureTooltip = document.getElementById("long-range-exposure-tooltip");
+  const saveBaselineButton = document.getElementById("save-baseline-button");
+  const clearBaselineButton = document.getElementById("clear-baseline-button");
+  const baselineEmptyState = document.getElementById("baseline-empty-state");
+  const baselineDetails = document.getElementById("baseline-details");
+  const baselineComparisonPanel = document.getElementById("baseline-comparison-panel");
 
   const locationPresetInput = document.getElementById("location-preset-input");
   const windowFacingInput = document.getElementById("window-facing-input");
@@ -51,7 +56,10 @@
   let activeLongRangePeriod = "year";
   let longRangePayload = null;
   let longRangeQuery = "";
-  const defaultUpdateMessage = "Preview is up to date.";
+  let currentPayload = initialData;
+  let baselinePayload = null;
+  const defaultUpdateMessage = "Map is up to date.";
+  const baselineStorageKey = "sunlight-house-baseline";
 
   function isLeapYear(year) {
     return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
@@ -416,6 +424,154 @@
     updateStatus.dataset.state = state;
   }
 
+  function formatSelectedMoment(payload) {
+    return new Date(payload.selected_moment).toLocaleString(undefined, {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: payload.location.timezone_name,
+      timeZoneName: "short",
+    });
+  }
+
+  function formatNumericDelta(delta, suffix = "") {
+    if (Math.abs(delta) < 0.05) {
+      return "No change";
+    }
+    const sign = delta > 0 ? "+" : "";
+    return `${sign}${delta.toFixed(1)}${suffix}`;
+  }
+
+  function selectedMomentDeltaLabel(baselineMoment, currentMoment) {
+    const deltaMs = currentMoment.getTime() - baselineMoment.getTime();
+    if (Math.abs(deltaMs) < 60000) {
+      return "No change";
+    }
+    const later = deltaMs > 0;
+    const totalMinutes = Math.round(Math.abs(deltaMs) / 60000);
+    const days = Math.floor(totalMinutes / (24 * 60));
+    const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+    const minutes = totalMinutes % 60;
+    const parts = [];
+    if (days) {
+      parts.push(`${days} day${days === 1 ? "" : "s"}`);
+    }
+    if (hours) {
+      parts.push(`${hours} hour${hours === 1 ? "" : "s"}`);
+    }
+    if (minutes || parts.length === 0) {
+      parts.push(`${minutes} minute${minutes === 1 ? "" : "s"}`);
+    }
+    return `${parts.join(" ")} ${later ? "later" : "earlier"}`;
+  }
+
+  function setBaselineMetric(idPrefix, baselineText, currentText, deltaText, deltaClass = "baseline-delta-neutral") {
+    setText(`${idPrefix}-baseline`, baselineText);
+    setText(`${idPrefix}-current`, currentText);
+    setText(`${idPrefix}-delta`, deltaText);
+    const deltaElement = document.getElementById(`${idPrefix}-delta`);
+    if (deltaElement) {
+      deltaElement.classList.remove("baseline-delta-positive", "baseline-delta-negative", "baseline-delta-neutral");
+      deltaElement.classList.add(deltaClass);
+    }
+  }
+
+  function deltaClassForValue(delta) {
+    if (Math.abs(delta) < 0.0005) {
+      return "baseline-delta-neutral";
+    }
+    return delta > 0 ? "baseline-delta-positive" : "baseline-delta-negative";
+  }
+
+  function readStoredBaseline() {
+    try {
+      const raw = window.localStorage.getItem(baselineStorageKey);
+      if (!raw) {
+        return null;
+      }
+      return JSON.parse(raw);
+    } catch (error) {
+      console.error(error);
+      return null;
+    }
+  }
+
+  function writeStoredBaseline(payload) {
+    window.localStorage.setItem(baselineStorageKey, JSON.stringify(payload));
+  }
+
+  function clearStoredBaseline() {
+    window.localStorage.removeItem(baselineStorageKey);
+  }
+
+  function renderBaselineComparison() {
+    if (!baselinePayload || !currentPayload) {
+      if (baselineEmptyState) {
+        baselineEmptyState.hidden = false;
+      }
+      if (baselineDetails) {
+        baselineDetails.hidden = true;
+        baselineDetails.open = false;
+      }
+      if (clearBaselineButton) {
+        clearBaselineButton.disabled = true;
+      }
+      return;
+    }
+
+    if (baselineEmptyState) {
+      baselineEmptyState.hidden = true;
+    }
+    if (baselineDetails) {
+      baselineDetails.hidden = false;
+    }
+    if (clearBaselineButton) {
+      clearBaselineButton.disabled = false;
+    }
+
+    const baselineMoment = new Date(baselinePayload.selected_moment);
+    const currentMoment = new Date(currentPayload.selected_moment);
+    setBaselineMetric(
+      "baseline-selected-moment",
+      formatSelectedMoment(baselinePayload),
+      formatSelectedMoment(currentPayload),
+      selectedMomentDeltaLabel(baselineMoment, currentMoment),
+      baselineMoment.getTime() === currentMoment.getTime() ? "baseline-delta-neutral" : "baseline-delta-positive"
+    );
+
+    const baselinePeakIntensity = baselinePayload.daily.peak_intensity || 0;
+    const currentPeakIntensity = currentPayload.daily.peak_intensity || 0;
+    setBaselineMetric(
+      "baseline-peak-intensity",
+      baselinePeakIntensity.toFixed(3),
+      currentPeakIntensity.toFixed(3),
+      formatNumericDelta(currentPeakIntensity - baselinePeakIntensity),
+      deltaClassForValue(currentPeakIntensity - baselinePeakIntensity)
+    );
+
+    const baselineSunlitFraction = (baselinePayload.daily.exposure_grid.sunlit_fraction || 0) * 100;
+    const currentSunlitFraction = (currentPayload.daily.exposure_grid.sunlit_fraction || 0) * 100;
+    setBaselineMetric(
+      "baseline-sunlit-fraction",
+      `${Math.round(baselineSunlitFraction)}%`,
+      `${Math.round(currentSunlitFraction)}%`,
+      formatNumericDelta(currentSunlitFraction - baselineSunlitFraction, "%"),
+      deltaClassForValue(currentSunlitFraction - baselineSunlitFraction)
+    );
+
+    const baselinePeakHours = baselinePayload.daily.exposure_grid.peak_hours || 0;
+    const currentPeakHours = currentPayload.daily.exposure_grid.peak_hours || 0;
+    setBaselineMetric(
+      "baseline-peak-hours",
+      `${baselinePeakHours.toFixed(1)} h`,
+      `${currentPeakHours.toFixed(1)} h`,
+      formatNumericDelta(currentPeakHours - baselinePeakHours, " h"),
+      deltaClassForValue(currentPeakHours - baselinePeakHours)
+    );
+  }
+
   function updateTimeScrubberReference(timezoneName) {
     if (!timeScrubberReference) {
       return;
@@ -587,6 +743,7 @@
   }
 
   function updateSnapshotDom(payload) {
+    currentPayload = payload;
     const snapshot = payload.snapshot;
     const daily = payload.daily;
     const timeZone = payload.location.timezone_name;
@@ -639,6 +796,7 @@
       "daily-exposure-caption",
       `${Math.round(payload.daily.exposure_grid.sunlit_fraction * 100)}% of the room gets some direct sun today. Darker cells mean more direct-sun hours. Peak floor cell: ${payload.daily.exposure_grid.peak_hours.toFixed(1)} h.`
     );
+    renderBaselineComparison();
   }
 
   function updateLongRangeDom() {
@@ -979,6 +1137,30 @@
     setNowButton.addEventListener("click", setInputsToNow);
   }
 
+  if (saveBaselineButton) {
+    saveBaselineButton.addEventListener("click", () => {
+      if (!currentPayload) {
+        return;
+      }
+      baselinePayload = currentPayload;
+      writeStoredBaseline(baselinePayload);
+      if (baselineDetails) {
+        baselineDetails.open = true;
+      }
+      renderBaselineComparison();
+      setUpdateStatus("Baseline saved.", "idle");
+    });
+  }
+
+  if (clearBaselineButton) {
+    clearBaselineButton.addEventListener("click", () => {
+      baselinePayload = null;
+      clearStoredBaseline();
+      renderBaselineComparison();
+      setUpdateStatus(defaultUpdateMessage, "idle");
+    });
+  }
+
   syncSlidersFromInputs();
   setActiveButtons(locationChipButtons, "locationPreset", locationPresetInput.value);
   setActiveButtons(windowFacingButtons, "windowFacing", windowFacingInput.value);
@@ -986,6 +1168,7 @@
     ensureMap();
     invalidateMapSoon();
   }
+  baselinePayload = readStoredBaseline();
   updateSnapshotDom(initialData);
   updateTimeScrubberReference(timezoneInput.value);
   setUpdateStatus(defaultUpdateMessage, "idle");

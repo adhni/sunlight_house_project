@@ -136,7 +136,31 @@ summary {
   text-align: right;
 }
 
+.result-status-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.baseline-result-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  margin-bottom: 18px;
+}
+
+.baseline-details {
+  margin-top: -2px;
+}
+
 .update-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-soft);
   font-weight: 700;
 }
 
@@ -257,6 +281,69 @@ input[type="range"] {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.baseline-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.baseline-actions {
+  justify-content: flex-end;
+}
+
+.baseline-empty-state {
+  padding: 14px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.baseline-comparison-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.baseline-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.baseline-grid strong,
+.baseline-grid span {
+  font-size: 0.92rem;
+}
+
+.baseline-grid-header {
+  background: transparent;
+  border-style: dashed;
+}
+
+.baseline-metric-name {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.baseline-delta-positive {
+  color: #8e3b18;
+}
+
+.baseline-delta-negative {
+  color: #2b627a;
+}
+
+.baseline-delta-neutral {
+  color: var(--muted);
 }
 
 .field-row-2 {
@@ -618,9 +705,22 @@ input[type="range"] {
     text-align: left;
   }
 
+  .result-status-row {
+    justify-content: flex-start;
+  }
+
   .current-moment-details summary {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .baseline-panel-header,
+  .baseline-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .baseline-actions {
+    justify-content: flex-start;
   }
 
   .date-time-actions {
