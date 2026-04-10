@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
@@ -157,10 +158,26 @@ def daily_exposure_grid(
     cols: int = 18,
     rows: int = 15,
 ) -> dict[str, object]:
+    return exposure_grid_from_patches(
+        config,
+        patches_over_time,
+        hours_per_sample=config.day_step_minutes / 60.0,
+        cols=cols,
+        rows=rows,
+    )
+
+
+def exposure_grid_from_patches(
+    config: SimulationConfig,
+    patches_over_time: list[tuple[datetime, list[SunlightPatch]]],
+    *,
+    hours_per_sample: float,
+    cols: int = 18,
+    rows: int = 15,
+) -> dict[str, object]:
     values = np.zeros((rows, cols), dtype=float)
     cell_width = config.room.width / cols
     cell_height = config.room.depth / rows
-    hours_per_sample = config.day_step_minutes / 60.0
 
     for row in range(rows):
         for col in range(cols):
@@ -179,6 +196,166 @@ def daily_exposure_grid(
         "cell_height": cell_height,
         "sunlit_fraction": float(np.count_nonzero(values > 0.0) / values.size),
         "peak_hours": float(np.max(values)) if values.size else 0.0,
+    }
+
+
+def weighted_exposure_grid_from_patches(
+    config: SimulationConfig,
+    weighted_patches_over_time: list[tuple[list[SunlightPatch], float]],
+    *,
+    cols: int = 18,
+    rows: int = 15,
+) -> dict[str, object]:
+    values = np.zeros((rows, cols), dtype=float)
+    cell_width = config.room.width / cols
+    cell_height = config.room.depth / rows
+
+    for row in range(rows):
+        for col in range(cols):
+            point = np.array([(col + 0.5) * cell_width, (row + 0.5) * cell_height], dtype=float)
+            sunlight_hours = 0.0
+            for patches, weighted_hours in weighted_patches_over_time:
+                if any(point_in_polygon(point, patch.polygon_xy) for patch in patches):
+                    sunlight_hours += weighted_hours
+            values[row, col] = sunlight_hours
+
+    return {
+        "cols": cols,
+        "rows": rows,
+        "values": values.tolist(),
+        "cell_width": cell_width,
+        "cell_height": cell_height,
+        "sunlit_fraction": float(np.count_nonzero(values > 0.0) / values.size),
+        "peak_hours": float(np.max(values)) if values.size else 0.0,
+    }
+
+
+def patches_for_positions(
+    config: SimulationConfig,
+    positions: list[tuple[datetime, SunPosition]],
+) -> list[tuple[datetime, list[SunlightPatch]]]:
+    patches_over_time: list[tuple[datetime, list[SunlightPatch]]] = []
+    for dt, position in positions:
+        vector = room_sun_vector(config, position)
+        patches = patches_for_windows(config.room, config.windows, vector)
+        if patches:
+            patches_over_time.append((dt, patches))
+    return patches_over_time
+
+
+def representative_days_for_month(year: int, month: int, *, samples_per_month: int = 4) -> list[tuple[date, int]]:
+    days_in_month = monthrange(year, month)[1]
+    representative_days: list[tuple[date, int]] = []
+    for idx in range(samples_per_month):
+        start_day = int(idx * days_in_month / samples_per_month) + 1
+        end_day = int((idx + 1) * days_in_month / samples_per_month)
+        weight_days = end_day - start_day + 1
+        representative_day = (start_day + end_day) // 2
+        representative_days.append((date(year, month, representative_day), weight_days))
+    return representative_days
+
+
+def daylight_positions_for_day(
+    config: SimulationConfig,
+    target_date: date,
+    *,
+    step_minutes: int = 60,
+) -> list[tuple[datetime, SunPosition]]:
+    return [
+        (dt, position)
+        for dt, position in generate_day_positions(
+            config.location.latitude,
+            config.location.longitude,
+            config.location.timezone_name,
+            datetime.combine(target_date, time.min),
+            step_minutes=step_minutes,
+        )
+        if position.elevation_deg > 0.0
+    ]
+
+
+def long_range_exposure_grids(config: SimulationConfig) -> dict[str, dict[str, object]]:
+    samples_per_month = 8
+    representative_days: list[tuple[date, int]] = []
+    for month in range(1, 13):
+        representative_days.extend(
+            representative_days_for_month(config.year, month, samples_per_month=samples_per_month)
+        )
+
+    if config.location.latitude >= 0:
+        winter_months = {12, 1, 2}
+        summer_months = {6, 7, 8}
+        fall_months = {9, 10, 11}
+        spring_months = {3, 4, 5}
+        winter_label = "Dec-Feb"
+        summer_label = "Jun-Aug"
+        fall_label = "Sep-Nov"
+        spring_label = "Mar-May"
+    else:
+        winter_months = {6, 7, 8}
+        summer_months = {12, 1, 2}
+        fall_months = {3, 4, 5}
+        spring_months = {9, 10, 11}
+        winter_label = "Jun-Aug"
+        summer_label = "Dec-Feb"
+        fall_label = "Mar-May"
+        spring_label = "Sep-Nov"
+
+    weighted_samples_by_period: dict[str, list[tuple[list[SunlightPatch], float]]] = {
+        "year": [],
+        "winter": [],
+        "summer": [],
+        "fall": [],
+        "spring": [],
+    }
+
+    for sample_date, weight_days in representative_days:
+        daylight_positions = daylight_positions_for_day(config, sample_date, step_minutes=60)
+        weighted_hours_per_sample = float(weight_days)
+        for _dt, patches in patches_for_positions(config, daylight_positions):
+            weighted_samples_by_period["year"].append((patches, weighted_hours_per_sample))
+            if sample_date.month in winter_months:
+                weighted_samples_by_period["winter"].append((patches, weighted_hours_per_sample))
+            if sample_date.month in summer_months:
+                weighted_samples_by_period["summer"].append((patches, weighted_hours_per_sample))
+            if sample_date.month in fall_months:
+                weighted_samples_by_period["fall"].append((patches, weighted_hours_per_sample))
+            if sample_date.month in spring_months:
+                weighted_samples_by_period["spring"].append((patches, weighted_hours_per_sample))
+
+    period_definitions = {
+        "year": (
+            "Year",
+            f"Estimated direct sun hours across the full year using {samples_per_month} representative days per month and hourly daylight samples",
+        ),
+        "winter": (
+            f"Winter ({winter_label})",
+            f"Estimated direct sun hours across winter ({winter_label}) using {samples_per_month} representative days per month and hourly daylight samples",
+        ),
+        "summer": (
+            f"Summer ({summer_label})",
+            f"Estimated direct sun hours across summer ({summer_label}) using {samples_per_month} representative days per month and hourly daylight samples",
+        ),
+        "fall": (
+            f"Fall ({fall_label})",
+            f"Estimated direct sun hours across fall ({fall_label}) using {samples_per_month} representative days per month and hourly daylight samples",
+        ),
+        "spring": (
+            f"Spring ({spring_label})",
+            f"Estimated direct sun hours across spring ({spring_label}) using {samples_per_month} representative days per month and hourly daylight samples",
+        ),
+    }
+
+    return {
+        key: {
+            "label": label,
+            "description": description,
+            "exposure_grid": weighted_exposure_grid_from_patches(
+                config,
+                weighted_samples_by_period[key],
+            ),
+        }
+        for key, (label, description) in period_definitions.items()
     }
 
 

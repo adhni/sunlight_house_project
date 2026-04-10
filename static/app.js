@@ -9,6 +9,7 @@
   const timeScrubberReference = document.getElementById("time-scrubber-reference");
   const setNowButton = document.getElementById("set-now-button");
   const dailyExposureTooltip = document.getElementById("daily-exposure-tooltip");
+  const longRangeExposureTooltip = document.getElementById("long-range-exposure-tooltip");
 
   const locationPresetInput = document.getElementById("location-preset-input");
   const windowFacingInput = document.getElementById("window-facing-input");
@@ -16,6 +17,7 @@
   const windowFacingButtons = document.querySelectorAll("[data-window-facing]");
   const resultTabButtons = document.querySelectorAll("[data-result-tab]");
   const resultPanels = document.querySelectorAll("[data-result-panel]");
+  const periodViewButtons = document.querySelectorAll("[data-period-view]");
 
   const customLocationPanel = document.getElementById("custom-location-panel");
   const customLocationToggle = document.getElementById("custom-location-toggle");
@@ -43,6 +45,12 @@
   let marker = null;
   let latestRequestId = 0;
   let activeSnapshotController = null;
+  let latestLongRangeRequestId = 0;
+  let activeLongRangeController = null;
+  let activeResultTab = "current";
+  let activeLongRangePeriod = "year";
+  let longRangePayload = null;
+  let longRangeQuery = "";
   const defaultUpdateMessage = "Preview is up to date.";
 
   function isLeapYear(year) {
@@ -102,6 +110,10 @@
       date: `${parts.year}-${parts.month}-${parts.day}`,
       time: `${parts.hour}:${String(roundedMinute).padStart(2, "0")}`,
     };
+  }
+
+  function currentQueryString() {
+    return new URLSearchParams(new FormData(form)).toString();
   }
 
   function selectedYear() {
@@ -365,35 +377,35 @@
     };
   }
 
-  function hideDailyExposureTooltip() {
-    if (!dailyExposureTooltip) {
+  function hideExposureTooltip(tooltip) {
+    if (!tooltip) {
       return;
     }
-    dailyExposureTooltip.hidden = true;
+    tooltip.hidden = true;
   }
 
-  function showDailyExposureTooltip(message, event) {
-    if (!dailyExposureTooltip) {
+  function showExposureTooltip(containerId, tooltip, message, event) {
+    if (!tooltip) {
       return;
     }
-    const containerRect = document.getElementById("daily-exposure-svg").getBoundingClientRect();
+    const containerRect = document.getElementById(containerId).getBoundingClientRect();
     const offsetX = event.clientX - containerRect.left;
     const offsetY = event.clientY - containerRect.top;
     const tooltipWidth = 180;
     const left = Math.min(Math.max(12, offsetX + 14), Math.max(12, containerRect.width - tooltipWidth - 12));
     const top = Math.max(12, offsetY - 52);
-    dailyExposureTooltip.textContent = message;
-    dailyExposureTooltip.style.left = `${left}px`;
-    dailyExposureTooltip.style.top = `${top}px`;
-    dailyExposureTooltip.hidden = false;
+    tooltip.textContent = message;
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+    tooltip.hidden = false;
   }
 
-  function updateExposureLegendAndStats(grid) {
+  function updateExposureLegendAndStats(grid, prefix) {
     const stats = exposureGridStats(grid);
-    setText("legend-max-hours", `${stats.peakHours.toFixed(1)} h`);
-    setText("daily-stat-peak-hours", `${stats.peakHours.toFixed(1)} h`);
-    setText("daily-stat-sunlit-fraction", `${Math.round(stats.sunlitFraction * 100)}%`);
-    setText("daily-stat-avg-sunlit-hours", `${stats.avgSunlitHours.toFixed(1)} h`);
+    setText(`${prefix}-legend-max-hours`, `${stats.peakHours.toFixed(1)} h`);
+    setText(`${prefix}-stat-peak-hours`, `${stats.peakHours.toFixed(1)} h`);
+    setText(`${prefix}-stat-sunlit-fraction`, `${Math.round(stats.sunlitFraction * 100)}%`);
+    setText(`${prefix}-stat-avg-sunlit-hours`, `${stats.avgSunlitHours.toFixed(1)} h`);
   }
 
   function setUpdateStatus(message, state = "idle") {
@@ -532,14 +544,13 @@
     `;
   }
 
-  function createExposureMapSvg(payload) {
+  function createExposureMapSvg(payload, grid, ariaLabel) {
     const width = payload.room.width;
     const depth = payload.room.depth;
     const pad = 0.95;
     const viewBox = `${-pad} ${-pad} ${width + pad * 2} ${depth + pad * 2}`;
     const activeWindow = payload.windows[0];
     const [windowA, windowB] = activeWindow.wall_segment_xy;
-    const grid = payload.daily.exposure_grid;
     const rows = grid.rows;
     const cols = grid.cols;
     const cellWidth = grid.cell_width;
@@ -560,7 +571,7 @@
     }
 
     return `
-      <svg viewBox="${viewBox}" role="img" aria-label="Daily sunlight map">
+      <svg viewBox="${viewBox}" role="img" aria-label="${ariaLabel}">
         <rect x="0" y="0" width="${width}" height="${depth}" fill="#fffdf8" stroke="#1f2732" stroke-width="0.06"></rect>
         ${cells.join("")}
         <line x1="${windowA[0]}" y1="${depth - windowA[1]}" x2="${windowB[0]}" y2="${depth - windowB[1]}" stroke="#2b627a" stroke-width="0.17" stroke-linecap="round"></line>
@@ -607,9 +618,9 @@
       : "No direct sun");
 
     setHtml("room-snapshot-svg", createRoomSvg(payload));
-    setHtml("daily-exposure-svg", createExposureMapSvg(payload));
-    updateExposureLegendAndStats(payload.daily.exposure_grid);
-    hideDailyExposureTooltip();
+    setHtml("daily-exposure-svg", createExposureMapSvg(payload, payload.daily.exposure_grid, "Daily sunlight map"));
+    updateExposureLegendAndStats(payload.daily.exposure_grid, "daily");
+    hideExposureTooltip(dailyExposureTooltip);
 
     const snapshotStatus = document.getElementById("room-snapshot-status");
     if (snapshotStatus) {
@@ -630,37 +641,73 @@
     );
   }
 
-  function handleExposureReadout(event) {
-    const cell = event.target.closest("[data-cell-hours]");
-    if (!cell) {
-      clearExposureHoverState();
-      hideDailyExposureTooltip();
+  function updateLongRangeDom() {
+    if (!longRangePayload) {
       return;
     }
-    clearExposureHoverState();
-    const row = cell.dataset.cellRow;
-    const col = cell.dataset.cellCol;
-    const hours = parseFloat(cell.dataset.cellHours || "0");
-    cell.setAttribute("stroke", "rgba(31,39,50,0.28)");
-    cell.setAttribute("stroke-width", "0.03");
-    showDailyExposureTooltip(`Row ${row}, column ${col}: ${hours.toFixed(1)} h direct sun.`, event);
+    const period = longRangePayload.periods[activeLongRangePeriod];
+    periodViewButtons.forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.periodView === activeLongRangePeriod);
+      const buttonPeriod = longRangePayload.periods[button.dataset.periodView];
+      if (buttonPeriod) {
+        button.textContent = buttonPeriod.label;
+      }
+    });
+    setHtml(
+      "long-range-exposure-svg",
+      createExposureMapSvg(longRangePayload, period.exposure_grid, `${period.label} sunlight map`)
+    );
+    updateExposureLegendAndStats(period.exposure_grid, "long-range");
+    hideExposureTooltip(longRangeExposureTooltip);
+    setText(
+      "long-range-exposure-caption",
+      `${period.description}. Peak floor cell: ${period.exposure_grid.peak_hours.toFixed(1)} h.`
+    );
   }
 
-  function pinExposureReadout(event) {
-    const cell = event.target.closest("[data-cell-hours]");
-    if (!cell) {
-      return;
-    }
-    const row = cell.dataset.cellRow;
-    const col = cell.dataset.cellCol;
-    const hours = parseFloat(cell.dataset.cellHours || "0");
-    showDailyExposureTooltip(`Selected row ${row}, column ${col}: ${hours.toFixed(1)} h direct sun.`, event);
-  }
-
-  function clearExposureHoverState() {
-    document.querySelectorAll("#daily-exposure-svg [data-cell-hours]").forEach((cell) => {
+  function clearExposureHoverState(containerId) {
+    document.querySelectorAll(`#${containerId} [data-cell-hours]`).forEach((cell) => {
       cell.setAttribute("stroke", "rgba(255,255,255,0.12)");
       cell.setAttribute("stroke-width", "0.01");
+    });
+  }
+
+  function wireExposureInteractions(containerId, tooltip) {
+    const container = document.getElementById(containerId);
+    if (!container) {
+      return;
+    }
+
+    container.addEventListener("mousemove", (event) => {
+      const cell = event.target.closest("[data-cell-hours]");
+      if (!cell) {
+        clearExposureHoverState(containerId);
+        hideExposureTooltip(tooltip);
+        return;
+      }
+      clearExposureHoverState(containerId);
+      const row = cell.dataset.cellRow;
+      const col = cell.dataset.cellCol;
+      const hours = parseFloat(cell.dataset.cellHours || "0");
+      cell.setAttribute("stroke", "rgba(31,39,50,0.28)");
+      cell.setAttribute("stroke-width", "0.03");
+      showExposureTooltip(containerId, tooltip, `Row ${row}, column ${col}: ${hours.toFixed(1)} h direct sun.`, event);
+    });
+
+    container.addEventListener("mouseleave", () => {
+      clearExposureHoverState(containerId);
+      hideExposureTooltip(tooltip);
+    });
+
+    container.addEventListener("click", (event) => {
+      const cell = event.target.closest("[data-cell-hours]");
+      if (!cell) {
+        return;
+      }
+      const row = cell.dataset.cellRow;
+      const col = cell.dataset.cellCol;
+      const hours = parseFloat(cell.dataset.cellHours || "0");
+      showExposureTooltip(containerId, tooltip, `Selected row ${row}, column ${col}: ${hours.toFixed(1)} h direct sun.`, event);
     });
   }
 
@@ -684,7 +731,11 @@
       }
       if (requestId === latestRequestId) {
         updateSnapshotDom(payload);
-        setUpdateStatus(defaultUpdateMessage, "idle");
+        if (activeResultTab === "long-range") {
+          await fetchLongRangeExposure(true);
+        } else {
+          setUpdateStatus(defaultUpdateMessage, "idle");
+        }
       }
     } catch (error) {
       if (error.name === "AbortError") {
@@ -694,6 +745,48 @@
       setUpdateStatus("Could not update preview.", "error");
     } finally {
       if (requestId === latestRequestId) {
+        setPendingState(false);
+      }
+    }
+  }
+
+  async function fetchLongRangeExposure(force = false) {
+    const query = currentQueryString();
+    if (!force && longRangePayload && longRangeQuery === query) {
+      updateLongRangeDom();
+      return;
+    }
+
+    latestLongRangeRequestId += 1;
+    const requestId = latestLongRangeRequestId;
+    if (activeLongRangeController) {
+      activeLongRangeController.abort();
+    }
+    activeLongRangeController = new AbortController();
+    setPendingState(true);
+    setUpdateStatus("Updating yearly map...", "pending");
+    try {
+      const response = await fetch(`/api/long-range-exposure?${query}`, {
+        signal: activeLongRangeController.signal,
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "Long-range request failed.");
+      }
+      if (requestId === latestLongRangeRequestId) {
+        longRangePayload = payload;
+        longRangeQuery = query;
+        updateLongRangeDom();
+        setUpdateStatus(defaultUpdateMessage, "idle");
+      }
+    } catch (error) {
+      if (error.name === "AbortError") {
+        return;
+      }
+      console.error(error);
+      setUpdateStatus("Could not update yearly map.", "error");
+    } finally {
+      if (requestId === latestLongRangeRequestId) {
         setPendingState(false);
       }
     }
@@ -763,24 +856,34 @@
   resultTabButtons.forEach((button) => {
     button.addEventListener("click", () => {
       const selectedTab = button.dataset.resultTab;
+      activeResultTab = selectedTab;
       resultTabButtons.forEach((item) => {
         item.classList.toggle("is-active", item === button);
       });
       resultPanels.forEach((panel) => {
         panel.classList.toggle("is-active", panel.dataset.resultPanel === selectedTab);
       });
+      if (selectedTab === "long-range") {
+        fetchLongRangeExposure();
+      }
     });
   });
 
-  const dailyExposureSvg = document.getElementById("daily-exposure-svg");
-  if (dailyExposureSvg) {
-    dailyExposureSvg.addEventListener("mousemove", handleExposureReadout);
-    dailyExposureSvg.addEventListener("mouseleave", () => {
-      clearExposureHoverState();
-      hideDailyExposureTooltip();
+  periodViewButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      activeLongRangePeriod = button.dataset.periodView;
+      if (activeResultTab === "long-range") {
+        fetchLongRangeExposure();
+      } else {
+        periodViewButtons.forEach((item) => {
+          item.classList.toggle("is-active", item === button);
+        });
+      }
     });
-    dailyExposureSvg.addEventListener("click", pinExposureReadout);
-  }
+  });
+
+  wireExposureInteractions("daily-exposure-svg", dailyExposureTooltip);
+  wireExposureInteractions("long-range-exposure-svg", longRangeExposureTooltip);
 
   customLocationToggle.addEventListener("click", () => {
     if (locationPresetInput.value === "custom") {

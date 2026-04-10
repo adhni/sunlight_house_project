@@ -53,11 +53,12 @@
             </div>
 
             <div class="chip-row result-tab-row">
-              <button type="button" class="chip-button is-active" data-result-tab="current">Current Moment</button>
-              <button type="button" class="chip-button" data-result-tab="sunlight-map">Direct Sun Hours Today</button>
+              <button type="button" class="chip-button" data-result-tab="current">Current Moment</button>
+              <button type="button" class="chip-button is-active" data-result-tab="sunlight-map">Direct Sun Hours Today</button>
+              <button type="button" class="chip-button" data-result-tab="long-range">Yearly / Seasonal</button>
             </div>
 
-            <div class="result-view is-active" data-result-panel="current">
+            <div class="result-view" data-result-panel="current">
               <div class="room-snapshot-shell">
                 <div id="room-snapshot-svg" class="room-snapshot room-snapshot-large"></div>
               </div>
@@ -73,7 +74,7 @@
               </p>
             </div>
 
-            <div class="result-view" data-result-panel="sunlight-map">
+            <div class="result-view is-active" data-result-panel="sunlight-map">
               <div class="room-snapshot-shell">
                 <div id="daily-exposure-svg" class="room-snapshot room-snapshot-large"></div>
                 <div id="daily-exposure-tooltip" class="chart-tooltip" hidden></div>
@@ -104,6 +105,47 @@
               </div>
               <p id="daily-exposure-caption" class="angle-caption room-caption">
                 Direct sun hours for the selected day.
+              </p>
+            </div>
+
+            <div class="result-view" data-result-panel="long-range">
+              <div class="chip-row result-tab-row">
+                <button type="button" class="chip-button is-active" data-period-view="year">Year</button>
+                <button type="button" class="chip-button" data-period-view="winter">Winter</button>
+                <button type="button" class="chip-button" data-period-view="spring">Spring</button>
+                <button type="button" class="chip-button" data-period-view="summer">Summer</button>
+                <button type="button" class="chip-button" data-period-view="fall">Fall</button>
+              </div>
+              <div class="room-snapshot-shell">
+                <div id="long-range-exposure-svg" class="room-snapshot room-snapshot-large"></div>
+                <div id="long-range-exposure-tooltip" class="chart-tooltip" hidden></div>
+              </div>
+              <div class="daily-map-meta">
+                <div class="daily-map-legend">
+                  <span class="explorer-label">Legend</span>
+                  <div class="legend-ramp" aria-hidden="true"></div>
+                  <div class="legend-labels">
+                    <span>0 h</span>
+                    <span id="long-range-legend-max-hours">Max</span>
+                  </div>
+                </div>
+              </div>
+              <div class="daily-map-stats">
+                <article class="metric-card">
+                  <span class="metric-label">Peak Floor Cell</span>
+                  <strong id="long-range-stat-peak-hours">0.0 h</strong>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">Room With Any Sun</span>
+                  <strong id="long-range-stat-sunlit-fraction">0%</strong>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">Average Over Sunlit Cells</span>
+                  <strong id="long-range-stat-avg-sunlit-hours">0.0 h</strong>
+                </article>
+              </div>
+              <p id="long-range-exposure-caption" class="angle-caption room-caption">
+                Direct sun hours across longer periods.
               </p>
             </div>
           </article>

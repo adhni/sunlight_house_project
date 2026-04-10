@@ -10,6 +10,7 @@ from sunlight_house.analysis import (
     analyze_day,
     analyze_snapshot,
     daily_exposure_grid,
+    long_range_exposure_grids,
     room_relative_azimuth,
 )
 from sunlight_house.config import (
@@ -76,6 +77,18 @@ def create_app() -> Flask:
             return jsonify({"error": str(exc)}), 400
 
         return jsonify(snapshot_payload(config, selected_moment))
+
+    @app.get("/api/long-range-exposure")
+    def api_long_range_exposure():
+        defaults = default_form_values()
+        raw_values = defaults | {key: value for key, value in request.args.items() if value != ""}
+
+        try:
+            config, _selected_moment = build_config_and_moment(raw_values)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        return jsonify(long_range_payload(config))
 
     @app.get("/healthz")
     def healthz() -> tuple[str, int]:
@@ -254,6 +267,26 @@ def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dic
             "facing": config.window_facing_label,
         },
         "window_facing_label": config.window_facing_label,
+    }
+
+
+def long_range_payload(config: SimulationConfig) -> dict[str, object]:
+    return {
+        "room": {
+            "width": config.room.width,
+            "depth": config.room.depth,
+            "height": config.room.height,
+        },
+        "windows": [
+            {
+                "name": window.name,
+                "wall": wall_name_for_window(window),
+                "wall_segment_xy": window.wall_segment_xy().tolist(),
+            }
+            for window in config.windows
+        ],
+        "window_facing_label": config.window_facing_label,
+        "periods": long_range_exposure_grids(config),
     }
 
 

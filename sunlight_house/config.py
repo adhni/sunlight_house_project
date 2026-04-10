@@ -169,5 +169,5 @@ def default_melbourne_scenario() -> SimulationConfig:
         location=location_from_preset(default_location_preset()),
         room=room,
         windows=windows,
-        window_facing_label="E",
+        window_facing_label="NE",
     )
