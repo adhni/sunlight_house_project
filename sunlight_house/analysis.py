@@ -179,14 +179,14 @@ def exposure_grid_from_patches(
     cell_width = config.room.width / cols
     cell_height = config.room.depth / rows
 
-    for row in range(rows):
-        for col in range(cols):
-            point = np.array([(col + 0.5) * cell_width, (row + 0.5) * cell_height], dtype=float)
-            sunlight_hours = 0.0
-            for _, patches in patches_over_time:
-                if any(point_in_polygon(point, patch.polygon_xy) for patch in patches):
-                    sunlight_hours += hours_per_sample
-            values[row, col] = sunlight_hours
+    for _dt, patches in patches_over_time:
+        accumulate_patch_hours(
+            values,
+            patches,
+            hours_per_sample,
+            cell_width=cell_width,
+            cell_height=cell_height,
+        )
 
     return {
         "cols": cols,
@@ -203,21 +203,21 @@ def weighted_exposure_grid_from_patches(
     config: SimulationConfig,
     weighted_patches_over_time: list[tuple[list[SunlightPatch], float]],
     *,
-    cols: int = 18,
-    rows: int = 15,
+    cols: int = 12,
+    rows: int = 10,
 ) -> dict[str, object]:
     values = np.zeros((rows, cols), dtype=float)
     cell_width = config.room.width / cols
     cell_height = config.room.depth / rows
 
-    for row in range(rows):
-        for col in range(cols):
-            point = np.array([(col + 0.5) * cell_width, (row + 0.5) * cell_height], dtype=float)
-            sunlight_hours = 0.0
-            for patches, weighted_hours in weighted_patches_over_time:
-                if any(point_in_polygon(point, patch.polygon_xy) for patch in patches):
-                    sunlight_hours += weighted_hours
-            values[row, col] = sunlight_hours
+    for patches, weighted_hours in weighted_patches_over_time:
+        accumulate_patch_hours(
+            values,
+            patches,
+            weighted_hours,
+            cell_width=cell_width,
+            cell_height=cell_height,
+        )
 
     return {
         "cols": cols,
@@ -241,6 +241,44 @@ def patches_for_positions(
         if patches:
             patches_over_time.append((dt, patches))
     return patches_over_time
+
+
+def accumulate_patch_hours(
+    values: np.ndarray,
+    patches: list[SunlightPatch],
+    sample_hours: float,
+    *,
+    cell_width: float,
+    cell_height: float,
+) -> None:
+    if not patches or sample_hours <= 0.0:
+        return
+
+    rows, cols = values.shape
+    hit_mask = np.zeros((rows, cols), dtype=bool)
+
+    for patch in patches:
+        polygon_xy = patch.polygon_xy
+        min_x = float(np.min(polygon_xy[:, 0]))
+        max_x = float(np.max(polygon_xy[:, 0]))
+        min_y = float(np.min(polygon_xy[:, 1]))
+        max_y = float(np.max(polygon_xy[:, 1]))
+
+        min_col = max(0, int(np.floor(min_x / cell_width)))
+        max_col = min(cols - 1, int(np.floor(max_x / cell_width)))
+        min_row = max(0, int(np.floor(min_y / cell_height)))
+        max_row = min(rows - 1, int(np.floor(max_y / cell_height)))
+
+        for row in range(min_row, max_row + 1):
+            center_y = (row + 0.5) * cell_height
+            for col in range(min_col, max_col + 1):
+                if hit_mask[row, col]:
+                    continue
+                point = np.array([(col + 0.5) * cell_width, center_y], dtype=float)
+                if point_in_polygon(point, polygon_xy):
+                    hit_mask[row, col] = True
+
+    values[hit_mask] += sample_hours
 
 
 def representative_days_for_month(year: int, month: int, *, samples_per_month: int = 4) -> list[tuple[date, int]]:

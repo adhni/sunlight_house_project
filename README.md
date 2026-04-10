@@ -1,28 +1,45 @@
 # Sunlight House Lab
 
-This project is a compact Python prototype for solar position and direct-sunlight entry in a simple rectangular room. It now includes both:
+Sunlight House Lab is a compact Python project for exploring direct sunlight inside a simple rectangular room.
 
-- a CLI demo that regenerates the example PNG outputs
-- a small Flask web app that lets you explore the same model interactively
+It includes:
 
-The goal stays deliberately narrow: physically meaningful solar angles, simple wall-window geometry, direct-sunlight checks, and easy-to-read room views.
+- a small Flask app for interactive exploration
+- a CLI demo that regenerates example plots
+- a lightweight solar and geometry model that stays intentionally narrow
 
-## What the project does
+The current app is designed around one main window on a rectangular room. The room stays axis-aligned internally, and the selected compass facing rotates the room relative to the real-world sun.
 
-- computes solar elevation and azimuth for a fixed location
-- uses azimuth in degrees clockwise from north
-- uses elevation in degrees above the horizon
-- converts solar angles into a unit sun vector in local ENU coordinates
-- models a rectangular room with one or more axis-aligned wall windows
-- ignores windows when the sun is behind the glazing
-- projects direct sunlight rays from the window corners onto the floor
-- compares Melbourne winter and summer behavior
-- produces daily and yearly CLI visualizations
-- exposes the model through a simple web interface suitable for Render deployment
+## What It Does
 
-## Coordinate system and conventions
+- computes solar elevation and azimuth from latitude, longitude, local datetime, and timezone
+- models a rectangular room with a single main wall window
+- projects direct sunlight from the window onto the floor
+- renders a top-down room snapshot for a selected moment
+- estimates daily direct-sun-hours exposure across the floor
+- estimates yearly and seasonal floor exposure using representative-day sampling
+- exposes the model through a Flask web UI suitable for local use or Render deployment
 
-The room and solar calculations use a local East-North-Up frame:
+## Current Defaults
+
+The default scenario is Melbourne with the current Melbourne date and time, rounded down to the nearest 15 minutes.
+
+Default room and window values:
+
+- location: `Melbourne, Australia`
+- timezone: `Australia/Melbourne`
+- window facing: `NE`
+- room: `4.0 m` width, `5.0 m` depth, `3.0 m` ceiling
+- window centre from left corner: `3.0 m`
+- sill height: `0.1 m`
+- window width: `1.5 m`
+- window height: `2.0 m`
+
+The main result tab opens on `Direct Sun Hours Today`.
+
+## Coordinate System
+
+The core solar calculations use a local East-North-Up frame:
 
 - `x`: east
 - `y`: north
@@ -38,9 +55,9 @@ Solar azimuth is measured clockwise from north:
 Solar elevation is measured above the horizon:
 
 - `0 deg` = horizon
-- `90 deg` = directly overhead
+- `90 deg` = overhead
 
-The unit sun vector points from the room toward the sun:
+The sun vector uses:
 
 ```python
 x = cos(elevation) * sin(azimuth)
@@ -48,43 +65,69 @@ y = cos(elevation) * cos(azimuth)
 z = sin(elevation)
 ```
 
-For Melbourne in the southern hemisphere, the sun is typically north of the building around solar noon, especially in winter. The default model uses that convention consistently.
+## Web App
 
-## Room model
+Run locally:
 
-The default room is:
+```bash
+PORT=5001 python3 app.py
+```
 
-- width: `6.0 m` in the east-west direction
-- depth: `5.0 m` in the south-north direction
-- height: `3.0 m`
+Then open `http://127.0.0.1:5001`.
 
-The default window is on the room's local north wall:
+The app currently includes:
 
-- wall: north
-- horizontal center: `x = 3.0 m`
-- center height: `z = 1.5 m`
-- width: `2.4 m`
-- height: `1.6 m`
-- outward normal: `(0, 1, 0)`
+- preset locations for Melbourne, Jakarta, and Boston
+- a custom location mode with draggable map marker
+- manual latitude and longitude fields
+- manual timezone override under a collapsible advanced section
+- an 8-direction window-facing selector
+- room and single-window geometry controls
+- day-of-year and time-of-day scrubbers
+- a `Now` button for the selected timezone
+- a `Current Moment` room snapshot
+- a `Direct Sun Hours Today` floor map with legend, stats, and in-chart tooltip
+- a `Yearly / Seasonal` floor map with `Year`, `Winter`, `Spring`, `Summer`, and `Fall`
 
-In the interactive web app, you can keep the same rectangular geometry but choose one of 8 compass-facing options for the main window:
+## Long-Range Exposure Logic
 
-- `N`, `NE`, `E`, `SE`, `S`, `SW`, `W`, `NW`
+Daily exposure uses the selected day with the configured day step.
 
-Internally the room is rotated relative to the real-world sun, which keeps the math physically consistent while avoiding a more complex non-rectangular wall model.
+Yearly and seasonal exposure are estimated rather than fully simulated. The current long-range method:
 
-Sunlight only enters when the room-relative sun vector has a positive dot product with the window's outward normal. That dot product is also used as a simple direct-sunlight intensity proxy.
+- chooses `8` representative days per month
+- samples each representative day hourly
+- keeps only daylight hours where solar elevation is above the horizon
+- weights each representative day by how many calendar days it stands in for
+- renders long-range results on a coarser floor grid than the daily map
+- aggregates into `Year`, `Winter`, `Spring`, `Summer`, and `Fall`
 
-## Main functions
+Season labels are hemisphere-aware:
 
-The core API is intentionally small:
+- northern hemisphere:
+  - winter: `Dec-Feb`
+  - spring: `Mar-May`
+  - summer: `Jun-Aug`
+  - fall: `Sep-Nov`
+- southern hemisphere:
+  - winter: `Jun-Aug`
+  - spring: `Sep-Nov`
+  - summer: `Dec-Feb`
+  - fall: `Mar-May`
 
-- `get_sun_position()`
-- `sun_vector()`
-- `intersects_window()`
-- `project_to_floor()`
+Long-range maps should be treated as estimated planning views, not engineering-grade annual simulations.
 
-## Project layout
+## CLI Demo
+
+Run:
+
+```bash
+python3 run_demo.py
+```
+
+The demo regenerates example plots in `outputs/` using the default Melbourne scenario.
+
+## Project Layout
 
 ```text
 sunlight_house_project/
@@ -95,9 +138,14 @@ sunlight_house_project/
 ├── run_demo.py
 ├── outputs/
 ├── static/
+│   ├── app.js
 │   └── styles.css
 ├── templates/
 │   └── index.html
+├── tests/
+│   ├── test_analysis.py
+│   ├── test_app.py
+│   └── test_config.py
 └── sunlight_house/
     ├── __init__.py
     ├── analysis.py
@@ -115,42 +163,15 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Run the CLI demo
+## Run Tests
+
+The repo uses Python's built-in `unittest` test runner.
 
 ```bash
-python3 run_demo.py
+python3 -m unittest discover -s tests
 ```
 
-The demo:
-
-1. prints sample Melbourne sun positions for solstice and equinox dates
-2. simulates one full day every 10 minutes for June 21 and December 21
-3. simulates a full year hourly for Melbourne
-4. saves plots into `outputs/`
-5. prints whether direct sunlight entered for the default Melbourne room
-
-## Run the web app locally
-
-```bash
-PORT=5001 python3 app.py
-```
-
-Then open `http://127.0.0.1:5001`.
-
-The web app includes:
-
-- preset city choices for Melbourne, Jakarta, and Boston
-- a draggable map marker for latitude and longitude
-- an 8-direction window-facing selector
-- simple room dimensions and one-window geometry controls
-- day-of-year and time-of-day levers for quick exploration
-- a client-side top-down room snapshot for the selected moment
-- a live `Direct Sun Hours Today` floor map
-- live controls for location, timezone, room, and window geometry
-
-The live explorer is inspired by tools such as SunCalc, but it remains focused on this project's own direct-sunlight room model rather than trying to clone the full SunCalc feature set.
-
-## Render deployment
+## Render Deployment
 
 The repo includes `render.yaml` for a simple Python web service.
 
@@ -160,57 +181,9 @@ Render uses:
 - start command: `python3 -m gunicorn app:app --bind 0.0.0.0:$PORT`
 - health check path: `/healthz`
 
-If you prefer to configure Render manually instead of using `render.yaml`, use the same commands.
+## Notes And Limits
 
-Basic manual setup in the Render dashboard:
-
-1. Create a new `Web Service`.
-2. Connect the GitHub repo and choose the `main` branch.
-3. Set runtime to `Python`.
-4. Use build command `pip install -r requirements.txt`.
-5. Use start command `python3 -m gunicorn app:app --bind 0.0.0.0:$PORT`.
-6. Set health check path to `/healthz`.
-7. Deploy.
-
-## CLI output plots
-
-Running the CLI demo regenerates these example files in `outputs/`:
-
-- `june_21_winter_solstice_intensity.png`
-  Direct sunlight factor on the default window every 10 minutes.
-- `june_21_winter_solstice_patches.png`
-  Top-down room view showing where direct sunlight lands on the floor through the day.
-- `december_21_summer_solstice_intensity.png`
-  Direct sunlight factor on the default window every 10 minutes.
-- `december_21_summer_solstice_patches.png`
-  Top-down room view showing summer floor patches.
-- `melbourne_yearly_noon_elevation.png`
-  Daily peak solar elevation derived from an hourly full-year simulation, with key seasonal dates marked.
-- `melbourne_key_dates_solar_angles.png`
-  Daily elevation and azimuth curves for summer solstice, equinox, and winter solstice.
-
-## Regenerating outputs
-
-The `outputs/` folder is kept in the repo, but generated images are no longer tracked by Git. To regenerate them locally, run:
-
-```bash
-python3 run_demo.py
-```
-
-The script overwrites the standard example outputs with fresh results.
-
-## Notes on the solar model
-
-- Solar position uses a NOAA-style calculation from latitude, longitude, local datetime, and timezone.
-- Naive datetimes are interpreted in the configured IANA timezone.
-- Timezone handling uses `zoneinfo`, so daylight saving changes are respected.
-- The yearly summary is sampled hourly by default.
-- The daily plots are sampled every 10 minutes by default.
-
-## Notes on the geometry model
-
-- The geometry is axis-aligned and intentionally simple.
-- Windows must lie on one of the room walls and carry an outward-facing wall normal.
-- If the sun is below the horizon or behind the glass, the window is ignored.
-- Direct rays are projected from the window corners to the floor plane `z = 0`.
-- The model does not include blinds, overhangs, furniture, diffuse light, reflections, or inter-room shading.
+- The geometry model is intentionally simple and axis-aligned.
+- The app currently exposes one main window, even though some lower-level code can hold multiple windows.
+- The model does not include blinds, overhangs, furniture, diffuse sky light, reflections, or external obstructions.
+- Floor patches are generated from projected window corners and clipped into room bounds, so edge behavior is still a simplification.

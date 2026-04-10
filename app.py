@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
+from time import perf_counter
 from zoneinfo import ZoneInfo
 
 from flask import Flask, jsonify, render_template, request, url_for
@@ -88,7 +89,22 @@ def create_app() -> Flask:
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
-        return jsonify(long_range_payload(config))
+        started_at = perf_counter()
+        payload = long_range_payload(config)
+        elapsed_ms = (perf_counter() - started_at) * 1000.0
+        app.logger.info(
+            "Long-range exposure computed in %.1f ms for %s (%s, %.4f, %.4f), facing %s, room %.1fx%.1fx%.1f",
+            elapsed_ms,
+            config.location.name,
+            config.location.timezone_name,
+            config.location.latitude,
+            config.location.longitude,
+            config.window_facing_label,
+            config.room.width,
+            config.room.depth,
+            config.room.height,
+        )
+        return jsonify(payload)
 
     @app.get("/healthz")
     def healthz() -> tuple[str, int]:
