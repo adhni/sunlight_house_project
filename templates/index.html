@@ -54,8 +54,8 @@
 
             <div class="result-toolbar">
               <div class="chip-row result-tab-row">
-                <button type="button" class="chip-button" data-result-tab="current">Current Moment</button>
-                <button type="button" class="chip-button is-active" data-result-tab="sunlight-map">Direct Sun Hours Today</button>
+                <button type="button" class="chip-button is-active" data-result-tab="current">Current Moment</button>
+                <button type="button" class="chip-button" data-result-tab="sunlight-map">Direct Sun Hours Today</button>
                 <button type="button" class="chip-button" data-result-tab="long-range">Yearly / Seasonal</button>
               </div>
               <div class="result-status-row">
@@ -113,10 +113,11 @@
               </section>
             </details>
 
-            <div class="result-view" data-result-panel="current">
+            <div class="result-view is-active" data-result-panel="current">
               <div class="room-snapshot-shell">
                 <div id="room-snapshot-svg" class="room-snapshot room-snapshot-large"></div>
               </div>
+              <p class="drag-hint">Drag the main window marker or line to move it along the active wall.</p>
 
               <div class="snapshot-facts">
                 <span id="snapshot-window-fact">Window facing: {{ form_values.window_facing }}</span>
@@ -129,7 +130,7 @@
               </p>
             </div>
 
-            <div class="result-view is-active" data-result-panel="sunlight-map">
+            <div class="result-view" data-result-panel="sunlight-map">
               <div class="room-snapshot-shell">
                 <div id="daily-exposure-svg" class="room-snapshot room-snapshot-large"></div>
                 <div id="daily-exposure-tooltip" class="chart-tooltip" hidden></div>

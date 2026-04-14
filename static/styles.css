@@ -26,6 +26,10 @@ body {
     linear-gradient(180deg, #faf4e9 0%, #f5ecdf 50%, #efe3d0 100%);
 }
 
+body.is-dragging-window {
+  user-select: none;
+}
+
 .page-shell {
   width: min(1360px, calc(100% - 72px));
   margin: 0 auto;
@@ -655,6 +659,17 @@ input[type="range"] {
   flex-wrap: wrap;
   gap: 10px 12px;
   margin-top: 14px;
+}
+
+.drag-hint {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px dashed rgba(43, 98, 122, 0.2);
+  background: rgba(255, 255, 255, 0.66);
+  color: var(--cool);
+  font-size: 0.95rem;
+  line-height: 1.45;
 }
 
 .snapshot-facts span {
