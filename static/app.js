@@ -61,6 +61,7 @@
   const defaultUpdateMessage = "Map is up to date.";
   const baselineStorageKey = "sunlight-house-baseline";
   let activeWindowDrag = null;
+  let activeWindowResize = null;
 
   function isLeapYear(year) {
     return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
@@ -318,6 +319,23 @@
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
+  }
+
+  function currentWindowMetrics(payload = currentPayload) {
+    const segment = payload.windows[0].wall_segment_xy;
+    const centerFromSegment = (Math.abs(segment[1][0] - segment[0][0]) > 0.0001)
+      ? (segment[0][0] + segment[1][0]) / 2
+      : (segment[0][1] + segment[1][1]) / 2;
+    const widthFromSegment = Math.abs(segment[1][0] - segment[0][0]) || Math.abs(segment[1][1] - segment[0][1]);
+    return {
+      center: parseFiniteNumber(windowSpanCenterInput.value) ?? centerFromSegment,
+      width: parseFiniteNumber(windowWidthInput.value) ?? widthFromSegment,
+    };
+  }
+
+  function updateWindowGeometryReadout(centerValue, widthValue) {
+    setText("window-centre-readout", `Window centre: ${centerValue.toFixed(1)} m from left`);
+    setText("window-width-readout", `Window width: ${widthValue.toFixed(1)} m`);
   }
 
   function compassLabelForDegrees(degrees) {
@@ -657,9 +675,7 @@
     const wall = payload.active_window.wall;
     const roomWidth = payload.room.width;
     const roomDepth = payload.room.depth;
-    const segment = payload.windows[0].wall_segment_xy;
-    const segmentWidth = Math.abs(segment[1][0] - segment[0][0]) || Math.abs(segment[1][1] - segment[0][1]);
-    const windowWidth = parseFiniteNumber(windowWidthInput.value) ?? segmentWidth;
+    const { width: windowWidth } = currentWindowMetrics(payload);
     const halfSpan = windowWidth / 2;
 
     if (wall === "north" || wall === "south") {
@@ -686,6 +702,30 @@
     const bounds = windowWallBounds(payload);
     const clampedCenter = clamp(centerValue, bounds.min, bounds.max);
     const halfWindow = bounds.halfWindow;
+
+    if (wall === "north") {
+      return [[clampedCenter - halfWindow, roomDepth], [clampedCenter + halfWindow, roomDepth]];
+    }
+    if (wall === "south") {
+      return [[clampedCenter - halfWindow, 0], [clampedCenter + halfWindow, 0]];
+    }
+    if (wall === "east") {
+      return [[roomWidth, clampedCenter - halfWindow], [roomWidth, clampedCenter + halfWindow]];
+    }
+    return [[0, clampedCenter - halfWindow], [0, clampedCenter + halfWindow]];
+  }
+
+  function wallSegmentFromMetrics(payload, centerValue, widthValue) {
+    const wall = payload.active_window.wall;
+    const roomWidth = payload.room.width;
+    const roomDepth = payload.room.depth;
+    const minWidth = 0.2;
+    const maxWidth = wall === "north" || wall === "south"
+      ? roomWidth
+      : roomDepth;
+    const safeWidth = clamp(widthValue, minWidth, maxWidth);
+    const halfWindow = safeWidth / 2;
+    const clampedCenter = clamp(centerValue, halfWindow, maxWidth - halfWindow);
 
     if (wall === "north") {
       return [[clampedCenter - halfWindow, roomDepth], [clampedCenter + halfWindow, roomDepth]];
@@ -731,6 +771,18 @@
       element.setAttribute("y2", String(endY));
     });
 
+    const startHandle = container.querySelector("#room-window-resize-start");
+    if (startHandle) {
+      startHandle.setAttribute("cx", String(start[0]));
+      startHandle.setAttribute("cy", String(startY));
+    }
+
+    const endHandle = container.querySelector("#room-window-resize-end");
+    if (endHandle) {
+      endHandle.setAttribute("cx", String(end[0]));
+      endHandle.setAttribute("cy", String(endY));
+    }
+
     const circle = container.querySelector("#room-window-handle");
     if (circle) {
       circle.setAttribute("cx", String(midX));
@@ -748,6 +800,10 @@
       sourceText.setAttribute("x", String(midX));
       sourceText.setAttribute("y", String(midSvgY - 0.28));
     }
+
+    const newWidth = Math.abs(end[0] - start[0]) || Math.abs(end[1] - start[1]);
+    const newCenter = Math.abs(end[0] - start[0]) > 0.0001 ? midX : midY;
+    updateWindowGeometryReadout(newCenter, newWidth);
   }
 
   function handleWindowDragMove(event) {
@@ -762,7 +818,8 @@
     const rawCenter = bounds.axis === "x" ? point.x : point.y;
     const snappedCenter = Math.round(clamp(rawCenter, bounds.min, bounds.max) * 10) / 10;
     windowSpanCenterInput.value = snappedCenter.toFixed(1);
-    updateRoomWindowPreview(wallSegmentFromCenter(currentPayload, snappedCenter));
+    const { width } = currentWindowMetrics();
+    updateRoomWindowPreview(wallSegmentFromMetrics(currentPayload, snappedCenter, width));
     setUpdateStatus("Release to update the sunlight preview.", "draft");
   }
 
@@ -783,6 +840,46 @@
     document.body.classList.remove("is-dragging-window");
     activeWindowDrag = null;
     scheduleRefresh("Window moved. Updating preview...");
+  }
+
+  function handleWindowResizeMove(event) {
+    if (!activeWindowResize) {
+      return;
+    }
+    const point = roomPointFromPointer(activeWindowResize.svg, event);
+    if (!point) {
+      return;
+    }
+    const wall = currentPayload.active_window.wall;
+    const axisValue = wall === "north" || wall === "south" ? point.x : point.y;
+    const { center } = currentWindowMetrics();
+    const maxHalfWidth = wall === "north" || wall === "south"
+      ? Math.min(center, currentPayload.room.width - center)
+      : Math.min(center, currentPayload.room.depth - center);
+    const rawHalfWidth = Math.abs(axisValue - center);
+    const snappedWidth = Math.round(clamp(rawHalfWidth * 2, 0.2, maxHalfWidth * 2) * 10) / 10;
+    windowWidthInput.value = snappedWidth.toFixed(1);
+    updateRoomWindowPreview(wallSegmentFromMetrics(currentPayload, center, snappedWidth));
+    setUpdateStatus("Release to update the sunlight preview.", "draft");
+  }
+
+  function endWindowResize(event) {
+    if (!activeWindowResize) {
+      return;
+    }
+    if (event && activeWindowResize.svg.releasePointerCapture && event.pointerId !== undefined) {
+      try {
+        activeWindowResize.svg.releasePointerCapture(event.pointerId);
+      } catch (error) {
+        console.debug(error);
+      }
+    }
+    window.removeEventListener("pointermove", handleWindowResizeMove);
+    window.removeEventListener("pointerup", endWindowResize);
+    window.removeEventListener("pointercancel", endWindowResize);
+    document.body.classList.remove("is-dragging-window");
+    activeWindowResize = null;
+    scheduleRefresh("Window resized. Updating preview...");
   }
 
   function wireRoomWindowDrag() {
@@ -809,6 +906,35 @@
         window.addEventListener("pointerup", endWindowDrag);
         window.addEventListener("pointercancel", endWindowDrag);
         handleWindowDragMove(event);
+      });
+    });
+  }
+
+  function wireRoomWindowResize() {
+    const container = document.getElementById("room-snapshot-svg");
+    const svg = container ? container.querySelector("svg") : null;
+    const resizeHandles = container ? Array.from(container.querySelectorAll("[data-window-resize-handle]")) : [];
+    if (!container || !svg || resizeHandles.length === 0) {
+      return;
+    }
+
+    resizeHandles.forEach((handle) => {
+      handle.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        activeWindowResize = { svg, handle: handle.dataset.windowResizeHandle };
+        document.body.classList.add("is-dragging-window");
+        if (svg.setPointerCapture && event.pointerId !== undefined) {
+          try {
+            svg.setPointerCapture(event.pointerId);
+          } catch (error) {
+            console.debug(error);
+          }
+        }
+        window.addEventListener("pointermove", handleWindowResizeMove);
+        window.addEventListener("pointerup", endWindowResize);
+        window.addEventListener("pointercancel", endWindowResize);
+        handleWindowResizeMove(event);
       });
     });
   }
@@ -851,6 +977,8 @@
     }).join("");
 
     const dragCursor = activeWindow.wall === "north" || activeWindow.wall === "south" ? "ew-resize" : "ns-resize";
+    const resizeHandleStart = `<circle id="room-window-resize-start" data-window-resize-handle="start" cx="${windowA[0]}" cy="${depth - windowA[1]}" r="0.14" fill="#fff7ec" stroke="#c86530" stroke-width="0.05" pointer-events="all" style="cursor:${dragCursor}"></circle>`;
+    const resizeHandleEnd = `<circle id="room-window-resize-end" data-window-resize-handle="end" cx="${windowB[0]}" cy="${depth - windowB[1]}" r="0.14" fill="#fff7ec" stroke="#c86530" stroke-width="0.05" pointer-events="all" style="cursor:${dragCursor}"></circle>`;
     const windowLine = `<line id="room-window-line" x1="${windowA[0]}" y1="${depth - windowA[1]}" x2="${windowB[0]}" y2="${depth - windowB[1]}" stroke="#2b627a" stroke-width="0.17" stroke-linecap="round"></line>`;
     const windowGlow = `<line id="room-window-glow" x1="${windowA[0]}" y1="${depth - windowA[1]}" x2="${windowB[0]}" y2="${depth - windowB[1]}" stroke="rgba(240,178,79,0.35)" stroke-width="0.32" stroke-linecap="round"></line>`;
     const windowDragHit = `<line id="room-window-hit" data-window-drag-handle="true" x1="${windowA[0]}" y1="${depth - windowA[1]}" x2="${windowB[0]}" y2="${depth - windowB[1]}" stroke="rgba(43,98,122,0.001)" stroke-width="0.62" stroke-linecap="round" pointer-events="stroke" style="cursor:${dragCursor}"></line>`;
@@ -891,6 +1019,8 @@
         <g filter="url(#patchShadow)">${patchPolygons}</g>
         ${windowLine}
         ${windowDragHit}
+        ${resizeHandleStart}
+        ${resizeHandleEnd}
         ${sourceMarker}
         ${noPatch}
         ${dimensionGuides}
@@ -977,6 +1107,9 @@
 
     setHtml("room-snapshot-svg", createRoomSvg(payload));
     wireRoomWindowDrag();
+    wireRoomWindowResize();
+    const { center, width } = currentWindowMetrics(payload);
+    updateWindowGeometryReadout(center, width);
     setHtml("daily-exposure-svg", createExposureMapSvg(payload, payload.daily.exposure_grid, "Daily sunlight map"));
     updateExposureLegendAndStats(payload.daily.exposure_grid, "daily");
     hideExposureTooltip(dailyExposureTooltip);

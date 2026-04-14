@@ -672,6 +672,22 @@ input[type="range"] {
   line-height: 1.45;
 }
 
+.geometry-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  margin-top: 12px;
+}
+
+.geometry-readout span {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 0.94rem;
+}
+
 .snapshot-facts span {
   padding: 8px 12px;
   border-radius: 999px;

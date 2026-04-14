@@ -117,7 +117,11 @@
               <div class="room-snapshot-shell">
                 <div id="room-snapshot-svg" class="room-snapshot room-snapshot-large"></div>
               </div>
-              <p class="drag-hint">Drag the main window marker or line to move it along the active wall.</p>
+              <p class="drag-hint">Drag the main window marker or line to move it. Drag the end handles to resize the window width.</p>
+              <div class="geometry-readout">
+                <span id="window-centre-readout">Window centre: {{ form_values.window_span_center }} m</span>
+                <span id="window-width-readout">Window width: {{ form_values.window_width }} m</span>
+              </div>
 
               <div class="snapshot-facts">
                 <span id="snapshot-window-fact">Window facing: {{ form_values.window_facing }}</span>
