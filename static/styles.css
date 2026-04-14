@@ -146,11 +146,15 @@ summary {
   display: grid;
   gap: 10px;
   margin-top: 14px;
-  margin-bottom: 18px;
+  margin-bottom: 4px;
 }
 
 .baseline-details {
   margin-top: -2px;
+}
+
+.result-tools-details {
+  margin-top: 14px;
 }
 
 .update-status {
@@ -461,6 +465,27 @@ input[type="range"] {
   display: none;
 }
 
+.geometry-details summary,
+.current-moment-details summary {
+  align-items: baseline;
+}
+
+.geometry-details-body {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.nested-control-group {
+  display: grid;
+  gap: 10px;
+}
+
+.nested-control-group + .nested-control-group {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
 .custom-location-fields,
 .advanced-fields {
   display: grid;
@@ -611,10 +636,6 @@ input[type="range"] {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-top: 14px;
-}
-
-.current-moment-details summary {
-  align-items: baseline;
 }
 
 .current-moment-details summary strong {

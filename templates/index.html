@@ -58,56 +58,59 @@
               <button type="button" class="chip-button" data-result-tab="long-range">Yearly / Seasonal</button>
             </div>
 
-            <div class="result-status-row">
-              <span id="update-status" class="update-status" data-state="idle">Preview is up to date.</span>
-            </div>
+              <div class="result-status-row">
+                <span id="update-status" class="update-status" data-state="idle">Preview is up to date.</span>
+              </div>
 
-            <section class="baseline-result-panel">
-              <div class="baseline-panel-header">
-                <div class="chip-row baseline-actions">
-                  <button id="save-baseline-button" type="button" class="chip-button chip-button-soft">Save as baseline</button>
-                  <button id="clear-baseline-button" type="button" class="chip-button chip-button-soft">Clear baseline</button>
-                </div>
-              </div>
-              <div id="baseline-empty-state" class="baseline-empty-state">
-                Save the current scenario as a baseline to compare changes.
-              </div>
-              <details id="baseline-details" class="subtle-details baseline-details" hidden>
-                <summary>Baseline vs Current</summary>
-                <div id="baseline-comparison-panel" class="baseline-comparison-panel">
-                  <div class="baseline-grid baseline-grid-header">
-                    <span class="metric-label">Metric</span>
-                    <span class="metric-label">Baseline</span>
-                    <span class="metric-label">Current</span>
-                    <span class="metric-label">Delta</span>
-                  </div>
-                  <div class="baseline-grid">
-                    <span class="baseline-metric-name">Selected moment</span>
-                    <strong id="baseline-selected-moment-baseline">-</strong>
-                    <strong id="baseline-selected-moment-current">-</strong>
-                    <strong id="baseline-selected-moment-delta">-</strong>
-                  </div>
-                  <div class="baseline-grid">
-                    <span class="baseline-metric-name">Daily peak intensity</span>
-                    <strong id="baseline-peak-intensity-baseline">-</strong>
-                    <strong id="baseline-peak-intensity-current">-</strong>
-                    <strong id="baseline-peak-intensity-delta">-</strong>
-                  </div>
-                  <div class="baseline-grid">
-                    <span class="baseline-metric-name">Room with any sun</span>
-                    <strong id="baseline-sunlit-fraction-baseline">-</strong>
-                  <strong id="baseline-sunlit-fraction-current">-</strong>
-                  <strong id="baseline-sunlit-fraction-delta">-</strong>
-                </div>
-                  <div class="baseline-grid">
-                    <span class="baseline-metric-name">Peak sunlit cell</span>
-                    <strong id="baseline-peak-hours-baseline">-</strong>
-                    <strong id="baseline-peak-hours-current">-</strong>
-                    <strong id="baseline-peak-hours-delta">-</strong>
+            <details class="subtle-details result-tools-details">
+              <summary>Compare against baseline</summary>
+              <section class="baseline-result-panel">
+                <div class="baseline-panel-header">
+                  <div class="chip-row baseline-actions">
+                    <button id="save-baseline-button" type="button" class="chip-button chip-button-soft">Save as baseline</button>
+                    <button id="clear-baseline-button" type="button" class="chip-button chip-button-soft">Clear baseline</button>
                   </div>
                 </div>
-              </details>
-            </section>
+                <div id="baseline-empty-state" class="baseline-empty-state">
+                  Save the current scenario as a baseline to compare changes.
+                </div>
+                <details id="baseline-details" class="subtle-details baseline-details" hidden>
+                  <summary>Baseline vs Current</summary>
+                  <div id="baseline-comparison-panel" class="baseline-comparison-panel">
+                    <div class="baseline-grid baseline-grid-header">
+                      <span class="metric-label">Metric</span>
+                      <span class="metric-label">Baseline</span>
+                      <span class="metric-label">Current</span>
+                      <span class="metric-label">Delta</span>
+                    </div>
+                    <div class="baseline-grid">
+                      <span class="baseline-metric-name">Selected moment</span>
+                      <strong id="baseline-selected-moment-baseline">-</strong>
+                      <strong id="baseline-selected-moment-current">-</strong>
+                      <strong id="baseline-selected-moment-delta">-</strong>
+                    </div>
+                    <div class="baseline-grid">
+                      <span class="baseline-metric-name">Daily peak intensity</span>
+                      <strong id="baseline-peak-intensity-baseline">-</strong>
+                      <strong id="baseline-peak-intensity-current">-</strong>
+                      <strong id="baseline-peak-intensity-delta">-</strong>
+                    </div>
+                    <div class="baseline-grid">
+                      <span class="baseline-metric-name">Room with any sun</span>
+                      <strong id="baseline-sunlit-fraction-baseline">-</strong>
+                      <strong id="baseline-sunlit-fraction-current">-</strong>
+                      <strong id="baseline-sunlit-fraction-delta">-</strong>
+                    </div>
+                    <div class="baseline-grid">
+                      <span class="baseline-metric-name">Peak sunlit cell</span>
+                      <strong id="baseline-peak-hours-baseline">-</strong>
+                      <strong id="baseline-peak-hours-current">-</strong>
+                      <strong id="baseline-peak-hours-delta">-</strong>
+                    </div>
+                  </div>
+                </details>
+              </section>
+            </details>
 
             <div class="result-view" data-result-panel="current">
               <div class="room-snapshot-shell">
@@ -132,7 +135,7 @@
               </div>
               <div class="daily-map-meta">
                 <div class="daily-map-legend">
-                  <span class="explorer-label">Legend</span>
+                  <span class="explorer-label">Exposure Time</span>
                   <div class="legend-ramp" aria-hidden="true"></div>
                   <div class="legend-labels">
                     <span>0 h</span>
@@ -155,7 +158,7 @@
                 </article>
               </div>
               <p id="daily-exposure-caption" class="angle-caption room-caption">
-                Direct sun hours for the selected day.
+                Direct sun exposure time across the selected day.
               </p>
             </div>
 
@@ -173,7 +176,7 @@
               </div>
               <div class="daily-map-meta">
                 <div class="daily-map-legend">
-                  <span class="explorer-label">Legend</span>
+                  <span class="explorer-label">Exposure Time</span>
                   <div class="legend-ramp" aria-hidden="true"></div>
                   <div class="legend-labels">
                     <span>0 h</span>
@@ -196,7 +199,7 @@
                 </article>
               </div>
               <p id="long-range-exposure-caption" class="angle-caption room-caption">
-                Direct sun hours across longer periods.
+                Estimated direct sun exposure time across longer periods.
               </p>
             </div>
           </article>
@@ -206,11 +209,11 @@
               <div class="section-header controls-header">
                 <div>
                   <p class="section-kicker">Controls</p>
-                  <h2>Settings And Time</h2>
+                  <h2>Core Controls</h2>
                 </div>
                 <div class="controls-note">
-                  <span>Live preview updates automatically.</span>
-                  <span>Daily views update automatically too.</span>
+                  <span>Start with location, time, and facing.</span>
+                  <span>Open geometry and advanced sections only when needed.</span>
                 </div>
               </div>
 
@@ -326,46 +329,54 @@
                 </div>
               </section>
 
-              <section class="control-group">
-                <span class="explorer-label">How Big Is The Room?</span>
-                <div class="field-row field-row-3">
-                  <label>
-                    <span>Width (m)</span>
-                    <input type="number" step="0.1" name="room_width" value="{{ form_values.room_width }}">
-                  </label>
-                  <label>
-                    <span>Depth (m)</span>
-                    <input type="number" step="0.1" name="room_depth" value="{{ form_values.room_depth }}">
-                  </label>
-                  <label>
-                    <span>Ceiling (m)</span>
-                    <input type="number" step="0.1" name="room_height" value="{{ form_values.room_height }}">
-                  </label>
-                </div>
-              </section>
+              <details class="subtle-details control-group geometry-details">
+                <summary>
+                  <span class="section-kicker">Geometry</span>
+                  <strong>Room And Window Geometry</strong>
+                </summary>
+                <div class="geometry-details-body">
+                  <section class="nested-control-group">
+                    <span class="explorer-label">How Big Is The Room?</span>
+                    <div class="field-row field-row-3">
+                      <label>
+                        <span>Width (m)</span>
+                        <input type="number" step="0.1" name="room_width" value="{{ form_values.room_width }}">
+                      </label>
+                      <label>
+                        <span>Depth (m)</span>
+                        <input type="number" step="0.1" name="room_depth" value="{{ form_values.room_depth }}">
+                      </label>
+                      <label>
+                        <span>Ceiling (m)</span>
+                        <input type="number" step="0.1" name="room_height" value="{{ form_values.room_height }}">
+                      </label>
+                    </div>
+                  </section>
 
-              <section class="control-group">
-                <span class="explorer-label">Window Size And Placement</span>
-                <div class="field-row field-row-2">
-                  <label>
-                    <span>Window centre from left corner (m)</span>
-                    <input type="number" step="0.1" name="window_span_center" value="{{ form_values.window_span_center }}">
-                  </label>
-                  <label>
-                    <span>Sill height (m)</span>
-                    <input type="number" step="0.1" name="window_sill_height" value="{{ form_values.window_sill_height }}">
-                  </label>
-                  <label>
-                    <span>Window width (m)</span>
-                    <input type="number" step="0.1" name="window_width" value="{{ form_values.window_width }}">
-                  </label>
-                  <label>
-                    <span>Window height (m)</span>
-                    <input type="number" step="0.1" name="window_height" value="{{ form_values.window_height }}">
-                  </label>
+                  <section class="nested-control-group">
+                    <span class="explorer-label">Window Size And Placement</span>
+                    <div class="field-row field-row-2">
+                      <label>
+                        <span>Window centre from left corner (m)</span>
+                        <input type="number" step="0.1" name="window_span_center" value="{{ form_values.window_span_center }}">
+                      </label>
+                      <label>
+                        <span>Sill height (m)</span>
+                        <input type="number" step="0.1" name="window_sill_height" value="{{ form_values.window_sill_height }}">
+                      </label>
+                      <label>
+                        <span>Window width (m)</span>
+                        <input type="number" step="0.1" name="window_width" value="{{ form_values.window_width }}">
+                      </label>
+                      <label>
+                        <span>Window height (m)</span>
+                        <input type="number" step="0.1" name="window_height" value="{{ form_values.window_height }}">
+                      </label>
+                    </div>
+                    <p class="field-help">Measure the window centre from the left end of the selected wall in the top-down view. Sill height is measured from the floor to the bottom of the window.</p>
+                  </section>
                 </div>
-                <p class="field-help">Measure the window centre from the left end of the selected wall in the top-down view. Sill height is measured from the floor to the bottom of the window.</p>
-              </section>
+              </details>
 
               <details class="subtle-details">
                 <summary>Advanced sampling</summary>

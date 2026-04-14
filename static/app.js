@@ -794,7 +794,7 @@
     setDaylightMarker(sunsetMarker, payload.daily.sunset_time, "Sunset");
     setText(
       "daily-exposure-caption",
-      `${Math.round(payload.daily.exposure_grid.sunlit_fraction * 100)}% of the room gets some direct sun today. Darker cells mean more direct-sun hours. Peak floor cell: ${payload.daily.exposure_grid.peak_hours.toFixed(1)} h.`
+      `${Math.round(payload.daily.exposure_grid.sunlit_fraction * 100)}% of the room gets some direct sun today. Darker cells mean more direct sun exposure time. Peak floor cell exposure: ${payload.daily.exposure_grid.peak_hours.toFixed(1)} h.`
     );
     renderBaselineComparison();
   }
@@ -819,7 +819,7 @@
     hideExposureTooltip(longRangeExposureTooltip);
     setText(
       "long-range-exposure-caption",
-      `${period.description}. Peak floor cell: ${period.exposure_grid.peak_hours.toFixed(1)} h.`
+      `${period.description}. Peak floor cell exposure: ${period.exposure_grid.peak_hours.toFixed(1)} h.`
     );
   }
 
