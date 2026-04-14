@@ -52,15 +52,16 @@
               </div>
             </div>
 
-            <div class="chip-row result-tab-row">
-              <button type="button" class="chip-button" data-result-tab="current">Current Moment</button>
-              <button type="button" class="chip-button is-active" data-result-tab="sunlight-map">Direct Sun Hours Today</button>
-              <button type="button" class="chip-button" data-result-tab="long-range">Yearly / Seasonal</button>
-            </div>
-
+            <div class="result-toolbar">
+              <div class="chip-row result-tab-row">
+                <button type="button" class="chip-button" data-result-tab="current">Current Moment</button>
+                <button type="button" class="chip-button is-active" data-result-tab="sunlight-map">Direct Sun Hours Today</button>
+                <button type="button" class="chip-button" data-result-tab="long-range">Yearly / Seasonal</button>
+              </div>
               <div class="result-status-row">
                 <span id="update-status" class="update-status" data-state="idle">Preview is up to date.</span>
               </div>
+            </div>
 
             <details class="subtle-details result-tools-details">
               <summary>Compare against baseline</summary>
@@ -202,6 +203,18 @@
                 Estimated direct sun exposure time across longer periods.
               </p>
             </div>
+
+            <section class="summary-card summary-card-{{ initial_snapshot_payload.summary.tone }}">
+              <div class="summary-card-header">
+                <div>
+                  <p class="section-kicker">Summary</p>
+                  <h3 id="sun-summary-headline">{{ initial_snapshot_payload.summary.headline }}</h3>
+                </div>
+                <span id="sun-summary-tone" class="summary-tone">{{ initial_snapshot_payload.summary.tone|replace('_', ' ') }}</span>
+              </div>
+              <p id="sun-summary-supporting" class="summary-copy">{{ initial_snapshot_payload.summary.supporting_text }}</p>
+              <p id="sun-summary-moment" class="summary-copy summary-copy-secondary">{{ initial_snapshot_payload.summary.moment_text }}</p>
+            </section>
           </article>
 
           <aside class="workspace-sidebar">

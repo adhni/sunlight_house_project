@@ -136,10 +136,90 @@ summary {
   text-align: right;
 }
 
+.result-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+}
+
 .result-status-row {
   display: flex;
   justify-content: flex-end;
-  margin-top: 12px;
+  margin-top: 0;
+}
+
+.summary-card {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.summary-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.summary-card h3 {
+  margin: 2px 0 0;
+  font-size: 1.18rem;
+  letter-spacing: -0.03em;
+}
+
+.summary-copy {
+  margin: 0;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.summary-copy-secondary {
+  color: var(--muted);
+}
+
+.summary-tone {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: rgba(95, 109, 119, 0.12);
+  color: #4c565d;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.summary-card-active,
+.summary-card-strong {
+  background: rgba(255, 247, 235, 0.9);
+  border-color: rgba(200, 101, 48, 0.22);
+}
+
+.summary-card-active .summary-tone,
+.summary-card-strong .summary-tone {
+  background: rgba(200, 101, 48, 0.14);
+  color: var(--accent-deep);
+}
+
+.summary-card-neutral {
+  background: rgba(246, 248, 249, 0.92);
+}
+
+.summary-card-neutral .summary-tone {
+  background: rgba(43, 98, 122, 0.12);
+  color: var(--cool);
+}
+
+.summary-card-muted .summary-tone,
+.summary-card-off .summary-tone {
+  background: rgba(95, 109, 119, 0.12);
+  color: #4c565d;
 }
 
 .baseline-result-panel {
@@ -540,7 +620,7 @@ input[type="range"] {
 }
 
 .result-tab-row {
-  margin-top: 16px;
+  margin-top: 0;
 }
 
 .result-view {
@@ -687,6 +767,12 @@ input[type="range"] {
   transition: opacity 0.15s ease;
 }
 
+@media (min-width: 1280px) {
+  body {
+    zoom: 0.82;
+  }
+}
+
 @media (max-width: 1180px) {
   .page-shell {
     width: min(100% - 40px, 1360px);
@@ -728,6 +814,12 @@ input[type="range"] {
 
   .result-status-row {
     justify-content: flex-start;
+  }
+
+  .result-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
   }
 
   .current-moment-details summary {

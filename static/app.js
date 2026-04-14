@@ -292,6 +292,20 @@
     }
   }
 
+  function updateSummaryDom(summary) {
+    if (!summary) {
+      return;
+    }
+    const summaryCard = document.querySelector(".summary-card");
+    if (summaryCard) {
+      summaryCard.className = `summary-card summary-card-${summary.tone}`;
+    }
+    setText("sun-summary-headline", summary.headline);
+    setText("sun-summary-tone", summary.tone.replace(/_/g, " "));
+    setText("sun-summary-supporting", summary.supporting_text);
+    setText("sun-summary-moment", summary.moment_text);
+  }
+
   function setPendingState(isPending) {
     roomWorkspace.classList.toggle("loading-state", isPending);
   }
@@ -747,6 +761,7 @@
     const snapshot = payload.snapshot;
     const daily = payload.daily;
     const timeZone = payload.location.timezone_name;
+    updateSummaryDom(payload.summary);
 
     setText("selected-moment-label", new Date(payload.selected_moment).toLocaleString(undefined, {
       day: "2-digit",
