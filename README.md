@@ -2,6 +2,8 @@
 
 Sunlight House Lab is a compact Python project for exploring direct sunlight inside a simple rectangular room.
 
+Public live app: https://sunlight-house-project.onrender.com/
+
 It includes:
 
 - a small Flask app for interactive exploration
