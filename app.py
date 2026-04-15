@@ -25,6 +25,7 @@ from sunlight_house.config import (
     main_window,
 )
 from sunlight_house.geometry import Room
+from sunlight_house.insights import summarize_direct_sun
 
 
 def create_app() -> Flask:
@@ -224,6 +225,13 @@ def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dic
     strongest_window, strongest_intensity = snapshot.strongest_window
     state = snapshot_state(snapshot.entered_direct_sun, strongest_intensity)
     daylight_times = daylight_window(daily.positions)
+    summary = summarize_direct_sun(
+        snapshot_state=state,
+        entered_direct_sun=daily.entered_direct_sun,
+        peak_hours=exposure_grid["peak_hours"],
+        sunlit_fraction=exposure_grid["sunlit_fraction"],
+        peak_time=daily.peak_time,
+    )
 
     return {
         "location": {
@@ -282,6 +290,7 @@ def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dic
             "wall": wall_name_for_window(config.windows[0]),
             "facing": config.window_facing_label,
         },
+        "summary": summary,
         "window_facing_label": config.window_facing_label,
     }
 

@@ -37,7 +37,10 @@ class AppTests(unittest.TestCase):
         self.assertIn("daily", payload)
         self.assertIn("snapshot", payload)
         self.assertIn("room", payload)
+        self.assertIn("summary", payload)
         self.assertIn("windows", payload)
+        self.assertIn("headline", payload["summary"])
+        self.assertIn("supporting_text", payload["summary"])
 
 
 if __name__ == "__main__":
