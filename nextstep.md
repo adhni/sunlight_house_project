@@ -1,37 +1,121 @@
 # Next Step
 
-## Current product state
+## Product direction
 
-The prototype is now in a stronger interactive state:
+The next phase should narrow the product before expanding the model.
 
-- live room snapshot
-- live `Direct Sun Hours Today` map with legend, stats, and in-chart hover
-- yearly / seasonal floor maps with `Year`, `Winter`, `Spring`, `Summer`, and `Fall`
-- preset cities, custom map-based location, and simpler room/window controls
-- long-range exposure performance improved for deployment
+The current app already does a meaningful amount of sunlight simulation, but the main product question is still too loose. It can show sunlight geometry, daily exposure, and yearly / seasonal patterns, yet it is not obvious what decision the tool is helping a user make.
 
-The next work should shift from pure sunlight geometry toward sunlight interpretation.
+The next milestone should therefore focus on product clarity, interpretation, and simplification rather than more geometric scope.
 
-## Priority 1: Add a lightweight sun-context layer
+## Core problem to solve
 
-This is the best next step because the model already shows where and how long sunlight lands, but not whether that sunlight is helpful or punishing.
+The app should help users answer a small set of practical questions:
+
+- How much direct sun does this room get?
+- When does the room get that sun?
+- Is that sun likely to feel beneficial, neutral, or harsh?
+
+This is a stronger near-term framing than trying to become a general room-planning tool.
+
+## Product positioning
+
+For now, the app should feel like:
+
+- a sunlight planning tool
+- a way to explore room orientation and window placement effects
+- a lightweight interpretation tool for direct sun quality
+
+For now, the app should not try to become:
+
+- a full architectural modeling tool
+- a general floor-plan editor
+- a weather dashboard
+- a complete thermal comfort simulator
+
+## Main strategy
+
+The strategy is:
+
+1. Define the user decision more clearly
+2. Simplify the interface around that decision
+3. Add lightweight interpretation and recommendations
+4. Improve interaction quality
+5. Expand modeling scope only after the product becomes easier to understand and use
+
+## Priority 1: Clarify the use cases
+
+Before adding more features, the product should be described in terms of concrete use cases.
+
+### Recommended near-term use cases
+
+- compare how different window orientations change direct sun
+- check whether a room gets useful winter sun
+- spot whether a room may receive harsh summer sun
+- understand where direct sunlight lands across the floor
+
+### Why this matters
+
+- it gives the UI a clearer purpose
+- it helps decide which controls should be visible first
+- it creates a basis for summaries and recommendations
+
+## Priority 2: Simplify the UI with progressive disclosure
+
+The current experience likely exposes too many controls too early relative to the value the user gets at first glance.
+
+The next design pass should reduce initial cognitive load.
+
+### Recommended direction
+
+- show only the most important inputs by default
+- keep advanced inputs hidden behind expandable sections
+- make the primary result obvious immediately
+- reduce label and control density where possible
+
+### Likely default-visible controls
+
+- location
+- room size
+- window facing
+- one or two key window controls
+- main result mode
+
+### Likely advanced controls
+
+- manual timezone override
+- detailed geometry inputs
+- finer simulation parameters
+- comparison and expert-style tools
+
+### Why this matters
+
+- the app will feel easier to approach
+- it better matches the current product maturity
+- it makes the interpretation layer more visible
+
+## Priority 3: Add a lightweight interpretation layer
+
+This should be the first product-level improvement after simplification.
+
+The existing model already provides enough signal to support a compact interpretation layer without becoming a weather product.
 
 ### Goal
 
-Add just enough climate context to interpret direct sun as beneficial, neutral, or harsh.
+Add a small summary that helps the user understand whether the sunlight is likely to be helpful, neutral, or harsh.
 
 ### First version
 
-- add a small `Sun Context` card near the results
+- add a compact `Sun Context` or `Summary` card near the main results
 - combine:
   - direct sun hours from the existing model
-  - temperature context
-  - UV context
-- generate a short interpretation such as:
+  - simple temperature context
+  - simple UV context
+- produce short outputs such as:
   - `Helpful winter sun`
+  - `Mostly mild sun`
   - `High UV caution`
   - `Likely overheating risk`
-  - `Mostly mild sun`
 
 ### Constraint
 
@@ -39,83 +123,83 @@ Do not turn this into a full weather dashboard.
 
 ### Why this matters
 
-- users care about whether sun is desirable, not only whether it exists
-- it makes the app feel more useful without changing the core room model
-- it creates a more human framing for the yearly / seasonal maps
+- users care about whether sunlight is desirable, not just present
+- it translates geometry into a more human decision frame
+- it responds directly to the feedback requesting summary and recommendation output
 
-## Priority 2: Keep the added data layer minimal
+## Priority 4: Improve wording and result clarity
 
-The project likely needs extra data, but the smallest useful version is enough.
+Some improvements are small but high value.
 
-### Recommended data
+### Recommended quick wins
 
-- temperature context
-- UV context
-
-### Recommended source style
-
-- monthly or seasonal climate normals first
-- avoid live forecasts in the first version
-
-### Avoid for now
-
-- precipitation
-- wind
-- humidity
-- cloud cover
-- hourly forecast panels
-- a separate weather dashboard
+- rename the legend to `Direct sun exposure time (hours)` or similar
+- make clear that the map is about direct sun, not generic daylight
+- tighten supporting labels and helper text around the main charts
+- clearly distinguish estimated yearly / seasonal views from the daily map
 
 ### Why this matters
 
-- keeps the UI focused
-- avoids introducing a second product inside the product
-- makes the interpretation layer easier to explain and maintain
+- it removes basic ambiguity
+- it improves trust without requiring major engineering work
 
-## Priority 3: Decide how to express the interpretation
+## Priority 5: Improve direct manipulation
 
-The new layer should stay lightweight and readable.
+The current slider-based geometry controls are functional, but not ideal.
 
-### Options
-
-- one compact summary card
-- one short caption under the daily and long-range maps
-- a small badge system for `helpful`, `neutral`, and `harsh`
+Direct manipulation should be a next-wave UX improvement after the app becomes clearer and simpler overall.
 
 ### Recommended direction
 
-- start with one compact summary card
-- keep the copy simple and high-level
-- do not add another large chart unless needed later
+- allow click-and-drag window placement in the room view
+- keep numeric controls available for precision
+- use drag interaction to make the model feel more immediate and spatial
 
-## Priority 4: Continue deployment validation
+### Why not first
 
-The long-range performance work is now in place, so the next operational step is to observe real behavior on Render.
+- better interaction will not solve weak product framing on its own
+- the product should first become easier to understand at a higher level
 
-### Deployment tasks
+## Priority 6: Defer custom room layouts
 
-- verify yearly / seasonal tab load time on Render
-- check the new long-range timing logs
-- confirm the long-range request no longer fails
-- verify the coarser yearly grid still feels believable
+Custom room layouts are valuable, but they should not be the next step.
 
-### Why this matters
+### Why to defer
 
-- this confirms whether the recent performance fixes are enough
-- it prevents more product work from piling onto an unstable long-range feature
+- they increase model complexity
+- they increase UI complexity
+- they make simplification harder
+- they risk expanding scope before the current product purpose is clear
+
+### Better trigger for this work
+
+Custom layouts become a stronger next step only after:
+
+- the app has a clear product framing
+- the simplified UI feels stable
+- summary and recommendation features prove useful
+- users still clearly want more geometric flexibility
 
 ## Suggested execution order
 
-1. Define the smallest useful temperature + UV context layer
-2. Decide where the interpretation appears in the UI
-3. Add the first lightweight `Sun Context` card
-4. Validate Render behavior after the long-range optimization
+1. Rewrite the product framing around a few concrete sunlight-planning questions
+2. Simplify the UI using progressive disclosure
+3. Add the first compact summary / recommendation layer
+4. Improve wording, labels, and chart clarity
+5. Add direct manipulation for window placement
+6. Reassess whether broader geometry support is justified
 
 ## Definition of next milestone
 
 The next milestone is done when:
 
-- the app can frame sunlight as helpful, neutral, or harsh
-- the new context layer stays compact and easy to understand
-- yearly / seasonal maps remain usable on Render
-- the product still feels like a sunlight planner, not a weather dashboard
+- the app clearly communicates what problem it helps solve
+- the first screen feels less overwhelming
+- the results explain what the sunlight means, not only how many hours there are
+- the app still feels like a sunlight planner rather than a general modeling tool
+
+## Practical takeaway
+
+The right next move is not more geometry first.
+
+The right next move is to make the current product easier to understand, easier to use, and more explicit about the decisions it supports.
