@@ -395,12 +395,24 @@
                   </section>
 
                   <section class="nested-control-group">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px;">
+                      <span class="explorer-label">Multi-Window Builder</span>
+                      <div class="chip-row">
+                        <button id="add-window-row-button" type="button" class="chip-button chip-button-soft">Add window</button>
+                        <button id="clear-window-rows-button" type="button" class="chip-button chip-button-soft">Clear</button>
+                      </div>
+                    </div>
+                    <div id="window-rows-builder" style="display:grid; gap:10px;"></div>
+                    <p class="field-help">Use this builder for multiple windows. It writes into the JSON override automatically. Leave all rows empty to fall back to the single-window controls above.</p>
+                  </section>
+
+                  <section class="nested-control-group">
                     <span class="explorer-label">Optional Multi-Window JSON</span>
                     <label>
                       <span>Override the single-window inputs with a list of windows</span>
-                      <textarea name="windows_json" rows="10" style="width:100%; font-family:monospace;">{{ form_values.windows_json }}</textarea>
+                      <textarea id="windows-json-textarea" name="windows_json" rows="10" style="width:100%; font-family:monospace;">{{ form_values.windows_json }}</textarea>
                     </label>
-                    <p class="field-help">Leave this blank to keep using the single-window controls above. Example: [{"name":"north_main","wall":"north","span_center":2.0,"sill_height":0.8,"width":1.4,"height":1.6},{"name":"east_side","wall":"east","span_center":2.5,"sill_height":0.9,"width":1.0,"height":1.2}]</p>
+                    <p class="field-help">You can still edit the raw JSON directly if needed. Example: [{"name":"north_main","wall":"north","span_center":2.0,"sill_height":0.8,"width":1.4,"height":1.6},{"name":"east_side","wall":"east","span_center":2.5,"sill_height":0.9,"width":1.0,"height":1.2}]</p>
                   </section>
                 </div>
               </details>
