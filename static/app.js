@@ -45,6 +45,9 @@
   const windowSpanCenterInput = form.querySelector('input[name="window_span_center"]');
   const windowSillHeightInput = form.querySelector('input[name="window_sill_height"]');
   const windowsJsonInput = form.querySelector('textarea[name="windows_json"]');
+  const windowRowsBuilder = document.getElementById("window-rows-builder");
+  const addWindowRowButton = document.getElementById("add-window-row-button");
+  const clearWindowRowsButton = document.getElementById("clear-window-rows-button");
 
   const mapElement = document.getElementById("location-map");
   let map = null;
@@ -63,6 +66,7 @@
   const baselineStorageKey = "sunlight-house-baseline";
   let activeWindowDrag = null;
   let activeWindowResize = null;
+  let suppressWindowBuilderSync = false;
 
   function isLeapYear(year) {
     return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
@@ -360,6 +364,123 @@
     };
     const baseWorldAngle = facingAngles[windowFacingLabel] ?? 0;
     return baseAngles.map((angle) => `${angle}\u00b0 / ${compassLabelForDegrees(baseWorldAngle + angle)}`);
+  }
+
+  function parseWindowsJsonValue(rawValue) {
+    const text = (rawValue || "").trim();
+    if (!text) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(text);
+      return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item === "object") : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function createWindowRowElement(windowData = {}) {
+    const row = document.createElement("div");
+    row.className = "window-builder-row";
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "1.2fr 0.8fr 0.9fr 0.9fr 0.9fr 0.9fr auto";
+    row.style.gap = "8px";
+    row.style.alignItems = "end";
+
+    const wallValue = (windowData.wall || "north").toString().toLowerCase();
+    row.innerHTML = `
+      <label><span>Name</span><input type="text" data-window-field="name" value="${windowData.name || ""}"></label>
+      <label><span>Wall</span>
+        <select data-window-field="wall">
+          <option value="north" ${wallValue === "north" ? "selected" : ""}>north</option>
+          <option value="south" ${wallValue === "south" ? "selected" : ""}>south</option>
+          <option value="east" ${wallValue === "east" ? "selected" : ""}>east</option>
+          <option value="west" ${wallValue === "west" ? "selected" : ""}>west</option>
+        </select>
+      </label>
+      <label><span>Centre</span><input type="number" step="0.1" data-window-field="span_center" value="${windowData.span_center ?? ""}"></label>
+      <label><span>Sill</span><input type="number" step="0.1" data-window-field="sill_height" value="${windowData.sill_height ?? ""}"></label>
+      <label><span>Width</span><input type="number" step="0.1" data-window-field="width" value="${windowData.width ?? ""}"></label>
+      <label><span>Height</span><input type="number" step="0.1" data-window-field="height" value="${windowData.height ?? ""}"></label>
+      <button type="button" class="chip-button chip-button-soft" data-remove-window-row="true">Remove</button>
+    `;
+
+    row.querySelectorAll("input, select").forEach((input) => {
+      input.addEventListener("input", () => {
+        syncTextareaFromBuilder();
+        setUpdateStatus("Finish the current field to update.", "draft");
+      });
+      input.addEventListener("change", () => {
+        syncTextareaFromBuilder();
+        scheduleRefresh("Updating preview...");
+      });
+    });
+
+    row.querySelector('[data-remove-window-row="true"]').addEventListener("click", () => {
+      row.remove();
+      syncTextareaFromBuilder();
+      scheduleRefresh("Updating preview...");
+    });
+
+    return row;
+  }
+
+  function serializeWindowRows() {
+    if (!windowRowsBuilder) {
+      return [];
+    }
+    return Array.from(windowRowsBuilder.querySelectorAll(".window-builder-row")).map((row, index) => {
+      const getValue = (field) => row.querySelector(`[data-window-field="${field}"]`).value.trim();
+      const name = getValue("name") || `window_${index + 1}`;
+      const wall = getValue("wall") || "north";
+      const spanCenter = parseFiniteNumber(getValue("span_center"));
+      const sillHeight = parseFiniteNumber(getValue("sill_height"));
+      const width = parseFiniteNumber(getValue("width"));
+      const height = parseFiniteNumber(getValue("height"));
+      return {
+        name,
+        wall,
+        span_center: spanCenter,
+        sill_height: sillHeight,
+        width,
+        height,
+      };
+    }).filter((item) => item.span_center !== null && item.sill_height !== null && item.width !== null && item.height !== null);
+  }
+
+  function syncTextareaFromBuilder() {
+    if (!windowsJsonInput || suppressWindowBuilderSync) {
+      return;
+    }
+    const rows = serializeWindowRows();
+    suppressWindowBuilderSync = true;
+    windowsJsonInput.value = rows.length ? JSON.stringify(rows, null, 2) : "";
+    suppressWindowBuilderSync = false;
+  }
+
+  function renderWindowBuilderFromRows(rows) {
+    if (!windowRowsBuilder) {
+      return;
+    }
+    suppressWindowBuilderSync = true;
+    windowRowsBuilder.innerHTML = "";
+    rows.forEach((row) => {
+      windowRowsBuilder.appendChild(createWindowRowElement(row));
+    });
+    suppressWindowBuilderSync = false;
+  }
+
+  function renderWindowBuilderFromTextarea() {
+    const rows = parseWindowsJsonValue(windowsJsonInput ? windowsJsonInput.value : "");
+    renderWindowBuilderFromRows(rows);
+  }
+
+  function addEmptyWindowRow(defaultWall = "north") {
+    if (!windowRowsBuilder) {
+      return;
+    }
+    windowRowsBuilder.appendChild(createWindowRowElement({ wall: defaultWall }));
+    syncTextareaFromBuilder();
   }
 
   function localMinutesFromIso(isoString) {
@@ -1420,7 +1541,7 @@
   });
 
   daySlider.addEventListener("input", () => {
-    syncInputsFromSliders();
+    syncSlidersFromSliders();
     scheduleRefresh();
   });
 
@@ -1489,9 +1610,30 @@
 
   if (windowsJsonInput) {
     windowsJsonInput.addEventListener("input", () => {
+      if (!suppressWindowBuilderSync) {
+        renderWindowBuilderFromTextarea();
+      }
       setUpdateStatus("Finish the current field to update.", "draft");
     });
     windowsJsonInput.addEventListener("change", () => {
+      if (!suppressWindowBuilderSync) {
+        renderWindowBuilderFromTextarea();
+      }
+      scheduleRefresh("Updating preview...");
+    });
+  }
+
+  if (addWindowRowButton) {
+    addWindowRowButton.addEventListener("click", () => {
+      addEmptyWindowRow();
+      scheduleRefresh("Updating preview...");
+    });
+  }
+
+  if (clearWindowRowsButton) {
+    clearWindowRowsButton.addEventListener("click", () => {
+      renderWindowBuilderFromRows([]);
+      syncTextareaFromBuilder();
       scheduleRefresh("Updating preview...");
     });
   }
@@ -1540,6 +1682,7 @@
     invalidateMapSoon();
   }
   baselinePayload = readStoredBaseline();
+  renderWindowBuilderFromTextarea();
   updateSnapshotDom(initialData);
   updateTimeScrubberReference(timezoneInput.value);
   setUpdateStatus(defaultUpdateMessage, "idle");
