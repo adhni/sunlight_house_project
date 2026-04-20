@@ -393,6 +393,15 @@
                     </div>
                     <p class="field-help">Measure the window centre from the left end of the selected wall in the top-down view. Sill height is measured from the floor to the bottom of the window.</p>
                   </section>
+
+                  <section class="nested-control-group">
+                    <span class="explorer-label">Optional Multi-Window JSON</span>
+                    <label>
+                      <span>Override the single-window inputs with a list of windows</span>
+                      <textarea name="windows_json" rows="10" style="width:100%; font-family:monospace;">{{ form_values.windows_json }}</textarea>
+                    </label>
+                    <p class="field-help">Leave this blank to keep using the single-window controls above. Example: [{"name":"north_main","wall":"north","span_center":2.0,"sill_height":0.8,"width":1.4,"height":1.6},{"name":"east_side","wall":"east","span_center":2.5,"sill_height":0.9,"width":1.0,"height":1.2}]</p>
+                  </section>
                 </div>
               </details>
 
