@@ -1541,7 +1541,7 @@
   });
 
   daySlider.addEventListener("input", () => {
-    syncSlidersFromSliders();
+    syncInputsFromSliders();
     scheduleRefresh();
   });
 
