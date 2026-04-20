@@ -977,20 +977,40 @@
       return `<polygon points="${points}" fill="rgba(200,101,48,${alpha})" stroke="#8e3b18" stroke-width="0.04"></polygon>`;
     }).join("");
 
-    const dragCursor = activeWindow.wall === "north" || activeWindow.wall === "south" ? "ew-resize" : "ns-resize";
-    const resizeHandleStart = `<circle id="room-window-resize-start" data-window-resize-handle="start" cx="${windowA[0]}" cy="${depth - windowA[1]}" r="0.14" fill="#fff7ec" stroke="#c86530" stroke-width="0.05" pointer-events="all" style="cursor:${dragCursor}"></circle>`;
-    const resizeHandleEnd = `<circle id="room-window-resize-end" data-window-resize-handle="end" cx="${windowB[0]}" cy="${depth - windowB[1]}" r="0.14" fill="#fff7ec" stroke="#c86530" stroke-width="0.05" pointer-events="all" style="cursor:${dragCursor}"></circle>`;
-    const windowLine = `<line id="room-window-line" x1="${windowA[0]}" y1="${depth - windowA[1]}" x2="${windowB[0]}" y2="${depth - windowB[1]}" stroke="#2b627a" stroke-width="0.17" stroke-linecap="round"></line>`;
-    const windowGlow = `<line id="room-window-glow" x1="${windowA[0]}" y1="${depth - windowA[1]}" x2="${windowB[0]}" y2="${depth - windowB[1]}" stroke="rgba(240,178,79,0.35)" stroke-width="0.32" stroke-linecap="round"></line>`;
-    const windowDragHit = `<line id="room-window-hit" data-window-drag-handle="true" x1="${windowA[0]}" y1="${depth - windowA[1]}" x2="${windowB[0]}" y2="${depth - windowB[1]}" stroke="rgba(43,98,122,0.001)" stroke-width="0.62" stroke-linecap="round" pointer-events="stroke" style="cursor:${dragCursor}"></line>`;
+    const windowElements = payload.windows.map((window, index) => {
+      const [start, end] = window.wall_segment_xy;
+      const midX = (start[0] + end[0]) / 2;
+      const midY = (start[1] + end[1]) / 2;
+      const startY = depth - start[1];
+      const endY = depth - end[1];
+      const midSvgY = depth - midY;
+      const labelText = window.name || `Window ${index + 1}`;
+
+      if (!payload.is_multi_window && index === 0) {
+        const dragCursor = payload.active_window.wall === "north" || payload.active_window.wall === "south" ? "ew-resize" : "ns-resize";
+        return `
+          <line id="room-window-glow" x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="rgba(240,178,79,0.35)" stroke-width="0.32" stroke-linecap="round"></line>
+          <line id="room-window-line" x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="#2b627a" stroke-width="0.17" stroke-linecap="round"></line>
+          <line id="room-window-hit" data-window-drag-handle="true" x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="rgba(43,98,122,0.001)" stroke-width="0.62" stroke-linecap="round" pointer-events="stroke" style="cursor:${dragCursor}"></line>
+          <circle id="room-window-resize-start" data-window-resize-handle="start" cx="${start[0]}" cy="${startY}" r="0.14" fill="#fff7ec" stroke="#c86530" stroke-width="0.05" pointer-events="all" style="cursor:${dragCursor}"></circle>
+          <circle id="room-window-resize-end" data-window-resize-handle="end" cx="${end[0]}" cy="${endY}" r="0.14" fill="#fff7ec" stroke="#c86530" stroke-width="0.05" pointer-events="all" style="cursor:${dragCursor}"></circle>
+          <circle id="room-window-handle" data-window-drag-handle="true" cx="${midX}" cy="${midSvgY}" r="0.18" fill="#fffdf8" stroke="#2b627a" stroke-width="0.05" pointer-events="all" style="cursor:${dragCursor}"></circle>
+          <circle id="room-window-source" data-window-drag-handle="true" cx="${midX}" cy="${midSvgY}" r="0.12" fill="#2b627a" pointer-events="all" style="cursor:${dragCursor}"></circle>
+          <text id="room-window-label" x="${midX}" y="${midSvgY - 0.28}" font-size="0.22" text-anchor="middle" fill="#2b627a">Main window</text>
+        `;
+      }
+
+      return `
+        <line x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="rgba(240,178,79,0.22)" stroke-width="0.24" stroke-linecap="round"></line>
+        <line x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="#2b627a" stroke-width="0.14" stroke-linecap="round"></line>
+        <text x="${midX}" y="${midSvgY - 0.2}" font-size="0.16" text-anchor="middle" fill="#2b627a">${labelText}</text>
+      `;
+    }).join("");
+
     const rayLines = rays.map(([start, end]) => (
       `<line x1="${start[0]}" y1="${depth - start[1]}" x2="${end[0]}" y2="${depth - end[1]}" stroke="#f0b24f" stroke-width="0.06" stroke-linecap="round" stroke-dasharray="0.12 0.08"></line>`
     )).join("");
-    const sourceMarker = `
-      <circle id="room-window-handle" data-window-drag-handle="true" cx="${windowMid[0]}" cy="${depth - windowMid[1]}" r="0.18" fill="#fffdf8" stroke="#2b627a" stroke-width="0.05" pointer-events="all" style="cursor:${dragCursor}"></circle>
-      <circle id="room-window-source" data-window-drag-handle="true" cx="${windowMid[0]}" cy="${depth - windowMid[1]}" r="0.12" fill="#2b627a" pointer-events="all" style="cursor:${dragCursor}"></circle>
-      <text id="room-window-label" x="${windowMid[0]}" y="${depth - windowMid[1] - 0.28}" font-size="0.22" text-anchor="middle" fill="#2b627a">Main window</text>
-    `;
+
     const noPatch = payload.snapshot.patches.length === 0
       ? `<text x="${width / 2}" y="${depth / 2 + 0.6}" font-size="0.28" text-anchor="middle" fill="#616a68">No direct floor patch</text>`
       : "";
@@ -1002,7 +1022,7 @@
       <text x="${width / 2}" y="${depth + 0.28}" font-size="0.2" text-anchor="middle" fill="#5f6d77">${bottomLabel}</text>
       <text x="-0.22" y="${depth / 2}" font-size="0.2" text-anchor="middle" fill="#5f6d77" transform="rotate(-90 -0.22 ${depth / 2})">${leftLabel}</text>
     `;
-    const sourceLegend = `<text x="${width - 0.25}" y="${depth - 0.15}" font-size="0.18" text-anchor="end" fill="#616a68">Window → Rays → Floor patch</text>`;
+    const sourceLegend = `<text x="${width - 0.25}" y="${depth - 0.15}" font-size="0.18" text-anchor="end" fill="#616a68">${payload.is_multi_window ? "Windows" : "Window"} → Rays → Floor patch</text>`;
     const defs = `
       <defs>
         <filter id="patchShadow" x="-20%" y="-20%" width="140%" height="140%">
@@ -1015,14 +1035,9 @@
       <svg viewBox="${viewBox}" role="img" aria-label="Top-down room snapshot">
         ${defs}
         <rect x="0" y="0" width="${width}" height="${depth}" fill="#fffdf8" stroke="#1f2732" stroke-width="0.06"></rect>
-        ${windowGlow}
+        ${windowElements}
         ${rayLines}
         <g filter="url(#patchShadow)">${patchPolygons}</g>
-        ${windowLine}
-        ${windowDragHit}
-        ${resizeHandleStart}
-        ${resizeHandleEnd}
-        ${sourceMarker}
         ${noPatch}
         ${dimensionGuides}
         ${sideLabels}
@@ -1036,8 +1051,6 @@
     const depth = payload.room.depth;
     const pad = 0.95;
     const viewBox = `${-pad} ${-pad} ${width + pad * 2} ${depth + pad * 2}`;
-    const activeWindow = payload.windows[0];
-    const [windowA, windowB] = activeWindow.wall_segment_xy;
     const rows = grid.rows;
     const cols = grid.cols;
     const cellWidth = grid.cell_width;
@@ -1058,11 +1071,16 @@
       }
     }
 
+    const windowLines = payload.windows.map((window) => {
+      const [start, end] = window.wall_segment_xy;
+      return `<line x1="${start[0]}" y1="${depth - start[1]}" x2="${end[0]}" y2="${depth - end[1]}" stroke="#2b627a" stroke-width="0.14" stroke-linecap="round"></line>`;
+    }).join("");
+
     return `
       <svg viewBox="${viewBox}" role="img" aria-label="${ariaLabel}">
         <rect x="0" y="0" width="${width}" height="${depth}" fill="#fffdf8" stroke="#1f2732" stroke-width="0.06"></rect>
         ${cells.join("")}
-        <line x1="${windowA[0]}" y1="${depth - windowA[1]}" x2="${windowB[0]}" y2="${depth - windowB[1]}" stroke="#2b627a" stroke-width="0.17" stroke-linecap="round"></line>
+        ${windowLines}
         ${dimensionGuides}
         <text x="${0.12}" y="${0.25}" font-size="0.18" fill="#616a68">0 h</text>
         <text x="${width - 0.12}" y="${0.25}" font-size="0.18" text-anchor="end" fill="#8e3b18">${grid.peak_hours.toFixed(1)} h max</text>
@@ -1108,8 +1126,10 @@
       : "No direct sun");
 
     setHtml("room-snapshot-svg", createRoomSvg(payload));
-    wireRoomWindowDrag();
-    wireRoomWindowResize();
+    if (!payload.is_multi_window) {
+      wireRoomWindowDrag();
+      wireRoomWindowResize();
+    }
     const { center, width } = currentWindowMetrics(payload);
     if (payload.is_multi_window) {
       setText("window-centre-readout", `${payload.windows.length} windows from JSON override`);
@@ -1127,7 +1147,7 @@
       snapshotStatus.className = snapshotStateClass(snapshot.state);
     }
 
-    setText("snapshot-window-fact", `Window facing: ${payload.active_window.facing}`);
+    setText("snapshot-window-fact", payload.is_multi_window ? `Window facing: ${payload.active_window.facing} · ${payload.windows.length} windows` : `Window facing: ${payload.active_window.facing}`);
     setText("snapshot-azimuth-fact", `Azimuth: ${snapshot.azimuth_deg.toFixed(1)}°`);
     setText("snapshot-elevation-fact", `Elevation: ${snapshot.elevation_deg.toFixed(1)}°`);
     const [topLabel, rightLabel, bottomLabel, leftLabel] = roomEdgeLabels(payload.window_facing_label);
