@@ -44,6 +44,7 @@
   const windowHeightInput = form.querySelector('input[name="window_height"]');
   const windowSpanCenterInput = form.querySelector('input[name="window_span_center"]');
   const windowSillHeightInput = form.querySelector('input[name="window_sill_height"]');
+  const windowsJsonInput = form.querySelector('textarea[name="windows_json"]');
 
   const mapElement = document.getElementById("location-map");
   let map = null;
@@ -1043,6 +1044,7 @@
     const cellHeight = grid.cell_height;
     const peakHours = Math.max(grid.peak_hours || 0, 0.0001);
     const [topLabel, rightLabel, bottomLabel, leftLabel] = roomEdgeLabels(payload.window_facing_label);
+
     const dimensionGuides = createDimensionGuides(width, depth);
 
     const cells = [];
@@ -1109,7 +1111,12 @@
     wireRoomWindowDrag();
     wireRoomWindowResize();
     const { center, width } = currentWindowMetrics(payload);
-    updateWindowGeometryReadout(center, width);
+    if (payload.is_multi_window) {
+      setText("window-centre-readout", `${payload.windows.length} windows from JSON override`);
+      setText("window-width-readout", `Strongest window: ${snapshot.strongest_window || "None"}`);
+    } else {
+      updateWindowGeometryReadout(center, width);
+    }
     setHtml("daily-exposure-svg", createExposureMapSvg(payload, payload.daily.exposure_grid, "Daily sunlight map"));
     updateExposureLegendAndStats(payload.daily.exposure_grid, "daily");
     hideExposureTooltip(dailyExposureTooltip);
@@ -1459,6 +1466,15 @@
     setUpdateStatus("Finish the current field to update.", "draft");
   });
   locationNameInput.addEventListener("change", refreshLocationName);
+
+  if (windowsJsonInput) {
+    windowsJsonInput.addEventListener("input", () => {
+      setUpdateStatus("Finish the current field to update.", "draft");
+    });
+    windowsJsonInput.addEventListener("change", () => {
+      scheduleRefresh("Updating preview...");
+    });
+  }
 
   form.querySelectorAll('input[type="number"]').forEach((input) => {
     if (input === latitudeInput || input === longitudeInput || input === yearInput) {
