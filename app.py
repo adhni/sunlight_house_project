@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime
 from time import perf_counter
@@ -23,6 +24,7 @@ from sunlight_house.config import (
     default_melbourne_scenario,
     location_from_preset,
     main_window,
+    window_on_wall,
 )
 from sunlight_house.geometry import Room
 from sunlight_house.insights import summarize_direct_sun
@@ -140,9 +142,48 @@ def default_form_values() -> dict[str, str]:
         "window_sill_height": f"{window.center[2] - window.height / 2.0:.1f}",
         "window_width": f"{window.width}",
         "window_height": f"{window.height}",
+        "windows_json": "",
         "day_step_minutes": str(scenario.day_step_minutes),
         "year_step_hours": str(scenario.year_step_hours),
     }
+
+
+def parse_windows_json(raw_value: str, room: Room) -> tuple:
+    raw_text = raw_value.strip()
+    if not raw_text:
+        return ()
+    try:
+        payload = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Multi-window JSON must be valid JSON.") from exc
+
+    if not isinstance(payload, list) or not payload:
+        raise ValueError("Multi-window JSON must be a non-empty list of window objects.")
+
+    windows = []
+    for index, item in enumerate(payload, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"Window {index} must be an object.")
+        wall = str(item.get("wall", "")).strip().lower()
+        if not wall:
+            raise ValueError(f"Window {index} must include a wall.")
+        name = str(item.get("name", f"window_{index}")).strip() or f"window_{index}"
+        span_center = parse_float(str(item.get("span_center", "")), f"Window {index} span center")
+        sill_height = parse_float(str(item.get("sill_height", "")), f"Window {index} sill height")
+        width = parse_positive_float(str(item.get("width", "")), f"Window {index} width")
+        height = parse_positive_float(str(item.get("height", "")), f"Window {index} height")
+        windows.append(
+            window_on_wall(
+                name=name,
+                room=room,
+                wall=wall,
+                span_center=span_center,
+                center_height=sill_height + 0.5 * height,
+                width=width,
+                height=height,
+            )
+        )
+    return tuple(windows)
 
 
 def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConfig, datetime]:
@@ -168,14 +209,18 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
         depth=parse_positive_float(form_values["room_depth"], "Room depth"),
         height=parse_positive_float(form_values["room_height"], "Room height"),
     )
-    window = main_window(
-        room=room,
-        span_center=parse_float(form_values["window_span_center"], "Window span center"),
-        center_height=parse_float(form_values["window_sill_height"], "Window sill height")
-        + 0.5 * parse_positive_float(form_values["window_height"], "Window height"),
-        width=parse_positive_float(form_values["window_width"], "Window width"),
-        height=parse_positive_float(form_values["window_height"], "Window height"),
-    )
+    windows = parse_windows_json(form_values.get("windows_json", ""), room)
+    if not windows:
+        windows = (
+            main_window(
+                room=room,
+                span_center=parse_float(form_values["window_span_center"], "Window span center"),
+                center_height=parse_float(form_values["window_sill_height"], "Window sill height")
+                + 0.5 * parse_positive_float(form_values["window_height"], "Window height"),
+                width=parse_positive_float(form_values["window_width"], "Window width"),
+                height=parse_positive_float(form_values["window_height"], "Window height"),
+            ),
+        )
 
     year = selected_date.year
     config = SimulationConfig(
@@ -186,7 +231,7 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
             timezone_name=timezone_name,
         ),
         room=room,
-        windows=(window,),
+        windows=windows,
         year=year,
         day_step_minutes=int(parse_positive_float(form_values["day_step_minutes"], "Daily step")),
         year_step_hours=int(parse_positive_float(form_values["year_step_hours"], "Yearly step")),
@@ -290,6 +335,7 @@ def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dic
             "wall": wall_name_for_window(config.windows[0]),
             "facing": config.window_facing_label,
         },
+        "is_multi_window": len(config.windows) > 1,
         "summary": summary,
         "window_facing_label": config.window_facing_label,
     }
@@ -336,6 +382,21 @@ def normalize_form_values(form_values: dict[str, str], config: SimulationConfig)
     normalized["year"] = str(config.year)
     normalized["window_facing"] = config.window_facing_label
     normalized["window_sill_height"] = f"{config.windows[0].center[2] - config.windows[0].height / 2.0:.1f}"
+    if len(config.windows) > 1:
+        normalized["windows_json"] = json.dumps(
+            [
+                {
+                    "name": window.name,
+                    "wall": wall_name_for_window(window),
+                    "span_center": float(window.center[0] if wall_name_for_window(window) in {"north", "south"} else window.center[1]),
+                    "sill_height": float(window.center[2] - window.height / 2.0),
+                    "width": float(window.width),
+                    "height": float(window.height),
+                }
+                for window in config.windows
+            ],
+            indent=2,
+        )
     return normalized
 
 
@@ -362,6 +423,9 @@ def build_safe_form_values(form_values: dict[str, str], defaults: dict[str, str]
 
     for key in ("day_step_minutes", "year_step_hours"):
         safe[key] = safe_positive_int_string(form_values.get(key, defaults[key]), defaults[key])
+
+    raw_windows_json = form_values.get("windows_json", defaults["windows_json"])
+    safe["windows_json"] = raw_windows_json if isinstance(raw_windows_json, str) else defaults["windows_json"]
 
     window_facing = form_values.get("window_facing", defaults["window_facing"]).strip().upper()
     valid_facings = {label for label, _ in COMPASS_OPTIONS}
