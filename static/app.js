@@ -299,6 +299,15 @@
     }
   }
 
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function updateSummaryDom(summary) {
     if (!summary) {
       return;
@@ -332,6 +341,12 @@
       ? (segment[0][0] + segment[1][0]) / 2
       : (segment[0][1] + segment[1][1]) / 2;
     const widthFromSegment = Math.abs(segment[1][0] - segment[0][0]) || Math.abs(segment[1][1] - segment[0][1]);
+    if (payload.window_override_active) {
+      return {
+        center: centerFromSegment,
+        width: widthFromSegment,
+      };
+    }
     return {
       center: parseFiniteNumber(windowSpanCenterInput.value) ?? centerFromSegment,
       width: parseFiniteNumber(windowWidthInput.value) ?? widthFromSegment,
@@ -388,8 +403,13 @@
     row.style.alignItems = "end";
 
     const wallValue = (windowData.wall || "north").toString().toLowerCase();
+    const nameValue = escapeHtml(windowData.name ?? "");
+    const spanCenterValue = escapeHtml(windowData.span_center ?? "");
+    const sillHeightValue = escapeHtml(windowData.sill_height ?? "");
+    const widthValue = escapeHtml(windowData.width ?? "");
+    const heightValue = escapeHtml(windowData.height ?? "");
     row.innerHTML = `
-      <label><span>Name</span><input type="text" data-window-field="name" value="${windowData.name || ""}"></label>
+      <label><span>Name</span><input type="text" data-window-field="name" value="${nameValue}"></label>
       <label><span>Wall</span>
         <select data-window-field="wall">
           <option value="north" ${wallValue === "north" ? "selected" : ""}>north</option>
@@ -398,10 +418,10 @@
           <option value="west" ${wallValue === "west" ? "selected" : ""}>west</option>
         </select>
       </label>
-      <label><span>Centre</span><input type="number" step="0.1" data-window-field="span_center" value="${windowData.span_center ?? ""}"></label>
-      <label><span>Sill</span><input type="number" step="0.1" data-window-field="sill_height" value="${windowData.sill_height ?? ""}"></label>
-      <label><span>Width</span><input type="number" step="0.1" data-window-field="width" value="${windowData.width ?? ""}"></label>
-      <label><span>Height</span><input type="number" step="0.1" data-window-field="height" value="${windowData.height ?? ""}"></label>
+      <label><span>Centre</span><input type="number" step="0.1" data-window-field="span_center" value="${spanCenterValue}"></label>
+      <label><span>Sill</span><input type="number" step="0.1" data-window-field="sill_height" value="${sillHeightValue}"></label>
+      <label><span>Width</span><input type="number" step="0.1" data-window-field="width" value="${widthValue}"></label>
+      <label><span>Height</span><input type="number" step="0.1" data-window-field="height" value="${heightValue}"></label>
       <button type="button" class="chip-button chip-button-soft" data-remove-window-row="true">Remove</button>
     `;
 
@@ -1105,7 +1125,7 @@
       const startY = depth - start[1];
       const endY = depth - end[1];
       const midSvgY = depth - midY;
-      const labelText = window.name || `Window ${index + 1}`;
+      const labelText = escapeHtml(window.name || `Window ${index + 1}`);
 
       if (!payload.is_multi_window && index === 0) {
         const dragCursor = payload.active_window.wall === "north" || payload.active_window.wall === "south" ? "ew-resize" : "ns-resize";
@@ -1247,13 +1267,14 @@
       : "No direct sun");
 
     setHtml("room-snapshot-svg", createRoomSvg(payload));
-    if (!payload.is_multi_window) {
+    if (!payload.window_override_active) {
       wireRoomWindowDrag();
       wireRoomWindowResize();
     }
     const { center, width } = currentWindowMetrics(payload);
-    if (payload.is_multi_window) {
-      setText("window-centre-readout", `${payload.windows.length} windows from JSON override`);
+    if (payload.window_override_active) {
+      const windowLabel = payload.windows.length === 1 ? "1 window" : `${payload.windows.length} windows`;
+      setText("window-centre-readout", `${windowLabel} from JSON override`);
       setText("window-width-readout", `Strongest window: ${snapshot.strongest_window || "None"}`);
     } else {
       updateWindowGeometryReadout(center, width);
@@ -1268,7 +1289,12 @@
       snapshotStatus.className = snapshotStateClass(snapshot.state);
     }
 
-    setText("snapshot-window-fact", payload.is_multi_window ? `Window facing: ${payload.active_window.facing} · ${payload.windows.length} windows` : `Window facing: ${payload.active_window.facing}`);
+    setText(
+      "snapshot-window-fact",
+      payload.window_override_active
+        ? `Window facing: ${payload.active_window.facing} · ${payload.windows.length} window override${payload.windows.length === 1 ? "" : "s"}`
+        : `Window facing: ${payload.active_window.facing}`,
+    );
     setText("snapshot-azimuth-fact", `Azimuth: ${snapshot.azimuth_deg.toFixed(1)}°`);
     setText("snapshot-elevation-fact", `Elevation: ${snapshot.elevation_deg.toFixed(1)}°`);
     const [topLabel, rightLabel, bottomLabel, leftLabel] = roomEdgeLabels(payload.window_facing_label);

@@ -43,11 +43,13 @@ def create_app() -> Flask:
         try:
             config, selected_moment = build_config_and_moment(raw_values)
             form_values = normalize_form_values(raw_values, config)
+            window_override_active = has_window_override(form_values)
         except ValueError as exc:
             error = f"{exc} Keeping your current inputs below; the preview uses the nearest valid values."
             form_values = dict(raw_values)
             safe_values = build_safe_form_values(raw_values, defaults)
             config, selected_moment = build_config_and_moment(safe_values)
+            window_override_active = has_window_override(safe_values)
 
         snapshot = analyze_snapshot(config, selected_moment)
         daily = analyze_day(config, selected_moment.date(), selected_moment.strftime("%B %d"))
@@ -65,7 +67,11 @@ def create_app() -> Flask:
             daily=daily,
             strongest_window=strongest_window,
             strongest_intensity=strongest_intensity,
-            initial_snapshot_payload=snapshot_payload(config, selected_moment),
+            initial_snapshot_payload=snapshot_payload(
+                config,
+                selected_moment,
+                window_override_active=window_override_active,
+            ),
             location_presets=location_presets_payload(),
             compass_options=[label for label, _ in COMPASS_OPTIONS],
         )
@@ -80,7 +86,13 @@ def create_app() -> Flask:
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
-        return jsonify(snapshot_payload(config, selected_moment))
+        return jsonify(
+            snapshot_payload(
+                config,
+                selected_moment,
+                window_override_active=has_window_override(raw_values),
+            )
+        )
 
     @app.get("/api/long-range-exposure")
     def api_long_range_exposure():
@@ -125,6 +137,27 @@ def default_form_values() -> dict[str, str]:
     current_moment = datetime.now(timezone).replace(second=0, microsecond=0)
     rounded_minute = current_moment.minute - (current_moment.minute % 15)
     current_moment = current_moment.replace(minute=rounded_minute)
+    default_windows_json = json.dumps(
+        [
+            {
+                "name": "north_main",
+                "wall": "north",
+                "span_center": 2.0,
+                "sill_height": 0.8,
+                "width": 1.4,
+                "height": 1.6,
+            },
+            {
+                "name": "east_side",
+                "wall": "east",
+                "span_center": 2.5,
+                "sill_height": 0.9,
+                "width": 1.0,
+                "height": 1.2,
+            },
+        ],
+        indent=2,
+    )
     return {
         "location_preset": preset,
         "location_name": scenario.location.name,
@@ -142,7 +175,7 @@ def default_form_values() -> dict[str, str]:
         "window_sill_height": f"{window.center[2] - window.height / 2.0:.1f}",
         "window_width": f"{window.width}",
         "window_height": f"{window.height}",
-        "windows_json": "",
+        "windows_json": default_windows_json,
         "day_step_minutes": str(scenario.day_step_minutes),
         "year_step_hours": str(scenario.year_step_hours),
     }
@@ -263,7 +296,12 @@ def parse_timezone_name(raw_value: str) -> ZoneInfo:
         raise ValueError("Timezone must be a valid IANA name.") from exc
 
 
-def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dict[str, object]:
+def snapshot_payload(
+    config: SimulationConfig,
+    selected_moment: datetime,
+    *,
+    window_override_active: bool = False,
+) -> dict[str, object]:
     snapshot = analyze_snapshot(config, selected_moment)
     daily = analyze_day(config, selected_moment.date(), selected_moment.strftime("%B %d"))
     exposure_grid = daily_exposure_grid(config, daily.patches_over_time)
@@ -336,6 +374,7 @@ def snapshot_payload(config: SimulationConfig, selected_moment: datetime) -> dic
             "facing": config.window_facing_label,
         },
         "is_multi_window": len(config.windows) > 1,
+        "window_override_active": window_override_active,
         "summary": summary,
         "window_facing_label": config.window_facing_label,
     }
@@ -424,13 +463,35 @@ def build_safe_form_values(form_values: dict[str, str], defaults: dict[str, str]
     for key in ("day_step_minutes", "year_step_hours"):
         safe[key] = safe_positive_int_string(form_values.get(key, defaults[key]), defaults[key])
 
+    safe_room = Room(
+        width=float(safe["room_width"]),
+        depth=float(safe["room_depth"]),
+        height=float(safe["room_height"]),
+    )
     raw_windows_json = form_values.get("windows_json", defaults["windows_json"])
-    safe["windows_json"] = raw_windows_json if isinstance(raw_windows_json, str) else defaults["windows_json"]
+    safe["windows_json"] = safe_windows_json_string(raw_windows_json, defaults["windows_json"], safe_room)
 
     window_facing = form_values.get("window_facing", defaults["window_facing"]).strip().upper()
     valid_facings = {label for label, _ in COMPASS_OPTIONS}
     safe["window_facing"] = window_facing if window_facing in valid_facings else defaults["window_facing"]
     return safe
+
+
+def safe_windows_json_string(raw_value: object, default_value: str, room: Room) -> str:
+    if not isinstance(raw_value, str):
+        return default_value
+    candidate = raw_value.strip()
+    if not candidate:
+        return default_value
+    try:
+        parse_windows_json(candidate, room)
+    except ValueError:
+        return default_value
+    return candidate
+
+
+def has_window_override(form_values: dict[str, str]) -> bool:
+    return bool(form_values.get("windows_json", "").strip())
 
 
 def seasonal_preset_urls(base_values: dict[str, str], year: int) -> dict[str, str]:
