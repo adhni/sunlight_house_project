@@ -137,27 +137,6 @@ def default_form_values() -> dict[str, str]:
     current_moment = datetime.now(timezone).replace(second=0, microsecond=0)
     rounded_minute = current_moment.minute - (current_moment.minute % 15)
     current_moment = current_moment.replace(minute=rounded_minute)
-    default_windows_json = json.dumps(
-        [
-            {
-                "name": "north_main",
-                "wall": "north",
-                "span_center": 2.0,
-                "sill_height": 0.8,
-                "width": 1.4,
-                "height": 1.6,
-            },
-            {
-                "name": "east_side",
-                "wall": "east",
-                "span_center": 2.5,
-                "sill_height": 0.9,
-                "width": 1.0,
-                "height": 1.2,
-            },
-        ],
-        indent=2,
-    )
     return {
         "location_preset": preset,
         "location_name": scenario.location.name,
@@ -175,7 +154,7 @@ def default_form_values() -> dict[str, str]:
         "window_sill_height": f"{window.center[2] - window.height / 2.0:.1f}",
         "window_width": f"{window.width}",
         "window_height": f"{window.height}",
-        "windows_json": default_windows_json,
+        "windows_json": "",
         "day_step_minutes": str(scenario.day_step_minutes),
         "year_step_hours": str(scenario.year_step_hours),
     }

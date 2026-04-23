@@ -26,8 +26,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(values["window_sill_height"], "0.1")
         self.assertEqual(values["window_width"], "1.5")
         self.assertEqual(values["window_height"], "2.0")
-        self.assertIn('"name": "north_main"', values["windows_json"])
-        self.assertIn('"name": "east_side"', values["windows_json"])
+        self.assertEqual(values["windows_json"], "")
 
     def test_snapshot_api_returns_expected_shape(self) -> None:
         response = self.client.get("/api/snapshot")
@@ -43,9 +42,9 @@ class AppTests(unittest.TestCase):
         self.assertIn("windows", payload)
         self.assertIn("headline", payload["summary"])
         self.assertIn("supporting_text", payload["summary"])
-        self.assertTrue(payload["is_multi_window"])
-        self.assertTrue(payload["window_override_active"])
-        self.assertEqual(len(payload["windows"]), 2)
+        self.assertFalse(payload["is_multi_window"])
+        self.assertFalse(payload["window_override_active"])
+        self.assertEqual(len(payload["windows"]), 1)
 
     def test_index_invalid_windows_json_falls_back_instead_of_500(self) -> None:
         response = self.client.get("/?windows_json=not-json")
@@ -93,7 +92,7 @@ class AppTests(unittest.TestCase):
 
         values = build_safe_form_values(defaults | {"windows_json": "not-json"}, defaults)
 
-        self.assertEqual(values["windows_json"], defaults["windows_json"])
+        self.assertEqual(values["windows_json"], "")
 
 
 if __name__ == "__main__":

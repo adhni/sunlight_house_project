@@ -442,6 +442,10 @@ input[type="range"] {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.field-row-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .explore-slider-group {
   display: grid;
   gap: 8px;
@@ -588,19 +592,18 @@ input[type="range"] {
   justify-content: flex-end;
 }
 
-.window-builder-list {
-  display: grid;
-  gap: 10px;
+.window-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.window-builder-row {
+.selected-window-card {
   display: grid;
-  grid-template-columns: 1.2fr 0.8fr repeat(4, minmax(0, 0.9fr)) auto;
-  gap: 8px;
-  align-items: end;
-  padding: 12px;
+  gap: 12px;
+  padding: 14px;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 20px;
   background: rgba(255, 255, 255, 0.62);
 }
 
@@ -880,7 +883,8 @@ input[type="range"] {
   .analysis-header,
   .field-row,
   .field-row-2,
-  .field-row-3 {
+  .field-row-3,
+  .field-row-4 {
     display: grid;
     grid-template-columns: 1fr;
   }
@@ -936,7 +940,4 @@ input[type="range"] {
     justify-content: stretch;
   }
 
-  .window-builder-row {
-    grid-template-columns: 1fr;
-  }
 }

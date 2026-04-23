@@ -48,7 +48,11 @@
   const windowsJsonInput = form.querySelector('textarea[name="windows_json"]');
   const windowRowsBuilder = document.getElementById("window-rows-builder");
   const addWindowRowButton = document.getElementById("add-window-row-button");
-  const clearWindowRowsButton = document.getElementById("clear-window-rows-button");
+  const removeWindowButton = document.getElementById("remove-window-button");
+  const selectedWindowWallSelect = document.getElementById("selected-window-wall");
+  const selectedWindowFacingCopy = document.getElementById("selected-window-facing-copy");
+  const windowEditorTitle = document.getElementById("window-editor-title");
+  const windowEditorCopy = document.getElementById("window-editor-copy");
 
   const mapElement = document.getElementById("location-map");
   let map = null;
@@ -68,6 +72,8 @@
   let activeWindowDrag = null;
   let activeWindowResize = null;
   let suppressWindowBuilderSync = false;
+  let activeWindowIndex = 0;
+  let windowRows = [];
 
   function isLeapYear(year) {
     return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
@@ -129,6 +135,7 @@
   }
 
   function currentQueryString() {
+    syncWindowsJsonFromEditor();
     return new URLSearchParams(new FormData(form)).toString();
   }
 
@@ -281,6 +288,7 @@
   function setWindowFacing(facing, refresh = true) {
     windowFacingInput.value = facing;
     setActiveButtons(windowFacingButtons, "windowFacing", facing);
+    renderWindowEditor();
     if (refresh) {
       scheduleRefresh();
     }
@@ -337,12 +345,13 @@
   }
 
   function currentWindowMetrics(payload = currentPayload) {
-    const segment = payload.windows[0].wall_segment_xy;
+    const payloadWindow = payload.windows[Math.min(activeWindowIndex, payload.windows.length - 1)] || payload.windows[0];
+    const segment = payloadWindow.wall_segment_xy;
     const centerFromSegment = (Math.abs(segment[1][0] - segment[0][0]) > 0.0001)
       ? (segment[0][0] + segment[1][0]) / 2
       : (segment[0][1] + segment[1][1]) / 2;
     const widthFromSegment = Math.abs(segment[1][0] - segment[0][0]) || Math.abs(segment[1][1] - segment[0][1]);
-    if (payload.window_override_active) {
+    if (payload.window_override_active && windowRows.length > 1) {
       return {
         center: centerFromSegment,
         width: widthFromSegment,
@@ -395,148 +404,173 @@
     }
   }
 
-  function createWindowRowElement(windowData = {}) {
-    const row = document.createElement("div");
-    row.className = "window-builder-row";
-
-    const wallValue = (windowData.wall || "north").toString().toLowerCase();
-    const nameValue = escapeHtml(windowData.name ?? "");
-    const spanCenterValue = escapeHtml(windowData.span_center ?? "");
-    const sillHeightValue = escapeHtml(windowData.sill_height ?? "");
-    const widthValue = escapeHtml(windowData.width ?? "");
-    const heightValue = escapeHtml(windowData.height ?? "");
-    row.innerHTML = `
-      <label><span>Name</span><input type="text" data-window-field="name" value="${nameValue}"></label>
-      <label><span>Wall</span>
-        <select data-window-field="wall">
-          <option value="north" ${wallValue === "north" ? "selected" : ""}>north</option>
-          <option value="south" ${wallValue === "south" ? "selected" : ""}>south</option>
-          <option value="east" ${wallValue === "east" ? "selected" : ""}>east</option>
-          <option value="west" ${wallValue === "west" ? "selected" : ""}>west</option>
-        </select>
-      </label>
-      <label><span>Centre</span><input type="number" step="0.1" data-window-field="span_center" value="${spanCenterValue}"></label>
-      <label><span>Sill</span><input type="number" step="0.1" data-window-field="sill_height" value="${sillHeightValue}"></label>
-      <label><span>Width</span><input type="number" step="0.1" data-window-field="width" value="${widthValue}"></label>
-      <label><span>Height</span><input type="number" step="0.1" data-window-field="height" value="${heightValue}"></label>
-      <button type="button" class="chip-button chip-button-soft" data-remove-window-row="true">Remove</button>
-    `;
-
-    row.querySelectorAll("input, select").forEach((input) => {
-      input.addEventListener("input", () => {
-        const hasSerializableRows = syncTextareaFromBuilder();
-        setUpdateStatus(
-          hasSerializableRows ? "Finish the current field to update." : "Complete one window row to update the preview.",
-          "draft",
-        );
-      });
-      input.addEventListener("change", () => {
-        const hasSerializableRows = syncTextareaFromBuilder();
-        if (hasSerializableRows) {
-          scheduleRefresh("Updating preview...");
-        } else {
-          setUpdateStatus("Complete one window row to update the preview.", "draft");
-        }
-      });
-    });
-
-    row.querySelector('[data-remove-window-row="true"]').addEventListener("click", () => {
-      row.remove();
-      const hasSerializableRows = syncTextareaFromBuilder();
-      if (hasSerializableRows) {
-        scheduleRefresh("Updating preview...");
-      } else {
-        renderWindowBuilderFromRows([]);
-        setUpdateStatus("Add at least one window to update the preview.", "draft");
-      }
-    });
-
-    return row;
+  function wallDisplayName(wall) {
+    return {
+      north: "Front wall",
+      east: "Right wall",
+      south: "Back wall",
+      west: "Left wall",
+    }[wall] || "Front wall";
   }
 
-  function firstWindowRowValues() {
-    if (!windowRowsBuilder) {
-      return null;
-    }
-    const firstRow = windowRowsBuilder.querySelector(".window-builder-row");
-    if (!firstRow) {
-      return null;
-    }
-    const getValue = (field) => firstRow.querySelector(`[data-window-field="${field}"]`).value.trim();
+  function facingDegrees(label) {
     return {
-      spanCenter: parseFiniteNumber(getValue("span_center")),
-      sillHeight: parseFiniteNumber(getValue("sill_height")),
-      width: parseFiniteNumber(getValue("width")),
-      height: parseFiniteNumber(getValue("height")),
+      N: 0,
+      NE: 45,
+      E: 90,
+      SE: 135,
+      S: 180,
+      SW: 225,
+      W: 270,
+      NW: 315,
+    }[label] ?? 0;
+  }
+
+  function wallFacingLabel(wall) {
+    const offsets = {
+      north: 0,
+      east: 90,
+      south: 180,
+      west: 270,
+    };
+    return compassLabelForDegrees(facingDegrees(windowFacingInput.value) + (offsets[wall] ?? 0));
+  }
+
+  function windowRowFromLegacyInputs() {
+    return {
+      name: "window_1",
+      wall: "north",
+      span_center: windowSpanCenterInput.value,
+      sill_height: windowSillHeightInput.value,
+      width: windowWidthInput.value,
+      height: windowHeightInput.value,
     };
   }
 
-  function syncLegacyWindowInputsFromBuilder() {
-    const firstValues = firstWindowRowValues();
-    if (!firstValues) {
-      return;
-    }
-    if (firstValues.spanCenter !== null) {
-      windowSpanCenterInput.value = firstValues.spanCenter.toFixed(1);
-    }
-    if (firstValues.sillHeight !== null) {
-      windowSillHeightInput.value = firstValues.sillHeight.toFixed(1);
-    }
-    if (firstValues.width !== null) {
-      windowWidthInput.value = firstValues.width.toFixed(1);
-    }
-    if (firstValues.height !== null) {
-      windowHeightInput.value = firstValues.height.toFixed(1);
-    }
+  function normalizeWindowRow(row, index) {
+    return {
+      name: (row.name || `window_${index + 1}`).toString(),
+      wall: index === 0 ? "north" : (row.wall || "east").toString().toLowerCase(),
+      span_center: row.span_center ?? "",
+      sill_height: row.sill_height ?? "",
+      width: row.width ?? "",
+      height: row.height ?? "",
+    };
   }
 
-  function serializeWindowRows() {
-    if (!windowRowsBuilder) {
-      return [];
+  function persistActiveWindowEditor() {
+    if (!windowRows.length) {
+      windowRows = [windowRowFromLegacyInputs()];
     }
-    syncLegacyWindowInputsFromBuilder();
-    return Array.from(windowRowsBuilder.querySelectorAll(".window-builder-row")).map((row, index) => {
-      const getValue = (field) => row.querySelector(`[data-window-field="${field}"]`).value.trim();
-      const name = getValue("name") || `window_${index + 1}`;
-      const wall = getValue("wall") || "north";
-      const spanCenter = parseFiniteNumber(getValue("span_center"));
-      const sillHeight = parseFiniteNumber(getValue("sill_height"));
-      const width = parseFiniteNumber(getValue("width"));
-      const height = parseFiniteNumber(getValue("height"));
+    const activeRow = windowRows[activeWindowIndex] || windowRows[0];
+    activeRow.wall = activeWindowIndex === 0 ? "north" : selectedWindowWallSelect.value;
+    activeRow.span_center = windowSpanCenterInput.value;
+    activeRow.sill_height = windowSillHeightInput.value;
+    activeRow.width = windowWidthInput.value;
+    activeRow.height = windowHeightInput.value;
+  }
+
+  function serializableWindowRows() {
+    return windowRows.map((row, index) => normalizeWindowRow(row, index)).map((row) => {
+      const spanCenter = parseFiniteNumber(row.span_center);
+      const sillHeight = parseFiniteNumber(row.sill_height);
+      const width = parseFiniteNumber(row.width);
+      const height = parseFiniteNumber(row.height);
+      if (spanCenter === null || sillHeight === null || width === null || height === null) {
+        return null;
+      }
       return {
-        name,
-        wall,
+        name: row.name,
+        wall: row.wall,
         span_center: spanCenter,
         sill_height: sillHeight,
         width,
         height,
       };
-    }).filter((item) => item.span_center !== null && item.sill_height !== null && item.width !== null && item.height !== null);
+    });
   }
 
-  function syncTextareaFromBuilder() {
+  function windowsAreComplete() {
+    return serializableWindowRows().every(Boolean);
+  }
+
+  function syncWindowsJsonFromEditor() {
     if (!windowsJsonInput || suppressWindowBuilderSync) {
+      return windowsAreComplete();
+    }
+    persistActiveWindowEditor();
+    const rows = serializableWindowRows();
+    if (!rows.every(Boolean)) {
       return false;
     }
-    const rows = serializeWindowRows();
     suppressWindowBuilderSync = true;
-    windowsJsonInput.value = rows.length ? JSON.stringify(rows, null, 2) : "";
+    windowsJsonInput.value = rows.length > 1 ? JSON.stringify(rows, null, 2) : "";
     suppressWindowBuilderSync = false;
-    return rows.length > 0;
+    return true;
   }
 
-  function renderWindowBuilderFromRows(rows) {
+  function renderWindowSelector() {
     if (!windowRowsBuilder) {
       return;
     }
-    suppressWindowBuilderSync = true;
     windowRowsBuilder.innerHTML = "";
-    const rowsToRender = rows.length ? rows : [{}];
-    rowsToRender.forEach((row) => {
-      windowRowsBuilder.appendChild(createWindowRowElement(row));
+    windowRowsBuilder.hidden = windowRows.length <= 1;
+    if (windowRows.length <= 1) {
+      return;
+    }
+    windowRows.forEach((row, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `chip-button chip-button-soft${index === activeWindowIndex ? " is-active" : ""}`;
+      button.textContent = `Window ${index + 1}`;
+      button.addEventListener("click", () => {
+        persistActiveWindowEditor();
+        activeWindowIndex = index;
+        renderWindowEditor();
+      });
+      windowRowsBuilder.appendChild(button);
     });
-    suppressWindowBuilderSync = false;
-    syncLegacyWindowInputsFromBuilder();
+  }
+
+  function renderWindowEditor() {
+    if (!windowRows.length) {
+      windowRows = [windowRowFromLegacyInputs()];
+    }
+    activeWindowIndex = clamp(activeWindowIndex, 0, windowRows.length - 1);
+    const activeRow = normalizeWindowRow(windowRows[activeWindowIndex], activeWindowIndex);
+    windowRows[activeWindowIndex] = activeRow;
+
+    if (windowEditorTitle) {
+      windowEditorTitle.textContent = windowRows.length === 1 ? "Window" : `Window ${activeWindowIndex + 1}`;
+    }
+    if (windowEditorCopy) {
+      windowEditorCopy.textContent = activeWindowIndex === 0
+        ? "Window 1 sits on the front wall and defines the room orientation. Add another window only when the room needs one."
+        : "Additional windows stay on rectangular room walls. Their compass direction is derived from Window 1.";
+    }
+    if (selectedWindowWallSelect) {
+      selectedWindowWallSelect.value = activeRow.wall;
+      selectedWindowWallSelect.disabled = activeWindowIndex === 0;
+    }
+    windowSpanCenterInput.value = activeRow.span_center;
+    windowSillHeightInput.value = activeRow.sill_height;
+    windowWidthInput.value = activeRow.width;
+    windowHeightInput.value = activeRow.height;
+
+    if (selectedWindowFacingCopy) {
+      selectedWindowFacingCopy.textContent = `${wallDisplayName(activeRow.wall)}. This window faces ${wallFacingLabel(activeRow.wall)}.`;
+    }
+    if (removeWindowButton) {
+      removeWindowButton.hidden = activeWindowIndex === 0 || windowRows.length <= 1;
+    }
+    renderWindowSelector();
+  }
+
+  function renderWindowBuilderFromRows(rows) {
+    windowRows = (rows.length ? rows : [windowRowFromLegacyInputs()]).map(normalizeWindowRow);
+    activeWindowIndex = 0;
+    renderWindowEditor();
+    syncWindowsJsonFromEditor();
   }
 
   function renderWindowBuilderFromTextarea() {
@@ -544,12 +578,25 @@
     renderWindowBuilderFromRows(rows);
   }
 
-  function addEmptyWindowRow(defaultWall = "north") {
-    if (!windowRowsBuilder) {
-      return;
-    }
-    windowRowsBuilder.appendChild(createWindowRowElement({ wall: defaultWall }));
-    syncTextareaFromBuilder();
+  function addEmptyWindowRow() {
+    persistActiveWindowEditor();
+    const nextIndex = windowRows.length;
+    const wallCycle = ["east", "south", "west"];
+    const wall = wallCycle[(nextIndex - 1) % wallCycle.length];
+    const roomSpan = wall === "east" || wall === "west"
+      ? parseFiniteNumber(roomDepthInput.value)
+      : parseFiniteNumber(roomWidthInput.value);
+    windowRows.push(normalizeWindowRow({
+      name: `window_${nextIndex + 1}`,
+      wall,
+      span_center: roomSpan ? (roomSpan / 2).toFixed(1) : windowSpanCenterInput.value,
+      sill_height: windowSillHeightInput.value,
+      width: windowWidthInput.value,
+      height: windowHeightInput.value,
+    }, nextIndex));
+    activeWindowIndex = nextIndex;
+    renderWindowEditor();
+    syncWindowsJsonFromEditor();
   }
 
   function localMinutesFromIso(isoString) {
@@ -833,6 +880,10 @@
         return false;
       }
     }
+    persistActiveWindowEditor();
+    if (!windowsAreComplete()) {
+      return false;
+    }
     return true;
   }
 
@@ -841,6 +892,7 @@
       setUpdateStatus("Finish the current field to update.", "draft");
       return;
     }
+    syncWindowsJsonFromEditor();
     setUpdateStatus(message, "pending");
     debouncedRefresh();
   }
@@ -1136,7 +1188,8 @@
     const pad = 0.95;
     const viewBox = `${-pad} ${-pad} ${width + pad * 2} ${depth + pad * 2}`;
     const mapPoint = (point) => `${point[0]},${depth - point[1]}`;
-    const activeWindow = payload.windows[0];
+    const activePayloadIndex = Math.min(activeWindowIndex, payload.windows.length - 1);
+    const activeWindow = payload.windows[activePayloadIndex] || payload.windows[0];
     const [windowA, windowB] = activeWindow.wall_segment_xy;
     const windowMid = [(windowA[0] + windowB[0]) / 2, (windowA[1] + windowB[1]) / 2];
     const rays = [];
@@ -1176,6 +1229,8 @@
       const midSvgY = depth - midY;
       const labelText = escapeHtml(window.name || `Window ${index + 1}`);
 
+      const isSelectedWindow = index === activePayloadIndex;
+
       if (!payload.is_multi_window && index === 0) {
         const dragCursor = payload.active_window.wall === "north" || payload.active_window.wall === "south" ? "ew-resize" : "ns-resize";
         return `
@@ -1191,9 +1246,9 @@
       }
 
       return `
-        <line x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="rgba(240,178,79,0.22)" stroke-width="0.24" stroke-linecap="round"></line>
-        <line x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="#2b627a" stroke-width="0.14" stroke-linecap="round"></line>
-        <text x="${midX}" y="${midSvgY - 0.2}" font-size="0.16" text-anchor="middle" fill="#2b627a">${labelText}</text>
+        <line x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="rgba(240,178,79,${isSelectedWindow ? "0.42" : "0.22"})" stroke-width="${isSelectedWindow ? "0.32" : "0.24"}" stroke-linecap="round"></line>
+        <line x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="${isSelectedWindow ? "#c86530" : "#2b627a"}" stroke-width="${isSelectedWindow ? "0.17" : "0.14"}" stroke-linecap="round"></line>
+        <text x="${midX}" y="${midSvgY - 0.2}" font-size="0.16" text-anchor="middle" fill="${isSelectedWindow ? "#8e3b18" : "#2b627a"}">${labelText}</text>
       `;
     }).join("");
 
@@ -1322,14 +1377,13 @@
     }
     if (windowEditHint) {
       windowEditHint.textContent = payload.window_override_active
-        ? "Edit windows in the panel on the right. The room view is showing the current window list, not a separate main-window mode."
+        ? "Select a window in the panel to edit it. Additional windows stay on the rectangular room walls."
         : "Drag the window marker or line to move it. Drag the end handles to resize the width.";
     }
     const { center, width } = currentWindowMetrics(payload);
-    if (payload.window_override_active) {
-      const windowLabel = payload.windows.length === 1 ? "1 window" : `${payload.windows.length} windows`;
-      setText("window-centre-readout", `${windowLabel} from JSON override`);
-      setText("window-width-readout", `Strongest window: ${snapshot.strongest_window || "None"}`);
+    if (payload.window_override_active && windowRows.length > 1) {
+      setText("window-centre-readout", `Editing: Window ${activeWindowIndex + 1}`);
+      setText("window-width-readout", `${wallDisplayName(windowRows[activeWindowIndex].wall)} faces ${wallFacingLabel(windowRows[activeWindowIndex].wall)}`);
     } else {
       updateWindowGeometryReadout(center, width);
     }
@@ -1345,9 +1399,9 @@
 
     setText(
       "snapshot-window-fact",
-      payload.window_override_active
-        ? `Window facing: ${payload.active_window.facing} · ${payload.windows.length} window override${payload.windows.length === 1 ? "" : "s"}`
-        : `Window facing: ${payload.active_window.facing}`,
+      payload.is_multi_window
+        ? `Room orientation: Window 1 faces ${payload.window_facing_label} · ${payload.windows.length} windows`
+        : `Window 1 faces ${payload.window_facing_label}`,
     );
     setText("snapshot-azimuth-fact", `Azimuth: ${snapshot.azimuth_deg.toFixed(1)}°`);
     setText("snapshot-elevation-fact", `Elevation: ${snapshot.elevation_deg.toFixed(1)}°`);
@@ -1703,23 +1757,65 @@
     });
   }
 
+  if (selectedWindowWallSelect) {
+    selectedWindowWallSelect.addEventListener("change", () => {
+      persistActiveWindowEditor();
+      renderWindowEditor();
+      if (syncWindowsJsonFromEditor()) {
+        scheduleRefresh("Updating preview...");
+      } else {
+        setUpdateStatus("Complete the selected window to update the preview.", "draft");
+      }
+    });
+  }
+
   if (addWindowRowButton) {
     addWindowRowButton.addEventListener("click", () => {
       addEmptyWindowRow();
-      setUpdateStatus("Fill in the new window row to update the preview.", "draft");
+      scheduleRefresh("Added another window. Updating preview...");
     });
   }
 
-  if (clearWindowRowsButton) {
-    clearWindowRowsButton.addEventListener("click", () => {
-      renderWindowBuilderFromRows([]);
-      syncTextareaFromBuilder();
-      setUpdateStatus("Start with one window row and fill in its values.", "draft");
+  if (removeWindowButton) {
+    removeWindowButton.addEventListener("click", () => {
+      if (activeWindowIndex === 0 || windowRows.length <= 1) {
+        return;
+      }
+      windowRows.splice(activeWindowIndex, 1);
+      activeWindowIndex = Math.max(0, activeWindowIndex - 1);
+      renderWindowEditor();
+      syncWindowsJsonFromEditor();
+      scheduleRefresh("Removed window. Updating preview...");
     });
   }
+
+  const windowGeometryInputs = new Set([
+    windowSpanCenterInput,
+    windowSillHeightInput,
+    windowWidthInput,
+    windowHeightInput,
+  ]);
+
+  windowGeometryInputs.forEach((input) => {
+    input.addEventListener("input", () => {
+      persistActiveWindowEditor();
+      setUpdateStatus(
+        windowsAreComplete() ? "Finish the current field to update." : "Complete the selected window to update the preview.",
+        "draft",
+      );
+    });
+    input.addEventListener("change", () => {
+      persistActiveWindowEditor();
+      if (syncWindowsJsonFromEditor()) {
+        scheduleRefresh("Updating preview...");
+      } else {
+        setUpdateStatus("Complete the selected window to update the preview.", "draft");
+      }
+    });
+  });
 
   form.querySelectorAll('input[type="number"]').forEach((input) => {
-    if (input === latitudeInput || input === longitudeInput || input === yearInput) {
+    if (input === latitudeInput || input === longitudeInput || input === yearInput || windowGeometryInputs.has(input)) {
       return;
     }
     input.addEventListener("input", () => refreshFromNumberField(input));
