@@ -448,6 +448,41 @@
     return ["#c86530", "#2b627a", "#6b8e23", "#a0522d"][index % 4];
   }
 
+  function rayEndpointInRoom(startPoint, direction, roomWidth, roomDepth) {
+    const [x, y] = startPoint;
+    const [dx, dy] = direction;
+    const candidates = [];
+
+    if (Math.abs(dx) > 1e-9) {
+      const targetX = dx > 0 ? roomWidth : 0;
+      const t = (targetX - x) / dx;
+      if (t > 0) {
+        const hitY = y + dy * t;
+        if (hitY >= -1e-9 && hitY <= roomDepth + 1e-9) {
+          candidates.push(t);
+        }
+      }
+    }
+
+    if (Math.abs(dy) > 1e-9) {
+      const targetY = dy > 0 ? roomDepth : 0;
+      const t = (targetY - y) / dy;
+      if (t > 0) {
+        const hitX = x + dx * t;
+        if (hitX >= -1e-9 && hitX <= roomWidth + 1e-9) {
+          candidates.push(t);
+        }
+      }
+    }
+
+    if (!candidates.length) {
+      return startPoint;
+    }
+
+    const t = Math.min(...candidates);
+    return [x + dx * t, y + dy * t];
+  }
+
   function windowRowFromLegacyInputs() {
     return {
       name: "window_1",
@@ -1204,50 +1239,9 @@
     const viewBox = `${-pad} ${-pad} ${width + pad * 2} ${depth + pad * 2}`;
     const mapPoint = (point) => `${point[0]},${depth - point[1]}`;
     const activePayloadIndex = Math.min(activeWindowIndex, payload.windows.length - 1);
-    const windowsByName = new Map(payload.windows.map((window) => [window.name, window]));
     const windowIndexByName = new Map(payload.windows.map((window, index) => [window.name, index]));
-    const rays = [];
-    const windowsWithPatch = new Set();
-
-    if (payload.snapshot.patches.length > 0) {
-      payload.snapshot.patches.forEach((patch) => {
-        const sourceWindow = windowsByName.get(patch.window_name);
-        if (!sourceWindow) {
-          return;
-        }
-        windowsWithPatch.add(patch.window_name);
-        const [windowA, windowB] = sourceWindow.wall_segment_xy;
-        const patchPoints = patch.polygon_xy;
-        const sortedPatchPoints = [...patchPoints].sort((left, right) => left[1] - right[1] || left[0] - right[0]);
-        const sortedWindowPoints = [windowA, windowB].sort((left, right) => left[1] - right[1] || left[0] - right[0]);
-        rays.push([sortedWindowPoints[0], sortedPatchPoints[0], patch.intensity, patch.window_name]);
-        rays.push([sortedWindowPoints[1], sortedPatchPoints[sortedPatchPoints.length - 1], patch.intensity, patch.window_name]);
-      });
-    }
-
     const azimuthRad = (payload.snapshot.room_azimuth_deg * Math.PI) / 180;
-    const planX = Math.sin(azimuthRad);
-    const planY = Math.cos(azimuthRad);
-    const rayLength = Math.min(width, depth) * 0.38;
-    payload.snapshot.window_intensities
-      .filter((entry) => entry.intensity > 0 && !windowsWithPatch.has(entry.name))
-      .forEach((entry) => {
-        const sourceWindow = windowsByName.get(entry.name);
-        if (!sourceWindow) {
-          return;
-        }
-        const [windowA, windowB] = sourceWindow.wall_segment_xy;
-        const windowMid = [(windowA[0] + windowB[0]) / 2, (windowA[1] + windowB[1]) / 2];
-        rays.push([
-          windowMid,
-          [
-            windowMid[0] - planX * rayLength,
-            windowMid[1] - planY * rayLength,
-          ],
-          entry.intensity,
-          entry.name,
-        ]);
-      });
+    const sunDirection = [-Math.sin(azimuthRad), -Math.cos(azimuthRad)];
 
     const patchPolygons = payload.snapshot.patches.map((patch) => {
       const points = patch.polygon_xy.map(mapPoint).join(" ");
@@ -1294,10 +1288,20 @@
       `;
     }).join("");
 
-    const rayLines = rays.map(([start, end, intensity, windowName]) => {
-      const windowIndex = windowIndexByName.get(windowName) ?? 0;
-      return `<line x1="${start[0]}" y1="${depth - start[1]}" x2="${end[0]}" y2="${depth - end[1]}" stroke="${windowAccentColor(windowIndex)}" opacity="${Math.max(0.35, Math.min(0.85, intensity || 0.5))}" stroke-width="0.06" stroke-linecap="round" stroke-dasharray="0.12 0.08"></line>`;
-    }).join("");
+    const rayLines = payload.snapshot.window_intensities
+      .filter((entry) => entry.intensity > 0)
+      .map((entry) => {
+        const windowIndex = windowIndexByName.get(entry.name) ?? 0;
+        const sourceWindow = payload.windows[windowIndex];
+        if (!sourceWindow) {
+          return "";
+        }
+        const [start, end] = sourceWindow.wall_segment_xy;
+        const windowMid = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2];
+        const rayEnd = rayEndpointInRoom(windowMid, sunDirection, width, depth);
+        return `<line x1="${windowMid[0]}" y1="${depth - windowMid[1]}" x2="${rayEnd[0]}" y2="${depth - rayEnd[1]}" stroke="${windowAccentColor(windowIndex)}" opacity="${Math.max(0.35, Math.min(0.85, entry.intensity || 0.5))}" stroke-width="0.06" stroke-linecap="round" stroke-dasharray="0.12 0.08"></line>`;
+      })
+      .join("");
 
     const noPatch = payload.snapshot.patches.length === 0
       ? `<text x="${width / 2}" y="${depth / 2 + 0.6}" font-size="0.28" text-anchor="middle" fill="#616a68">No direct floor patch</text>`
