@@ -570,6 +570,53 @@ input[type="range"] {
   border-top: 1px solid var(--line);
 }
 
+.window-builder-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+}
+
+.window-builder-copy {
+  margin: 6px 0 0;
+  max-width: 56ch;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.window-builder-actions {
+  justify-content: flex-end;
+}
+
+.window-builder-list {
+  display: grid;
+  gap: 10px;
+}
+
+.window-builder-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr repeat(4, minmax(0, 0.9fr)) auto;
+  gap: 8px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.window-hidden-inputs {
+  display: none;
+}
+
+.window-json-details {
+  margin-top: 4px;
+}
+
+.window-json-textarea {
+  width: 100%;
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+}
+
 .custom-location-fields,
 .advanced-fields {
   display: grid;
@@ -880,6 +927,16 @@ input[type="range"] {
   }
 
   .daily-map-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .window-builder-header,
+  .window-builder-actions {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .window-builder-row {
     grid-template-columns: 1fr;
   }
 }

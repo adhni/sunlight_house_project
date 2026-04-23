@@ -117,7 +117,7 @@
               <div class="room-snapshot-shell">
                 <div id="room-snapshot-svg" class="room-snapshot room-snapshot-large"></div>
               </div>
-              <p class="drag-hint">Drag the main window marker or line to move it. Drag the end handles to resize the window width.</p>
+              <p id="window-edit-hint" class="drag-hint">Edit windows in the panel on the right. When only the legacy single-window mode is active, you can still drag the marker in the room view.</p>
               <div class="geometry-readout">
                 <span id="window-centre-readout">Window centre: {{ form_values.window_span_center }} m</span>
                 <span id="window-width-readout">Window width: {{ form_values.window_width }} m</span>
@@ -372,47 +372,34 @@
                   </section>
 
                   <section class="nested-control-group">
-                    <span class="explorer-label">Window Size And Placement</span>
-                    <div class="field-row field-row-2">
-                      <label>
-                        <span>Window centre from left corner (m)</span>
-                        <input type="number" step="0.1" name="window_span_center" value="{{ form_values.window_span_center }}">
-                      </label>
-                      <label>
-                        <span>Sill height (m)</span>
-                        <input type="number" step="0.1" name="window_sill_height" value="{{ form_values.window_sill_height }}">
-                      </label>
-                      <label>
-                        <span>Window width (m)</span>
-                        <input type="number" step="0.1" name="window_width" value="{{ form_values.window_width }}">
-                      </label>
-                      <label>
-                        <span>Window height (m)</span>
-                        <input type="number" step="0.1" name="window_height" value="{{ form_values.window_height }}">
-                      </label>
-                    </div>
-                    <p class="field-help">Measure the window centre from the left end of the selected wall in the top-down view. Sill height is measured from the floor to the bottom of the window.</p>
-                  </section>
-
-                  <section class="nested-control-group">
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px;">
-                      <span class="explorer-label">Multi-Window Builder</span>
-                      <div class="chip-row">
+                    <div class="window-builder-header">
+                      <div>
+                        <span class="explorer-label">Windows</span>
+                        <p class="window-builder-copy">Use one editor for every window. Start with one row or add more. There is no separate main-window UI anymore.</p>
+                      </div>
+                      <div class="chip-row window-builder-actions">
                         <button id="add-window-row-button" type="button" class="chip-button chip-button-soft">Add window</button>
-                        <button id="clear-window-rows-button" type="button" class="chip-button chip-button-soft">Clear</button>
+                        <button id="clear-window-rows-button" type="button" class="chip-button chip-button-soft">Start over</button>
                       </div>
                     </div>
-                    <div id="window-rows-builder" style="display:grid; gap:10px;"></div>
-                    <p class="field-help">Use this builder for multiple windows. It writes into the JSON override automatically. Leave all rows empty to fall back to the single-window controls above.</p>
-                  </section>
+                    <div id="window-rows-builder" class="window-builder-list"></div>
+                    <p class="field-help">Centre is measured from the left end of the chosen wall in the top-down view. Sill height is measured from the floor to the bottom of the window.</p>
 
-                  <section class="nested-control-group">
-                    <span class="explorer-label">Optional Multi-Window JSON</span>
-                    <label>
-                      <span>Override the single-window inputs with a list of windows</span>
-                      <textarea id="windows-json-textarea" name="windows_json" rows="10" style="width:100%; font-family:monospace;">{{ form_values.windows_json }}</textarea>
-                    </label>
-                    <p class="field-help">You can still edit the raw JSON directly if needed. Example: [{"name":"north_main","wall":"north","span_center":2.0,"sill_height":0.8,"width":1.4,"height":1.6},{"name":"east_side","wall":"east","span_center":2.5,"sill_height":0.9,"width":1.0,"height":1.2}]</p>
+                    <div class="window-hidden-inputs" aria-hidden="true">
+                      <input type="hidden" name="window_span_center" value="{{ form_values.window_span_center }}">
+                      <input type="hidden" name="window_sill_height" value="{{ form_values.window_sill_height }}">
+                      <input type="hidden" name="window_width" value="{{ form_values.window_width }}">
+                      <input type="hidden" name="window_height" value="{{ form_values.window_height }}">
+                    </div>
+
+                    <details class="subtle-details window-json-details">
+                      <summary>Advanced JSON</summary>
+                      <label>
+                        <span>Raw window list</span>
+                        <textarea id="windows-json-textarea" name="windows_json" rows="10" class="window-json-textarea">{{ form_values.windows_json }}</textarea>
+                      </label>
+                      <p class="field-help">This mirrors the window rows above. Use it only when you want to paste or export a full window list.</p>
+                    </details>
                   </section>
                 </div>
               </details>

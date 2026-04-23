@@ -15,6 +15,7 @@
   const baselineEmptyState = document.getElementById("baseline-empty-state");
   const baselineDetails = document.getElementById("baseline-details");
   const baselineComparisonPanel = document.getElementById("baseline-comparison-panel");
+  const windowEditHint = document.getElementById("window-edit-hint");
 
   const locationPresetInput = document.getElementById("location-preset-input");
   const windowFacingInput = document.getElementById("window-facing-input");
@@ -397,10 +398,6 @@
   function createWindowRowElement(windowData = {}) {
     const row = document.createElement("div");
     row.className = "window-builder-row";
-    row.style.display = "grid";
-    row.style.gridTemplateColumns = "1.2fr 0.8fr 0.9fr 0.9fr 0.9fr 0.9fr auto";
-    row.style.gap = "8px";
-    row.style.alignItems = "end";
 
     const wallValue = (windowData.wall || "north").toString().toLowerCase();
     const nameValue = escapeHtml(windowData.name ?? "");
@@ -427,28 +424,77 @@
 
     row.querySelectorAll("input, select").forEach((input) => {
       input.addEventListener("input", () => {
-        syncTextareaFromBuilder();
-        setUpdateStatus("Finish the current field to update.", "draft");
+        const hasSerializableRows = syncTextareaFromBuilder();
+        setUpdateStatus(
+          hasSerializableRows ? "Finish the current field to update." : "Complete one window row to update the preview.",
+          "draft",
+        );
       });
       input.addEventListener("change", () => {
-        syncTextareaFromBuilder();
-        scheduleRefresh("Updating preview...");
+        const hasSerializableRows = syncTextareaFromBuilder();
+        if (hasSerializableRows) {
+          scheduleRefresh("Updating preview...");
+        } else {
+          setUpdateStatus("Complete one window row to update the preview.", "draft");
+        }
       });
     });
 
     row.querySelector('[data-remove-window-row="true"]').addEventListener("click", () => {
       row.remove();
-      syncTextareaFromBuilder();
-      scheduleRefresh("Updating preview...");
+      const hasSerializableRows = syncTextareaFromBuilder();
+      if (hasSerializableRows) {
+        scheduleRefresh("Updating preview...");
+      } else {
+        renderWindowBuilderFromRows([]);
+        setUpdateStatus("Add at least one window to update the preview.", "draft");
+      }
     });
 
     return row;
+  }
+
+  function firstWindowRowValues() {
+    if (!windowRowsBuilder) {
+      return null;
+    }
+    const firstRow = windowRowsBuilder.querySelector(".window-builder-row");
+    if (!firstRow) {
+      return null;
+    }
+    const getValue = (field) => firstRow.querySelector(`[data-window-field="${field}"]`).value.trim();
+    return {
+      spanCenter: parseFiniteNumber(getValue("span_center")),
+      sillHeight: parseFiniteNumber(getValue("sill_height")),
+      width: parseFiniteNumber(getValue("width")),
+      height: parseFiniteNumber(getValue("height")),
+    };
+  }
+
+  function syncLegacyWindowInputsFromBuilder() {
+    const firstValues = firstWindowRowValues();
+    if (!firstValues) {
+      return;
+    }
+    if (firstValues.spanCenter !== null) {
+      windowSpanCenterInput.value = firstValues.spanCenter.toFixed(1);
+    }
+    if (firstValues.sillHeight !== null) {
+      windowSillHeightInput.value = firstValues.sillHeight.toFixed(1);
+    }
+    if (firstValues.width !== null) {
+      windowWidthInput.value = firstValues.width.toFixed(1);
+    }
+    if (firstValues.height !== null) {
+      windowHeightInput.value = firstValues.height.toFixed(1);
+    }
   }
 
   function serializeWindowRows() {
     if (!windowRowsBuilder) {
       return [];
     }
+    syncLegacyWindowInputsFromBuilder();
     return Array.from(windowRowsBuilder.querySelectorAll(".window-builder-row")).map((row, index) => {
       const getValue = (field) => row.querySelector(`[data-window-field="${field}"]`).value.trim();
       const name = getValue("name") || `window_${index + 1}`;
@@ -470,12 +516,13 @@
 
   function syncTextareaFromBuilder() {
     if (!windowsJsonInput || suppressWindowBuilderSync) {
-      return;
+      return false;
     }
     const rows = serializeWindowRows();
     suppressWindowBuilderSync = true;
     windowsJsonInput.value = rows.length ? JSON.stringify(rows, null, 2) : "";
     suppressWindowBuilderSync = false;
+    return rows.length > 0;
   }
 
   function renderWindowBuilderFromRows(rows) {
@@ -484,10 +531,12 @@
     }
     suppressWindowBuilderSync = true;
     windowRowsBuilder.innerHTML = "";
-    rows.forEach((row) => {
+    const rowsToRender = rows.length ? rows : [{}];
+    rowsToRender.forEach((row) => {
       windowRowsBuilder.appendChild(createWindowRowElement(row));
     });
     suppressWindowBuilderSync = false;
+    syncLegacyWindowInputsFromBuilder();
   }
 
   function renderWindowBuilderFromTextarea() {
@@ -1271,6 +1320,11 @@
       wireRoomWindowDrag();
       wireRoomWindowResize();
     }
+    if (windowEditHint) {
+      windowEditHint.textContent = payload.window_override_active
+        ? "Edit windows in the panel on the right. The room view is showing the current window list, not a separate main-window mode."
+        : "Drag the window marker or line to move it. Drag the end handles to resize the width.";
+    }
     const { center, width } = currentWindowMetrics(payload);
     if (payload.window_override_active) {
       const windowLabel = payload.windows.length === 1 ? "1 window" : `${payload.windows.length} windows`;
@@ -1652,7 +1706,7 @@
   if (addWindowRowButton) {
     addWindowRowButton.addEventListener("click", () => {
       addEmptyWindowRow();
-      scheduleRefresh("Updating preview...");
+      setUpdateStatus("Fill in the new window row to update the preview.", "draft");
     });
   }
 
@@ -1660,7 +1714,7 @@
     clearWindowRowsButton.addEventListener("click", () => {
       renderWindowBuilderFromRows([]);
       syncTextareaFromBuilder();
-      scheduleRefresh("Updating preview...");
+      setUpdateStatus("Start with one window row and fill in its values.", "draft");
     });
   }
 
