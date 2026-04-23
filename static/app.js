@@ -363,6 +363,14 @@
     };
   }
 
+  function selectedPayloadWindow(payload = currentPayload) {
+    return payload.windows[Math.min(activeWindowIndex, payload.windows.length - 1)] || payload.windows[0];
+  }
+
+  function selectedPayloadWall(payload = currentPayload) {
+    return selectedPayloadWindow(payload)?.wall || "north";
+  }
+
   function updateWindowGeometryReadout(centerValue, widthValue) {
     setText("window-centre-readout", `Window centre: ${centerValue.toFixed(1)} m from left`);
     setText("window-width-readout", `Window width: ${widthValue.toFixed(1)} m`);
@@ -434,6 +442,10 @@
       west: 270,
     };
     return compassLabelForDegrees(facingDegrees(windowFacingInput.value) + (offsets[wall] ?? 0));
+  }
+
+  function windowAccentColor(index) {
+    return ["#c86530", "#2b627a", "#6b8e23", "#a0522d"][index % 4];
   }
 
   function windowRowFromLegacyInputs() {
@@ -564,6 +576,9 @@
       removeWindowButton.hidden = activeWindowIndex === 0 || windowRows.length <= 1;
     }
     renderWindowSelector();
+    if (currentPayload && currentPayload.windows && currentPayload.windows.length === windowRows.length) {
+      updateSnapshotDom(currentPayload);
+    }
   }
 
   function renderWindowBuilderFromRows(rows) {
@@ -915,7 +930,7 @@
   }
 
   function windowWallBounds(payload) {
-    const wall = payload.active_window.wall;
+    const wall = selectedPayloadWall(payload);
     const roomWidth = payload.room.width;
     const roomDepth = payload.room.depth;
     const { width: windowWidth } = currentWindowMetrics(payload);
@@ -939,7 +954,7 @@
   }
 
   function wallSegmentFromCenter(payload, centerValue) {
-    const wall = payload.active_window.wall;
+    const wall = selectedPayloadWall(payload);
     const roomWidth = payload.room.width;
     const roomDepth = payload.room.depth;
     const bounds = windowWallBounds(payload);
@@ -959,7 +974,7 @@
   }
 
   function wallSegmentFromMetrics(payload, centerValue, widthValue) {
-    const wall = payload.active_window.wall;
+    const wall = selectedPayloadWall(payload);
     const roomWidth = payload.room.width;
     const roomDepth = payload.room.depth;
     const minWidth = 0.2;
@@ -1093,7 +1108,7 @@
     if (!point) {
       return;
     }
-    const wall = currentPayload.active_window.wall;
+    const wall = selectedPayloadWall(currentPayload);
     const axisValue = wall === "north" || wall === "south" ? point.x : point.y;
     const { center } = currentWindowMetrics();
     const maxHalfWidth = wall === "north" || wall === "south"
@@ -1189,35 +1204,62 @@
     const viewBox = `${-pad} ${-pad} ${width + pad * 2} ${depth + pad * 2}`;
     const mapPoint = (point) => `${point[0]},${depth - point[1]}`;
     const activePayloadIndex = Math.min(activeWindowIndex, payload.windows.length - 1);
-    const activeWindow = payload.windows[activePayloadIndex] || payload.windows[0];
-    const [windowA, windowB] = activeWindow.wall_segment_xy;
-    const windowMid = [(windowA[0] + windowB[0]) / 2, (windowA[1] + windowB[1]) / 2];
+    const windowsByName = new Map(payload.windows.map((window) => [window.name, window]));
+    const windowIndexByName = new Map(payload.windows.map((window, index) => [window.name, index]));
     const rays = [];
+    const windowsWithPatch = new Set();
 
     if (payload.snapshot.patches.length > 0) {
-      const patchPoints = payload.snapshot.patches[0].polygon_xy;
-      const sortedPatchPoints = [...patchPoints].sort((left, right) => left[1] - right[1] || left[0] - right[0]);
-      const sortedWindowPoints = [windowA, windowB].sort((left, right) => left[1] - right[1] || left[0] - right[0]);
-      rays.push([sortedWindowPoints[0], sortedPatchPoints[0]]);
-      rays.push([sortedWindowPoints[1], sortedPatchPoints[sortedPatchPoints.length - 1]]);
-    } else {
-      const azimuthRad = (payload.snapshot.room_azimuth_deg * Math.PI) / 180;
-      const planX = Math.sin(azimuthRad);
-      const planY = Math.cos(azimuthRad);
-      const rayLength = Math.min(width, depth) * 0.38;
-      rays.push([
-        windowMid,
-        [
-          windowMid[0] - planX * rayLength,
-          windowMid[1] - planY * rayLength,
-        ],
-      ]);
+      payload.snapshot.patches.forEach((patch) => {
+        const sourceWindow = windowsByName.get(patch.window_name);
+        if (!sourceWindow) {
+          return;
+        }
+        windowsWithPatch.add(patch.window_name);
+        const [windowA, windowB] = sourceWindow.wall_segment_xy;
+        const patchPoints = patch.polygon_xy;
+        const sortedPatchPoints = [...patchPoints].sort((left, right) => left[1] - right[1] || left[0] - right[0]);
+        const sortedWindowPoints = [windowA, windowB].sort((left, right) => left[1] - right[1] || left[0] - right[0]);
+        rays.push([sortedWindowPoints[0], sortedPatchPoints[0], patch.intensity, patch.window_name]);
+        rays.push([sortedWindowPoints[1], sortedPatchPoints[sortedPatchPoints.length - 1], patch.intensity, patch.window_name]);
+      });
     }
+
+    const azimuthRad = (payload.snapshot.room_azimuth_deg * Math.PI) / 180;
+    const planX = Math.sin(azimuthRad);
+    const planY = Math.cos(azimuthRad);
+    const rayLength = Math.min(width, depth) * 0.38;
+    payload.snapshot.window_intensities
+      .filter((entry) => entry.intensity > 0 && !windowsWithPatch.has(entry.name))
+      .forEach((entry) => {
+        const sourceWindow = windowsByName.get(entry.name);
+        if (!sourceWindow) {
+          return;
+        }
+        const [windowA, windowB] = sourceWindow.wall_segment_xy;
+        const windowMid = [(windowA[0] + windowB[0]) / 2, (windowA[1] + windowB[1]) / 2];
+        rays.push([
+          windowMid,
+          [
+            windowMid[0] - planX * rayLength,
+            windowMid[1] - planY * rayLength,
+          ],
+          entry.intensity,
+          entry.name,
+        ]);
+      });
 
     const patchPolygons = payload.snapshot.patches.map((patch) => {
       const points = patch.polygon_xy.map(mapPoint).join(" ");
+      const windowIndex = windowIndexByName.get(patch.window_name) ?? 0;
+      const strokeColor = windowAccentColor(windowIndex);
       const alpha = Math.max(0.24, Math.min(0.74, patch.intensity));
-      return `<polygon points="${points}" fill="rgba(200,101,48,${alpha})" stroke="#8e3b18" stroke-width="0.04"></polygon>`;
+      const centroid = patch.polygon_xy.reduce((acc, point) => [acc[0] + point[0], acc[1] + point[1]], [0, 0]).map((value) => value / patch.polygon_xy.length);
+      const label = escapeHtml(patch.window_name.replace(/_/g, " "));
+      return `
+        <polygon points="${points}" fill="rgba(200,101,48,${alpha})" stroke="${strokeColor}" stroke-width="0.05"></polygon>
+        <text x="${centroid[0]}" y="${depth - centroid[1] - 0.08}" font-size="0.14" text-anchor="middle" fill="${strokeColor}">${label}</text>
+      `;
     }).join("");
 
     const windowElements = payload.windows.map((window, index) => {
@@ -1230,31 +1272,32 @@
       const labelText = escapeHtml(window.name || `Window ${index + 1}`);
 
       const isSelectedWindow = index === activePayloadIndex;
+      const dragCursor = window.wall === "north" || window.wall === "south" ? "ew-resize" : "ns-resize";
 
-      if (!payload.is_multi_window && index === 0) {
-        const dragCursor = payload.active_window.wall === "north" || payload.active_window.wall === "south" ? "ew-resize" : "ns-resize";
+      if (isSelectedWindow) {
         return `
           <line id="room-window-glow" x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="rgba(240,178,79,0.35)" stroke-width="0.32" stroke-linecap="round"></line>
-          <line id="room-window-line" x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="#2b627a" stroke-width="0.17" stroke-linecap="round"></line>
+          <line id="room-window-line" x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="${windowAccentColor(index)}" stroke-width="0.17" stroke-linecap="round"></line>
           <line id="room-window-hit" data-window-drag-handle="true" x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="rgba(43,98,122,0.001)" stroke-width="0.62" stroke-linecap="round" pointer-events="stroke" style="cursor:${dragCursor}"></line>
           <circle id="room-window-resize-start" data-window-resize-handle="start" cx="${start[0]}" cy="${startY}" r="0.14" fill="#fff7ec" stroke="#c86530" stroke-width="0.05" pointer-events="all" style="cursor:${dragCursor}"></circle>
           <circle id="room-window-resize-end" data-window-resize-handle="end" cx="${end[0]}" cy="${endY}" r="0.14" fill="#fff7ec" stroke="#c86530" stroke-width="0.05" pointer-events="all" style="cursor:${dragCursor}"></circle>
-          <circle id="room-window-handle" data-window-drag-handle="true" cx="${midX}" cy="${midSvgY}" r="0.18" fill="#fffdf8" stroke="#2b627a" stroke-width="0.05" pointer-events="all" style="cursor:${dragCursor}"></circle>
-          <circle id="room-window-source" data-window-drag-handle="true" cx="${midX}" cy="${midSvgY}" r="0.12" fill="#2b627a" pointer-events="all" style="cursor:${dragCursor}"></circle>
-          <text id="room-window-label" x="${midX}" y="${midSvgY - 0.28}" font-size="0.22" text-anchor="middle" fill="#2b627a">Main window</text>
+          <circle id="room-window-handle" data-window-drag-handle="true" cx="${midX}" cy="${midSvgY}" r="0.18" fill="#fffdf8" stroke="${windowAccentColor(index)}" stroke-width="0.05" pointer-events="all" style="cursor:${dragCursor}"></circle>
+          <circle id="room-window-source" data-window-drag-handle="true" cx="${midX}" cy="${midSvgY}" r="0.12" fill="${windowAccentColor(index)}" pointer-events="all" style="cursor:${dragCursor}"></circle>
+          <text id="room-window-label" x="${midX}" y="${midSvgY - 0.28}" font-size="0.22" text-anchor="middle" fill="${windowAccentColor(index)}">${payload.is_multi_window ? `Window ${index + 1}` : "Main window"}</text>
         `;
       }
 
       return `
         <line x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="rgba(240,178,79,${isSelectedWindow ? "0.42" : "0.22"})" stroke-width="${isSelectedWindow ? "0.32" : "0.24"}" stroke-linecap="round"></line>
-        <line x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="${isSelectedWindow ? "#c86530" : "#2b627a"}" stroke-width="${isSelectedWindow ? "0.17" : "0.14"}" stroke-linecap="round"></line>
-        <text x="${midX}" y="${midSvgY - 0.2}" font-size="0.16" text-anchor="middle" fill="${isSelectedWindow ? "#8e3b18" : "#2b627a"}">${labelText}</text>
+        <line x1="${start[0]}" y1="${startY}" x2="${end[0]}" y2="${endY}" stroke="${windowAccentColor(index)}" stroke-width="${isSelectedWindow ? "0.17" : "0.14"}" stroke-linecap="round"></line>
+        <text x="${midX}" y="${midSvgY - 0.2}" font-size="0.16" text-anchor="middle" fill="${isSelectedWindow ? "#8e3b18" : windowAccentColor(index)}">${labelText}</text>
       `;
     }).join("");
 
-    const rayLines = rays.map(([start, end]) => (
-      `<line x1="${start[0]}" y1="${depth - start[1]}" x2="${end[0]}" y2="${depth - end[1]}" stroke="#f0b24f" stroke-width="0.06" stroke-linecap="round" stroke-dasharray="0.12 0.08"></line>`
-    )).join("");
+    const rayLines = rays.map(([start, end, intensity, windowName]) => {
+      const windowIndex = windowIndexByName.get(windowName) ?? 0;
+      return `<line x1="${start[0]}" y1="${depth - start[1]}" x2="${end[0]}" y2="${depth - end[1]}" stroke="${windowAccentColor(windowIndex)}" opacity="${Math.max(0.35, Math.min(0.85, intensity || 0.5))}" stroke-width="0.06" stroke-linecap="round" stroke-dasharray="0.12 0.08"></line>`;
+    }).join("");
 
     const noPatch = payload.snapshot.patches.length === 0
       ? `<text x="${width / 2}" y="${depth / 2 + 0.6}" font-size="0.28" text-anchor="middle" fill="#616a68">No direct floor patch</text>`
@@ -1342,6 +1385,8 @@
     const snapshot = payload.snapshot;
     const daily = payload.daily;
     const timeZone = payload.location.timezone_name;
+    const sunActiveWindowCount = snapshot.window_intensities.filter((entry) => entry.intensity > 0).length;
+    const floorPatchCount = snapshot.patches.length;
     updateSummaryDom(payload.summary);
 
     setText("selected-moment-label", new Date(payload.selected_moment).toLocaleString(undefined, {
@@ -1371,19 +1416,19 @@
       : "No direct sun");
 
     setHtml("room-snapshot-svg", createRoomSvg(payload));
-    if (!payload.window_override_active) {
-      wireRoomWindowDrag();
-      wireRoomWindowResize();
-    }
+    wireRoomWindowDrag();
+    wireRoomWindowResize();
     if (windowEditHint) {
       windowEditHint.textContent = payload.window_override_active
-        ? "Select a window in the panel to edit it. Additional windows stay on the rectangular room walls."
+        ? "Current moment shows all windows at this time. Select a window in the panel only when you want to edit its wall or size."
         : "Drag the window marker or line to move it. Drag the end handles to resize the width.";
     }
     const { center, width } = currentWindowMetrics(payload);
     if (payload.window_override_active && windowRows.length > 1) {
-      setText("window-centre-readout", `Editing: Window ${activeWindowIndex + 1}`);
-      setText("window-width-readout", `${wallDisplayName(windowRows[activeWindowIndex].wall)} faces ${wallFacingLabel(windowRows[activeWindowIndex].wall)}`);
+      const patchLabel = floorPatchCount === 1 ? "1 floor patch" : `${floorPatchCount} floor patches`;
+      const activeLabel = sunActiveWindowCount === 1 ? "1 active window" : `${sunActiveWindowCount} active windows`;
+      setText("window-centre-readout", `Strongest window: ${snapshot.strongest_window || "None"}`);
+      setText("window-width-readout", `${activeLabel} · ${patchLabel}`);
     } else {
       updateWindowGeometryReadout(center, width);
     }
