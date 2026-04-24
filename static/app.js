@@ -559,9 +559,18 @@
       return false;
     }
     suppressWindowBuilderSync = true;
-    windowsJsonInput.value = rows.length > 1 ? JSON.stringify(rows, null, 2) : "";
+    windowsJsonInput.value = JSON.stringify(rows, null, 2);
     suppressWindowBuilderSync = false;
     return true;
+  }
+
+  function nextWindowName() {
+    const usedNames = new Set(windowRows.map((row) => (row.name || "").toString()));
+    let index = windowRows.length + 1;
+    while (usedNames.has(`window_${index}`)) {
+      index += 1;
+    }
+    return `window_${index}`;
   }
 
   function renderWindowSelector() {
@@ -645,7 +654,7 @@
       ? parseFiniteNumber(roomDepthInput.value)
       : parseFiniteNumber(roomWidthInput.value);
     windowRows.push(normalizeWindowRow({
-      name: `window_${nextIndex + 1}`,
+      name: nextWindowName(),
       wall,
       span_center: roomSpan ? (roomSpan / 2).toFixed(1) : windowSpanCenterInput.value,
       sill_height: windowSillHeightInput.value,

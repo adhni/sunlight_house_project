@@ -48,6 +48,8 @@ def create_app() -> Flask:
             error = f"{exc} Keeping your current inputs below; the preview uses the nearest valid values."
             form_values = dict(raw_values)
             safe_values = build_safe_form_values(raw_values, defaults)
+            for hidden_key in ("windows_json", "day_step_minutes", "year_step_hours"):
+                form_values[hidden_key] = safe_values[hidden_key]
             config, selected_moment = build_config_and_moment(safe_values)
             window_override_active = has_window_override(safe_values)
 

@@ -58,6 +58,14 @@ class AppTests(unittest.TestCase):
         self.assertIn("Multi-window JSON must be valid JSON.", page)
         self.assertIn("Keeping your current inputs below; the preview uses the nearest valid values.", page)
 
+    def test_index_invalid_hidden_sampling_values_are_sanitized(self) -> None:
+        response = self.client.get("/?day_step_minutes=0&year_step_hours=0")
+
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        self.assertIn('name="day_step_minutes" value="10"', page)
+        self.assertIn('name="year_step_hours" value="1"', page)
+
     def test_snapshot_api_accepts_multi_window_json(self) -> None:
         response = self.client.get(
             "/api/snapshot",
