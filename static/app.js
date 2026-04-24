@@ -45,7 +45,7 @@
   const windowHeightInput = form.querySelector('input[name="window_height"]');
   const windowSpanCenterInput = form.querySelector('input[name="window_span_center"]');
   const windowSillHeightInput = form.querySelector('input[name="window_sill_height"]');
-  const windowsJsonInput = form.querySelector('textarea[name="windows_json"]');
+  const windowsJsonInput = form.querySelector('[name="windows_json"]');
   const windowRowsBuilder = document.getElementById("window-rows-builder");
   const addWindowRowButton = document.getElementById("add-window-row-button");
   const removeWindowButton = document.getElementById("remove-window-button");
@@ -592,8 +592,8 @@
     }
     if (windowEditorCopy) {
       windowEditorCopy.textContent = activeWindowIndex === 0
-        ? "Window 1 sits on the front wall and defines the room orientation. Add another window only when the room needs one."
-        : "Additional windows stay on rectangular room walls. Their compass direction is derived from Window 1.";
+        ? "Front wall; defines room orientation."
+        : "Compass direction is derived from Window 1.";
     }
     if (selectedWindowWallSelect) {
       selectedWindowWallSelect.value = activeRow.wall;

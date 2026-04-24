@@ -79,7 +79,7 @@ summary {
 }
 
 .panel-card {
-  padding: 22px;
+  padding: 20px;
 }
 
 .alert {
@@ -128,14 +128,14 @@ summary {
 
 .controls-card {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .controls-note {
   display: grid;
   gap: 4px;
   justify-items: end;
-  font-size: 0.9rem;
+  font-size: 0.84rem;
   color: var(--muted);
   text-align: right;
 }
@@ -298,8 +298,8 @@ summary {
 
 .control-group {
   display: grid;
-  gap: 10px;
-  padding-top: 14px;
+  gap: 8px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
 }
 
@@ -382,7 +382,7 @@ select {
   width: 100%;
   border: 1px solid rgba(35, 46, 56, 0.16);
   border-radius: 14px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   background: rgba(255, 255, 255, 0.88);
   color: var(--ink);
   font: inherit;
@@ -483,7 +483,7 @@ input[type="range"] {
 
 .explore-slider-group {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .date-time-actions {
@@ -516,7 +516,7 @@ input[type="range"] {
 
 .daylight-markers {
   position: relative;
-  height: 28px;
+  height: 22px;
   margin-top: 2px;
 }
 
@@ -623,14 +623,16 @@ input[type="range"] {
 .window-builder-header {
   display: flex;
   align-items: start;
+  justify-content: space-between;
   gap: 16px;
 }
 
 .window-builder-copy {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   max-width: 56ch;
   color: var(--muted);
-  line-height: 1.5;
+  line-height: 1.35;
+  font-size: 0.9rem;
 }
 
 .window-builder-actions {
@@ -648,16 +650,43 @@ input[type="range"] {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px 12px;
+  gap: 8px 10px;
 }
 
 .selected-window-card {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 8px;
+  padding: 10px;
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.62);
+}
+
+.selected-window-card .field-help {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.selected-window-card .field-row-4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+}
+
+.selected-window-card label {
+  gap: 4px;
+}
+
+.selected-window-card label span {
+  font-size: 0.68rem;
+}
+
+.selected-window-card input,
+.selected-window-card select {
+  min-height: 38px;
+  padding: 7px 10px;
+  border-radius: 12px;
+  font-size: 0.94rem;
 }
 
 .window-hidden-inputs {
@@ -679,6 +708,13 @@ input[type="range"] {
   font-weight: 600;
   background: rgba(255, 255, 255, 0.68);
   border-color: rgba(43, 98, 122, 0.12);
+}
+
+.window-builder-header > .chip-button {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  font-size: 0.86rem;
+  white-space: nowrap;
 }
 
 .window-json-textarea {
@@ -916,7 +952,7 @@ input[type="range"] {
 
 @media (min-width: 1280px) {
   body {
-    zoom: 0.82;
+    zoom: 0.8;
   }
 }
 
