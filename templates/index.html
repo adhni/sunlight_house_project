@@ -230,25 +230,27 @@
                   <h2>Core Controls</h2>
                 </div>
                 <div class="controls-note">
-                  <span>Start with location, time, and facing.</span>
+                  <span>Start with time, facing, and windows.</span>
                   <span>Open geometry and advanced sections only when needed.</span>
                 </div>
               </div>
 
               <section class="control-group">
                 <span class="explorer-label">Date And Time</span>
-                <div class="field-row">
-                  <label>
-                    <span>Date</span>
-                    <input id="selected-date-input" type="date" name="selected_date" value="{{ form_values.selected_date }}">
-                  </label>
-                  <label>
-                    <span>Time</span>
-                    <input id="selected-time-input" type="time" name="selected_time" value="{{ form_values.selected_time }}">
-                  </label>
-                </div>
-                <div class="date-time-actions">
-                  <button id="set-now-button" type="button" class="chip-button chip-button-soft">Now</button>
+                <div class="date-time-row">
+                  <div class="field-row">
+                    <label>
+                      <span>Date</span>
+                      <input id="selected-date-input" type="date" name="selected_date" value="{{ form_values.selected_date }}">
+                    </label>
+                    <label>
+                      <span>Time</span>
+                      <input id="selected-time-input" type="time" name="selected_time" value="{{ form_values.selected_time }}">
+                    </label>
+                  </div>
+                  <div class="date-time-actions">
+                    <button id="set-now-button" type="button" class="chip-button chip-button-soft">Now</button>
+                  </div>
                 </div>
                 <div class="explore-slider-group">
                   <div class="slider-header">
@@ -275,12 +277,107 @@
                     <span id="sunset-marker" class="daylight-marker">Sunset</span>
                   </div>
                 </div>
-                <div class="chip-row seasonal-row">
-                  <a class="season-chip" href="{{ preset_urls['Winter solstice'] }}">Winter Noon</a>
-                  <a class="season-chip" href="{{ preset_urls['Summer solstice'] }}">Summer Noon</a>
-                  <a class="season-chip" href="{{ preset_urls['Equinox'] }}">Equinox Noon</a>
+              </section>
+
+              <section class="control-group">
+                <span class="explorer-label">Which Way Does Window 1 Face?</span>
+                <p class="field-help">This sets the rectangular room orientation. Extra windows are placed on walls relative to Window 1.</p>
+                <div class="chip-row" id="window-facing-chip-row">
+                  {% for facing in compass_options %}
+                  <button
+                    type="button"
+                    class="chip-button {% if form_values.window_facing == facing %}is-active{% endif %}"
+                    data-window-facing="{{ facing }}"
+                  >
+                    {{ facing }}
+                  </button>
+                  {% endfor %}
                 </div>
               </section>
+
+              <section class="control-group">
+                <div class="window-builder-header">
+                  <div>
+                    <span id="window-editor-title" class="explorer-label">Window 1</span>
+                    <p id="window-editor-copy" class="window-builder-copy">Window 1 sits on the front wall and defines the room orientation. Add another window only when the room needs one.</p>
+                  </div>
+                </div>
+
+                <div class="window-selector-bar">
+                  <div id="window-rows-builder" class="window-selector" aria-label="Window selector"></div>
+                  <div class="chip-row window-builder-actions">
+                    <button id="add-window-row-button" type="button" class="chip-button chip-button-soft">+ Add window</button>
+                  </div>
+                </div>
+
+                <div class="selected-window-card">
+                  <label>
+                    <span>Wall</span>
+                    <select id="selected-window-wall">
+                      <option value="north">Front wall</option>
+                      <option value="east">Right wall</option>
+                      <option value="south">Back wall</option>
+                      <option value="west">Left wall</option>
+                    </select>
+                  </label>
+                  <p id="selected-window-facing-copy" class="field-help">This window faces {{ form_values.window_facing }}.</p>
+                  <div class="field-row field-row-4">
+                    <label>
+                      <span>Centre (m)</span>
+                      <input type="number" step="0.1" name="window_span_center" value="{{ form_values.window_span_center }}">
+                    </label>
+                    <label>
+                      <span>Sill (m)</span>
+                      <input type="number" step="0.1" name="window_sill_height" value="{{ form_values.window_sill_height }}">
+                    </label>
+                    <label>
+                      <span>Width (m)</span>
+                      <input type="number" step="0.1" name="window_width" value="{{ form_values.window_width }}">
+                    </label>
+                    <label>
+                      <span>Height (m)</span>
+                      <input type="number" step="0.1" name="window_height" value="{{ form_values.window_height }}">
+                    </label>
+                  </div>
+                  <button id="remove-window-button" type="button" class="chip-button chip-button-soft">Remove this window</button>
+                </div>
+                <p class="field-help">Centre is measured from the left end of the selected wall in the top-down view. Sill height is measured from the floor to the bottom of the window.</p>
+
+                <details class="subtle-details window-json-details">
+                  <summary>Advanced JSON</summary>
+                  <label>
+                    <span>Raw window list</span>
+                    <textarea id="windows-json-textarea" name="windows_json" rows="10" class="window-json-textarea">{{ form_values.windows_json }}</textarea>
+                  </label>
+                  <p class="field-help">This mirrors the window rows above. Use it only when you want to paste or export a full window list.</p>
+                </details>
+              </section>
+
+              <details class="subtle-details control-group geometry-details">
+                <summary>
+                  <span class="section-kicker">Geometry</span>
+                  <strong>Room And Window Geometry</strong>
+                </summary>
+                <div class="geometry-details-body">
+                  <section class="nested-control-group">
+                    <span class="explorer-label">How Big Is The Room?</span>
+                    <div class="field-row field-row-3">
+                      <label>
+                        <span>Width (m)</span>
+                        <input type="number" step="0.1" name="room_width" value="{{ form_values.room_width }}">
+                      </label>
+                      <label>
+                        <span>Depth (m)</span>
+                        <input type="number" step="0.1" name="room_depth" value="{{ form_values.room_depth }}">
+                      </label>
+                      <label>
+                        <span>Ceiling (m)</span>
+                        <input type="number" step="0.1" name="room_height" value="{{ form_values.room_height }}">
+                      </label>
+                    </div>
+                  </section>
+                </div>
+              </details>
 
               <section class="control-group">
                 <span class="explorer-label">Where Is The Room?</span>
@@ -329,104 +426,6 @@
                       </label>
                     </div>
                   </details>
-                </div>
-              </details>
-
-              <section class="control-group">
-                <span class="explorer-label">Which Way Does Window 1 Face?</span>
-                <p class="field-help">This sets the rectangular room orientation. Extra windows are placed on walls relative to Window 1.</p>
-                <div class="chip-row" id="window-facing-chip-row">
-                  {% for facing in compass_options %}
-                  <button
-                    type="button"
-                    class="chip-button {% if form_values.window_facing == facing %}is-active{% endif %}"
-                    data-window-facing="{{ facing }}"
-                  >
-                    {{ facing }}
-                  </button>
-                  {% endfor %}
-                </div>
-              </section>
-
-              <details class="subtle-details control-group geometry-details">
-                <summary>
-                  <span class="section-kicker">Geometry</span>
-                  <strong>Room And Window Geometry</strong>
-                </summary>
-                <div class="geometry-details-body">
-                  <section class="nested-control-group">
-                    <span class="explorer-label">How Big Is The Room?</span>
-                    <div class="field-row field-row-3">
-                      <label>
-                        <span>Width (m)</span>
-                        <input type="number" step="0.1" name="room_width" value="{{ form_values.room_width }}">
-                      </label>
-                      <label>
-                        <span>Depth (m)</span>
-                        <input type="number" step="0.1" name="room_depth" value="{{ form_values.room_depth }}">
-                      </label>
-                      <label>
-                        <span>Ceiling (m)</span>
-                        <input type="number" step="0.1" name="room_height" value="{{ form_values.room_height }}">
-                      </label>
-                    </div>
-                  </section>
-
-                  <section class="nested-control-group">
-                    <div class="window-builder-header">
-                      <div>
-                        <span id="window-editor-title" class="explorer-label">Window 1</span>
-                        <p id="window-editor-copy" class="window-builder-copy">Window 1 sits on the front wall and defines the room orientation. Add another window only when the room needs one.</p>
-                      </div>
-                      <div class="chip-row window-builder-actions">
-                        <button id="add-window-row-button" type="button" class="chip-button chip-button-soft">+ Add another window</button>
-                      </div>
-                    </div>
-
-                    <div id="window-rows-builder" class="window-selector" aria-label="Window selector"></div>
-
-                    <div class="selected-window-card">
-                      <label>
-                        <span>Wall</span>
-                        <select id="selected-window-wall">
-                          <option value="north">Front wall</option>
-                          <option value="east">Right wall</option>
-                          <option value="south">Back wall</option>
-                          <option value="west">Left wall</option>
-                        </select>
-                      </label>
-                      <p id="selected-window-facing-copy" class="field-help">This window faces {{ form_values.window_facing }}.</p>
-                      <div class="field-row field-row-4">
-                        <label>
-                          <span>Centre (m)</span>
-                          <input type="number" step="0.1" name="window_span_center" value="{{ form_values.window_span_center }}">
-                        </label>
-                        <label>
-                          <span>Sill (m)</span>
-                          <input type="number" step="0.1" name="window_sill_height" value="{{ form_values.window_sill_height }}">
-                        </label>
-                        <label>
-                          <span>Width (m)</span>
-                          <input type="number" step="0.1" name="window_width" value="{{ form_values.window_width }}">
-                        </label>
-                        <label>
-                          <span>Height (m)</span>
-                          <input type="number" step="0.1" name="window_height" value="{{ form_values.window_height }}">
-                        </label>
-                      </div>
-                      <button id="remove-window-button" type="button" class="chip-button chip-button-soft">Remove this window</button>
-                    </div>
-                    <p class="field-help">Centre is measured from the left end of the selected wall in the top-down view. Sill height is measured from the floor to the bottom of the window.</p>
-
-                    <details class="subtle-details window-json-details">
-                      <summary>Advanced JSON</summary>
-                      <label>
-                        <span>Raw window list</span>
-                        <textarea id="windows-json-textarea" name="windows_json" rows="10" class="window-json-textarea">{{ form_values.windows_json }}</textarea>
-                      </label>
-                      <p class="field-help">This mirrors the window rows above. Use it only when you want to paste or export a full window list.</p>
-                    </details>
-                  </section>
                 </div>
               </details>
 
