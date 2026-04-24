@@ -10,13 +10,13 @@ It includes:
 - a CLI demo that regenerates example plots
 - a lightweight solar and geometry model that stays intentionally narrow
 
-The current app is designed around one main window on a rectangular room. The room stays axis-aligned internally, and the selected compass facing rotates the room relative to the real-world sun.
+The current app is designed around editable wall windows on a rectangular room. The room stays axis-aligned internally, and the selected compass facing rotates the room relative to the real-world sun.
 
 ## What It Does
 
 - computes solar elevation and azimuth from latitude, longitude, local datetime, and timezone
-- models a rectangular room with a single main wall window
-- projects direct sunlight from the window onto the floor
+- models a rectangular room with one or more wall windows
+- projects direct sunlight from each window onto the floor
 - renders a top-down room snapshot for a selected moment
 - estimates daily direct-sun-hours exposure across the floor
 - estimates yearly and seasonal floor exposure using representative-day sampling
@@ -24,7 +24,7 @@ The current app is designed around one main window on a rectangular room. The ro
 
 ## Current Defaults
 
-The default scenario is Melbourne with the current Melbourne date and time, rounded down to the nearest 15 minutes.
+The default scenario is a Melbourne daylight demo moment: `2026-01-15 10:00` in `Australia/Melbourne`. This keeps the first load visually useful even when the real current time is after sunset. Use the `Now` button to jump to the current time in the selected timezone.
 
 Default room and window values:
 
@@ -32,12 +32,10 @@ Default room and window values:
 - timezone: `Australia/Melbourne`
 - window facing: `NE`
 - room: `4.0 m` width, `5.0 m` depth, `3.0 m` ceiling
-- window centre from left corner: `3.0 m`
-- sill height: `0.1 m`
-- window width: `1.5 m`
-- window height: `2.0 m`
+- Window 1: front wall, centre from left `3.0 m`, sill `0.1 m`, width `1.5 m`, height `2.0 m`
+- Window 2: right wall, centre from left `2.8 m`, sill `0.1 m`, width `1.5 m`, height `2.0 m`
 
-The main result tab opens on `Direct Sun Hours Today`.
+The main result tab opens on `Current Moment`.
 
 ## Coordinate System
 
@@ -84,7 +82,8 @@ The app currently includes:
 - manual latitude and longitude fields
 - manual timezone override under a collapsible advanced section
 - an 8-direction window-facing selector
-- room and single-window geometry controls
+- compact multi-window editing controls
+- collapsible room geometry controls
 - day-of-year and time-of-day scrubbers
 - a `Now` button for the selected timezone
 - a `Current Moment` room snapshot
@@ -187,6 +186,6 @@ Render uses:
 ## Notes And Limits
 
 - The geometry model is intentionally simple and axis-aligned.
-- The app currently exposes one main window, even though some lower-level code can hold multiple windows.
+- The web app exposes compact controls for multiple axis-aligned wall windows.
 - The model does not include blinds, overhangs, furniture, diffuse sky light, reflections, or external obstructions.
 - Floor patches are generated from projected window corners and clipped into room bounds, so edge behavior is still a simplification.

@@ -130,6 +130,87 @@ def _project_point_to_floor(point: np.ndarray, ray_dir: np.ndarray) -> np.ndarra
     return point + t * ray_dir
 
 
+def _interpolate_segment_point(start: np.ndarray, end: np.ndarray, *, axis: int, value: float) -> np.ndarray:
+    delta = end[axis] - start[axis]
+    if abs(delta) <= 1e-12:
+        point = start.copy()
+        point[axis] = value
+        return point
+    t = (value - start[axis]) / delta
+    return start + t * (end - start)
+
+
+def _clip_polygon_half_plane(
+    polygon_xy: np.ndarray,
+    *,
+    inside,
+    intersect,
+) -> np.ndarray:
+    if len(polygon_xy) == 0:
+        return polygon_xy
+
+    output: list[np.ndarray] = []
+    for index, current in enumerate(polygon_xy):
+        previous = polygon_xy[index - 1]
+        current_inside = inside(current)
+        previous_inside = inside(previous)
+
+        if current_inside:
+            if not previous_inside:
+                output.append(intersect(previous, current))
+            output.append(current)
+        elif previous_inside:
+            output.append(intersect(previous, current))
+
+    if not output:
+        return np.empty((0, 2), dtype=float)
+    return np.vstack(output)
+
+
+def _dedupe_polygon_points(polygon_xy: np.ndarray, *, tol: float = 1e-9) -> np.ndarray:
+    if len(polygon_xy) == 0:
+        return polygon_xy
+
+    deduped = [polygon_xy[0]]
+    for point in polygon_xy[1:]:
+        if not np.allclose(point, deduped[-1], atol=tol):
+            deduped.append(point)
+
+    if len(deduped) > 1 and np.allclose(deduped[0], deduped[-1], atol=tol):
+        deduped.pop()
+
+    if len(deduped) < 3:
+        return np.empty((0, 2), dtype=float)
+    return np.vstack(deduped)
+
+
+def _clip_polygon_to_room(room: Room, polygon_xy: np.ndarray) -> np.ndarray:
+    clipped = np.asarray(polygon_xy, dtype=float)
+
+    clipped = _clip_polygon_half_plane(
+        clipped,
+        inside=lambda point: point[0] >= 0.0,
+        intersect=lambda start, end: _interpolate_segment_point(start, end, axis=0, value=0.0),
+    )
+    clipped = _clip_polygon_half_plane(
+        clipped,
+        inside=lambda point: point[0] <= room.width,
+        intersect=lambda start, end: _interpolate_segment_point(start, end, axis=0, value=room.width),
+    )
+    clipped = _clip_polygon_half_plane(
+        clipped,
+        inside=lambda point: point[1] >= 0.0,
+        intersect=lambda start, end: _interpolate_segment_point(start, end, axis=1, value=0.0),
+    )
+    clipped = _clip_polygon_half_plane(
+        clipped,
+        inside=lambda point: point[1] <= room.depth,
+        intersect=lambda start, end: _interpolate_segment_point(start, end, axis=1, value=room.depth),
+    )
+
+    return _dedupe_polygon_points(clipped)
+
+
 def project_to_floor(room: Room, window: Window, sun_direction: np.ndarray) -> SunlightPatch | None:
     """Project incoming sunlight through a window onto the floor plane."""
     room.validate_window(window)
@@ -145,15 +226,11 @@ def project_to_floor(room: Room, window: Window, sun_direction: np.ndarray) -> S
         hit = _project_point_to_floor(corner, ray_dir)
         if hit is None:
             return None
-        hit_xy = np.array(
-            [
-                float(np.clip(hit[0], 0.0, room.width)),
-                float(np.clip(hit[1], 0.0, room.depth)),
-            ]
-        )
-        projected.append(hit_xy)
+        projected.append(np.asarray(hit[:2], dtype=float))
 
-    poly = np.vstack(projected)
+    poly = _clip_polygon_to_room(room, np.vstack(projected))
+    if len(poly) < 3:
+        return None
     if _polygon_area(poly) <= 1e-6:
         return None
     return SunlightPatch(polygon_xy=poly, intensity=intensity, window_name=window.name)

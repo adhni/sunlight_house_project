@@ -42,11 +42,11 @@ def summarize_direct_sun(
     supporting_text = ", ".join(supporting_bits) + "."
 
     if snapshot_state == "floor_hit":
-        moment_text = "Right now the sun reaches the floor."
+        moment_text = "At the selected time, the sun reaches the floor."
     elif snapshot_state == "through_window_no_floor_hit":
-        moment_text = "Right now the sun enters the window but does not reach the floor."
+        moment_text = "At the selected time, the sun enters the window but does not reach the floor."
     else:
-        moment_text = "Right now the sun does not enter this window."
+        moment_text = "At the selected time, the sun does not enter this window."
 
     return {
         "headline": headline,
