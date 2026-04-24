@@ -133,19 +133,17 @@ def default_form_values() -> dict[str, str]:
     room = scenario.room
     window = scenario.windows[0]
     preset = default_location_preset()
-    timezone = ZoneInfo(scenario.location.timezone_name)
-    current_moment = datetime.now(timezone).replace(second=0, microsecond=0)
-    rounded_minute = current_moment.minute - (current_moment.minute % 15)
-    current_moment = current_moment.replace(minute=rounded_minute)
+    demo_date = "2026-01-15"
+    demo_time = "10:00"
     return {
         "location_preset": preset,
         "location_name": scenario.location.name,
         "latitude": f"{scenario.location.latitude}",
         "longitude": f"{scenario.location.longitude}",
         "timezone_name": scenario.location.timezone_name,
-        "year": str(current_moment.year),
-        "selected_date": current_moment.date().isoformat(),
-        "selected_time": current_moment.strftime("%H:%M"),
+        "year": demo_date[:4],
+        "selected_date": demo_date,
+        "selected_time": demo_time,
         "room_width": f"{room.width}",
         "room_depth": f"{room.depth}",
         "room_height": f"{room.height}",
@@ -154,10 +152,34 @@ def default_form_values() -> dict[str, str]:
         "window_sill_height": f"{window.center[2] - window.height / 2.0:.1f}",
         "window_width": f"{window.width}",
         "window_height": f"{window.height}",
-        "windows_json": "",
+        "windows_json": default_demo_windows_json(),
         "day_step_minutes": str(scenario.day_step_minutes),
         "year_step_hours": str(scenario.year_step_hours),
     }
+
+
+def default_demo_windows_json() -> str:
+    return json.dumps(
+        [
+            {
+                "name": "main_window",
+                "wall": "north",
+                "span_center": 3.0,
+                "sill_height": 0.1,
+                "width": 1.5,
+                "height": 2.0,
+            },
+            {
+                "name": "side_window",
+                "wall": "east",
+                "span_center": 2.8,
+                "sill_height": 0.1,
+                "width": 1.5,
+                "height": 2.0,
+            },
+        ],
+        indent=2,
+    )
 
 
 def parse_windows_json(raw_value: str, room: Room) -> tuple:

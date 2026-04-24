@@ -18,7 +18,7 @@ class DirectSunSummaryTests(unittest.TestCase):
         self.assertEqual(summary["headline"], "No direct sun reaches the floor")
         self.assertEqual(summary["tone"], "off")
         self.assertIn("0% of the room gets some direct sun", summary["supporting_text"])
-        self.assertEqual(summary["moment_text"], "Right now the sun does not enter this window.")
+        self.assertEqual(summary["moment_text"], "At the selected time, the sun does not enter this window.")
 
     def test_strong_concentrated_direct_sun_summary(self) -> None:
         summary = summarize_direct_sun(
@@ -33,7 +33,7 @@ class DirectSunSummaryTests(unittest.TestCase):
         self.assertEqual(summary["tone"], "strong")
         self.assertIn("4.6 h", summary["supporting_text"])
         self.assertIn("11:00", summary["supporting_text"])
-        self.assertEqual(summary["moment_text"], "Right now the sun reaches the floor.")
+        self.assertEqual(summary["moment_text"], "At the selected time, the sun reaches the floor.")
 
     def test_broad_coverage_summary(self) -> None:
         summary = summarize_direct_sun(
@@ -49,7 +49,7 @@ class DirectSunSummaryTests(unittest.TestCase):
         self.assertIn("50% of the room gets some direct sun", summary["supporting_text"])
         self.assertEqual(
             summary["moment_text"],
-            "Right now the sun enters the window but does not reach the floor.",
+            "At the selected time, the sun enters the window but does not reach the floor.",
         )
 
 

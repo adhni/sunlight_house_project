@@ -1,4 +1,5 @@
 import unittest
+import json
 
 from app import app, build_safe_form_values, default_form_values
 
@@ -18,6 +19,8 @@ class AppTests(unittest.TestCase):
 
         self.assertEqual(values["location_preset"], "melbourne")
         self.assertEqual(values["timezone_name"], "Australia/Melbourne")
+        self.assertEqual(values["selected_date"], "2026-01-15")
+        self.assertEqual(values["selected_time"], "10:00")
         self.assertEqual(values["window_facing"], "NE")
         self.assertEqual(values["room_width"], "4.0")
         self.assertEqual(values["room_depth"], "5.0")
@@ -26,7 +29,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(values["window_sill_height"], "0.1")
         self.assertEqual(values["window_width"], "1.5")
         self.assertEqual(values["window_height"], "2.0")
-        self.assertEqual(values["windows_json"], "")
+        self.assertEqual(len(json.loads(values["windows_json"])), 2)
 
     def test_snapshot_api_returns_expected_shape(self) -> None:
         response = self.client.get("/api/snapshot")
@@ -42,9 +45,10 @@ class AppTests(unittest.TestCase):
         self.assertIn("windows", payload)
         self.assertIn("headline", payload["summary"])
         self.assertIn("supporting_text", payload["summary"])
-        self.assertFalse(payload["is_multi_window"])
-        self.assertFalse(payload["window_override_active"])
-        self.assertEqual(len(payload["windows"]), 1)
+        self.assertTrue(payload["is_multi_window"])
+        self.assertTrue(payload["window_override_active"])
+        self.assertTrue(payload["snapshot"]["entered_direct_sun"])
+        self.assertEqual(len(payload["windows"]), 2)
 
     def test_index_invalid_windows_json_falls_back_instead_of_500(self) -> None:
         response = self.client.get("/?windows_json=not-json")
@@ -92,7 +96,7 @@ class AppTests(unittest.TestCase):
 
         values = build_safe_form_values(defaults | {"windows_json": "not-json"}, defaults)
 
-        self.assertEqual(values["windows_json"], "")
+        self.assertEqual(values["windows_json"], defaults["windows_json"])
 
 
 if __name__ == "__main__":

@@ -412,6 +412,14 @@
     }
   }
 
+  function formatWindowNumber(value) {
+    const number = parseFiniteNumber(value);
+    if (number === null) {
+      return value ?? "";
+    }
+    return Number(number.toFixed(2)).toString();
+  }
+
   function wallDisplayName(wall) {
     return {
       north: "Front wall",
@@ -498,10 +506,10 @@
     return {
       name: (row.name || `window_${index + 1}`).toString(),
       wall: index === 0 ? "north" : (row.wall || "east").toString().toLowerCase(),
-      span_center: row.span_center ?? "",
-      sill_height: row.sill_height ?? "",
-      width: row.width ?? "",
-      height: row.height ?? "",
+      span_center: formatWindowNumber(row.span_center),
+      sill_height: formatWindowNumber(row.sill_height),
+      width: formatWindowNumber(row.width),
+      height: formatWindowNumber(row.height),
     };
   }
 
