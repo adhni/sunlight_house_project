@@ -27,7 +27,7 @@ class AppTests(unittest.TestCase):
 
         self.assertEqual(values["location_preset"], "melbourne")
         self.assertEqual(values["timezone_name"], "Australia/Melbourne")
-        self.assertEqual(values["selected_date"], "2026-01-15")
+        self.assertEqual(values["selected_date"], "2025-01-15")
         self.assertEqual(values["selected_time"], "10:00")
         self.assertEqual(values["window_facing"], "NE")
         self.assertEqual(values["room_width"], "4.0")

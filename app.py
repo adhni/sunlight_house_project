@@ -139,7 +139,7 @@ def default_form_values() -> dict[str, str]:
     room = scenario.room
     window = scenario.windows[0]
     preset = default_location_preset()
-    demo_date = "2026-01-15"
+    demo_date = "2025-01-15"
     demo_time = "10:00"
     return {
         "location_preset": preset,
@@ -212,8 +212,8 @@ def parse_windows_json(raw_value: str, room: Room) -> tuple:
         name = str(item.get("name", f"window_{index}")).strip() or f"window_{index}"
         span_center = parse_float(str(item.get("span_center", "")), f"Window {index} span center")
         sill_height = parse_float(str(item.get("sill_height", "")), f"Window {index} sill height")
-        width = parse_positive_float(str(item.get("width", "")), f"Window {index} width")
-        height = parse_positive_float(str(item.get("height", "")), f"Window {index} height")
+        width = parse_bounded_float(str(item.get("width", "")), f"Window {index} width", 0.0, _MAX_ROOM_DIM, exclusive_min=True)
+        height = parse_bounded_float(str(item.get("height", "")), f"Window {index} height", 0.0, _MAX_ROOM_DIM, exclusive_min=True)
         windows.append(
             window_on_wall(
                 name=name,
@@ -259,8 +259,8 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
                 span_center=parse_float(form_values["window_span_center"], "Window span center"),
                 center_height=parse_float(form_values["window_sill_height"], "Window sill height")
                 + 0.5 * parse_positive_float(form_values["window_height"], "Window height"),
-                width=parse_positive_float(form_values["window_width"], "Window width"),
-                height=parse_positive_float(form_values["window_height"], "Window height"),
+                width=parse_bounded_float(form_values["window_width"], "Window width", 0.0, _MAX_ROOM_DIM, exclusive_min=True),
+                height=parse_bounded_float(form_values["window_height"], "Window height", 0.0, _MAX_ROOM_DIM, exclusive_min=True),
             ),
         )
 
