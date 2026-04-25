@@ -303,14 +303,6 @@
   }
 
   function summarizeOutdoorYear() {
-    const locationTimezone =
-      window.environmentLocations?.[environmentLocationKey]?.timezone || "UTC";
-    const formatter = new Intl.DateTimeFormat("en", {
-      timeZone: locationTimezone,
-      month: "2-digit",
-      hour: "2-digit",
-      hour12: false,
-    });
     const monthBuckets = Array.from({ length: 12 }, () => ({
       temps: [],
       middayUv: [],
@@ -318,16 +310,14 @@
     }));
 
     environmentByHour.forEach((entry) => {
-      const parts = formatter.formatToParts(new Date(entry.time + "Z"));
-      const localMonth = parseInt(parts.find((p) => p.type === "month")?.value ?? "0", 10);
-      const localHour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
-      const monthIndex = localMonth - 1;
+      const monthIndex = parseInt(entry.time.slice(5, 7), 10) - 1;
+      const hour = parseInt(entry.time.slice(11, 13), 10);
       const bucket = monthBuckets[monthIndex];
       if (!bucket) {
         return;
       }
       bucket.temps.push(entry.tempC);
-      if (localHour >= 10 && localHour <= 14) {
+      if (hour >= 10 && hour <= 14) {
         bucket.middayUv.push(entry.uvIndex);
         bucket.middaySolar.push(entry.solarRadiation);
       }
