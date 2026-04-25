@@ -302,13 +302,6 @@ def parse_float(raw_value: str, label: str) -> float:
         raise ValueError(f"{label} must be a number.") from exc
 
 
-def parse_positive_float(raw_value: str, label: str) -> float:
-    value = parse_float(raw_value, label)
-    if value <= 0.0:
-        raise ValueError(f"{label} must be positive.")
-    return value
-
-
 def parse_bounded_float(
     raw_value: str,
     label: str,
