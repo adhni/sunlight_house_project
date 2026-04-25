@@ -8,6 +8,10 @@ from zoneinfo import ZoneInfo
 
 from flask import Flask, jsonify, render_template, request, url_for
 
+_MAX_WINDOWS = 10
+_MAX_LOCATION_NAME_LEN = 200
+_MAX_ROOM_DIM = 500.0  # metres -- sanity cap to prevent extreme compute
+
 from sunlight_house.analysis import (
     analyze_day,
     analyze_snapshot,
@@ -195,6 +199,8 @@ def parse_windows_json(raw_value: str, room: Room) -> tuple:
 
     if not isinstance(payload, list) or not payload:
         raise ValueError("Multi-window JSON must be a non-empty list of window objects.")
+    if len(payload) > _MAX_WINDOWS:
+        raise ValueError(f"Too many windows: maximum is {_MAX_WINDOWS}.")
 
     windows = []
     for index, item in enumerate(payload, start=1):
@@ -233,17 +239,17 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
         longitude = preset.longitude
         timezone_name = preset.timezone_name
     else:
-        location_name = form_values["location_name"].strip() or "Custom location"
-        latitude = parse_float(form_values["latitude"], "Latitude")
-        longitude = parse_float(form_values["longitude"], "Longitude")
+        location_name = (form_values["location_name"].strip() or "Custom location")[:_MAX_LOCATION_NAME_LEN]
+        latitude = parse_bounded_float(form_values["latitude"], "Latitude", -90.0, 90.0)
+        longitude = parse_bounded_float(form_values["longitude"], "Longitude", -180.0, 180.0)
         timezone_name = form_values["timezone_name"].strip()
 
     timezone = parse_timezone_name(timezone_name)
 
     room = Room(
-        width=parse_positive_float(form_values["room_width"], "Room width"),
-        depth=parse_positive_float(form_values["room_depth"], "Room depth"),
-        height=parse_positive_float(form_values["room_height"], "Room height"),
+        width=parse_bounded_float(form_values["room_width"], "Room width", 0.0, _MAX_ROOM_DIM, exclusive_min=True),
+        depth=parse_bounded_float(form_values["room_depth"], "Room depth", 0.0, _MAX_ROOM_DIM, exclusive_min=True),
+        height=parse_bounded_float(form_values["room_height"], "Room height", 0.0, _MAX_ROOM_DIM, exclusive_min=True),
     )
     windows = parse_windows_json(form_values.get("windows_json", ""), room)
     if not windows:
@@ -258,6 +264,15 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
             ),
         )
 
+    facing_label = form_values["window_facing"].strip().upper()
+    valid_facings = {label for label, _ in COMPASS_OPTIONS}
+    if facing_label not in valid_facings:
+        valid_list = ", ".join(label for label, _ in COMPASS_OPTIONS)
+        raise ValueError(f"Window facing must be one of: {valid_list}.")
+
+    day_step_minutes = parse_positive_int(form_values["day_step_minutes"], "Daily step", max_val=60)
+    year_step_hours = parse_positive_int(form_values["year_step_hours"], "Yearly step", max_val=24)
+
     year = selected_date.year
     config = SimulationConfig(
         location=Location(
@@ -269,9 +284,9 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
         room=room,
         windows=windows,
         year=year,
-        day_step_minutes=int(parse_positive_float(form_values["day_step_minutes"], "Daily step")),
-        year_step_hours=int(parse_positive_float(form_values["year_step_hours"], "Yearly step")),
-        window_facing_label=form_values["window_facing"].strip().upper(),
+        day_step_minutes=day_step_minutes,
+        year_step_hours=year_step_hours,
+        window_facing_label=facing_label,
     )
 
     moment = datetime.combine(selected_date, selected_time, tzinfo=timezone)
@@ -290,6 +305,34 @@ def parse_positive_float(raw_value: str, label: str) -> float:
     if value <= 0.0:
         raise ValueError(f"{label} must be positive.")
     return value
+
+
+def parse_bounded_float(
+    raw_value: str,
+    label: str,
+    min_val: float,
+    max_val: float,
+    *,
+    exclusive_min: bool = False,
+) -> float:
+    value = parse_float(raw_value, label)
+    below = value <= min_val if exclusive_min else value < min_val
+    if below or value > max_val:
+        qualifier = "greater than" if exclusive_min else "at least"
+        raise ValueError(f"{label} must be {qualifier} {min_val} and at most {max_val}.")
+    return value
+
+
+def parse_positive_int(raw_value: str, label: str, *, max_val: int) -> int:
+    value = parse_float(raw_value, label)
+    if value != int(value):
+        raise ValueError(f"{label} must be a whole number.")
+    int_value = int(value)
+    if int_value <= 0:
+        raise ValueError(f"{label} must be a positive integer.")
+    if int_value > max_val:
+        raise ValueError(f"{label} must be at most {max_val}.")
+    return int_value
 
 
 def parse_timezone_name(raw_value: str) -> ZoneInfo:
@@ -449,8 +492,12 @@ def build_safe_form_values(form_values: dict[str, str], defaults: dict[str, str]
         safe["location_preset"] = location_preset
 
     safe["location_name"] = form_values.get("location_name", defaults["location_name"]).strip() or defaults["location_name"]
-    safe["latitude"] = safe_float_string(form_values.get("latitude", defaults["latitude"]), defaults["latitude"])
-    safe["longitude"] = safe_float_string(form_values.get("longitude", defaults["longitude"]), defaults["longitude"])
+    safe["latitude"] = safe_bounded_float_string(
+        form_values.get("latitude", defaults["latitude"]), defaults["latitude"], -90.0, 90.0
+    )
+    safe["longitude"] = safe_bounded_float_string(
+        form_values.get("longitude", defaults["longitude"]), defaults["longitude"], -180.0, 180.0
+    )
     safe["timezone_name"] = safe_timezone_name(form_values.get("timezone_name", defaults["timezone_name"]), defaults["timezone_name"])
 
     safe["selected_date"] = safe_date_string(form_values.get("selected_date", defaults["selected_date"]), defaults["selected_date"])
@@ -458,13 +505,19 @@ def build_safe_form_values(form_values: dict[str, str], defaults: dict[str, str]
     safe["year"] = str(datetime.strptime(safe["selected_date"], "%Y-%m-%d").year)
 
     for key in ("room_width", "room_depth", "room_height", "window_width", "window_height"):
-        safe[key] = safe_positive_float_string(form_values.get(key, defaults[key]), defaults[key])
+        safe[key] = safe_bounded_float_string(
+            form_values.get(key, defaults[key]), defaults[key], 0.0, _MAX_ROOM_DIM, exclusive_min=True
+        )
 
     for key in ("window_span_center", "window_sill_height"):
         safe[key] = safe_float_string(form_values.get(key, defaults[key]), defaults[key])
 
-    for key in ("day_step_minutes", "year_step_hours"):
-        safe[key] = safe_positive_int_string(form_values.get(key, defaults[key]), defaults[key])
+    safe["day_step_minutes"] = safe_bounded_int_string(
+        form_values.get("day_step_minutes", defaults["day_step_minutes"]), defaults["day_step_minutes"], 1, 60
+    )
+    safe["year_step_hours"] = safe_bounded_int_string(
+        form_values.get("year_step_hours", defaults["year_step_hours"]), defaults["year_step_hours"], 1, 24
+    )
 
     safe_room = Room(
         width=float(safe["room_width"]),
@@ -516,6 +569,32 @@ def safe_float_string(raw_value: str, default_value: str) -> str:
         return str(float(raw_value))
     except (TypeError, ValueError):
         return default_value
+
+
+def safe_bounded_float_string(
+    raw_value: str,
+    default_value: str,
+    min_val: float,
+    max_val: float,
+    *,
+    exclusive_min: bool = False,
+) -> str:
+    try:
+        value = float(raw_value)
+    except (TypeError, ValueError):
+        return default_value
+    below = value <= min_val if exclusive_min else value < min_val
+    if below or value > max_val:
+        return default_value
+    return str(value)
+
+
+def safe_bounded_int_string(raw_value: str, default_value: str, min_val: int, max_val: int) -> str:
+    try:
+        value = int(float(raw_value))
+    except (TypeError, ValueError):
+        return default_value
+    return str(value) if min_val <= value <= max_val else default_value
 
 
 def safe_positive_int_string(raw_value: str, default_value: str) -> str:
