@@ -278,6 +278,22 @@
                     <span id="sunset-marker" class="daylight-marker">Sunset</span>
                   </div>
                 </div>
+
+                <article id="outdoor-conditions-card" class="outdoor-conditions-card">
+                  <div class="outdoor-card-header">
+                    <div>
+                      <span id="outdoor-location-label" class="explorer-label">Melbourne 2025</span>
+                      <h3>Outdoor conditions</h3>
+                    </div>
+                    <span id="outdoor-conditions-status" class="outdoor-status">Sample</span>
+                  </div>
+                  <div class="outdoor-metrics">
+                    <span>Temperature: <strong id="outdoor-temp">--</strong></span>
+                    <span>UV Index: <strong id="outdoor-uv">--</strong></span>
+                    <span>Sun strength: <strong id="outdoor-strength">--</strong></span>
+                  </div>
+                  <p id="outdoor-interpretation" class="outdoor-interpretation">Loading outdoor sample...</p>
+                </article>
               </section>
 
               <section class="control-group">
@@ -475,6 +491,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
+    <script src="{{ url_for('static', filename='environmentData.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
   </body>
 </html>

@@ -541,6 +541,66 @@ input[type="range"] {
   background: rgba(200, 101, 48, 0.5);
 }
 
+.outdoor-conditions-card {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.outdoor-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.outdoor-card-header h3 {
+  margin: 2px 0 0;
+  font-size: 0.98rem;
+  letter-spacing: -0.02em;
+}
+
+.outdoor-status {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(43, 98, 122, 0.12);
+  color: var(--cool);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.outdoor-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 12px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.outdoor-metrics span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.outdoor-metrics strong {
+  color: var(--ink);
+  font-size: 0.98rem;
+  line-height: 1.15;
+}
+
+.outdoor-interpretation {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
 .slider-header {
   display: flex;
   justify-content: space-between;
@@ -1041,6 +1101,10 @@ input[type="range"] {
   }
 
   .daily-map-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .outdoor-metrics {
     grid-template-columns: 1fr;
   }
 

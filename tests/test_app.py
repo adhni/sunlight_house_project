@@ -66,6 +66,14 @@ class AppTests(unittest.TestCase):
         self.assertIn('name="day_step_minutes" value="10"', page)
         self.assertIn('name="year_step_hours" value="1"', page)
 
+    def test_index_includes_outdoor_conditions_poc(self) -> None:
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        self.assertIn("Outdoor conditions", page)
+        self.assertIn("environmentData.js", page)
+
     def test_snapshot_api_accepts_multi_window_json(self) -> None:
         response = self.client.get(
             "/api/snapshot",

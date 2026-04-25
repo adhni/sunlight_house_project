@@ -16,6 +16,12 @@
   const baselineDetails = document.getElementById("baseline-details");
   const baselineComparisonPanel = document.getElementById("baseline-comparison-panel");
   const windowEditHint = document.getElementById("window-edit-hint");
+  const outdoorConditionsStatus = document.getElementById("outdoor-conditions-status");
+  const outdoorLocationLabel = document.getElementById("outdoor-location-label");
+  const outdoorTemp = document.getElementById("outdoor-temp");
+  const outdoorUv = document.getElementById("outdoor-uv");
+  const outdoorStrength = document.getElementById("outdoor-strength");
+  const outdoorInterpretation = document.getElementById("outdoor-interpretation");
 
   const locationPresetInput = document.getElementById("location-preset-input");
   const windowFacingInput = document.getElementById("window-facing-input");
@@ -69,6 +75,12 @@
   let baselinePayload = null;
   const defaultUpdateMessage = "Map is up to date.";
   const baselineStorageKey = "sunlight-house-baseline";
+  const environmentReferenceRadiusKm = 50;
+  let environmentByHour = new Map();
+  let environmentLoadState = "idle";
+  let environmentLocationKey = null;
+  let environmentLocationLabel = "";
+  let latestEnvironmentRequestId = 0;
   let activeWindowDrag = null;
   let activeWindowResize = null;
   let suppressWindowBuilderSync = false;
@@ -110,6 +122,181 @@
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  }
+
+  function selectedEnvironmentHourKey() {
+    if (!isCompleteDateValue() || !isCompleteTimeValue()) {
+      return null;
+    }
+    const monthDay = selectedDateInput.value.slice(5);
+    const hour = selectedTimeInput.value.slice(0, 2);
+    return `2025-${monthDay}T${hour}:00`;
+  }
+
+  function degreesToRadians(degrees) {
+    return (degrees * Math.PI) / 180;
+  }
+
+  function distanceKmBetweenPoints(pointA, pointB) {
+    const earthRadiusKm = 6371;
+    const latDelta = degreesToRadians(pointB.latitude - pointA.latitude);
+    const lonDelta = degreesToRadians(pointB.longitude - pointA.longitude);
+    const latA = degreesToRadians(pointA.latitude);
+    const latB = degreesToRadians(pointB.latitude);
+    const a = Math.sin(latDelta / 2) ** 2
+      + Math.cos(latA) * Math.cos(latB) * Math.sin(lonDelta / 2) ** 2;
+    return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function selectedEnvironmentReference() {
+    const presetKey = locationPresetInput.value;
+    const presetLocation = window.environmentLocations?.[presetKey];
+    if (presetLocation) {
+      return {
+        key: presetKey,
+        label: presetLocation.label,
+        distanceKm: 0,
+        isNearestReference: false,
+      };
+    }
+
+    const latitude = parseFiniteNumber(latitudeInput.value);
+    const longitude = parseFiniteNumber(longitudeInput.value);
+    if (latitude === null || longitude === null) {
+      return null;
+    }
+
+    const customPoint = { latitude, longitude };
+    const nearest = Object.entries(window.environmentLocations || {})
+      .map(([key, location]) => ({
+        key,
+        label: location.label,
+        distanceKm: distanceKmBetweenPoints(customPoint, location),
+        isNearestReference: true,
+      }))
+      .sort((a, b) => a.distanceKm - b.distanceKm)[0];
+
+    if (!nearest || nearest.distanceKm > environmentReferenceRadiusKm) {
+      return null;
+    }
+    return nearest;
+  }
+
+  function environmentLabelForReference(reference) {
+    if (!reference) {
+      return `No reference within ${environmentReferenceRadiusKm} km`;
+    }
+    if (reference.isNearestReference) {
+      return `${reference.label} 2025 reference`;
+    }
+    return `${reference.label} 2025`;
+  }
+
+  function environmentReferenceCopy(reference) {
+    if (!reference) {
+      return `Outdoor data is available within ${environmentReferenceRadiusKm} km of Melbourne, Jakarta, or Boston.`;
+    }
+    if (reference.isNearestReference) {
+      return `Using nearest reference: ${reference.label}, ${Math.round(reference.distanceKm)} km away.`;
+    }
+    return "";
+  }
+
+  function sunlightStrengthLabel(solarRadiation) {
+    if (!Number.isFinite(solarRadiation)) {
+      return "Unknown";
+    }
+    if (solarRadiation < 250) {
+      return "Low";
+    }
+    if (solarRadiation < 600) {
+      return "Medium";
+    }
+    return "High";
+  }
+
+  function formatTemperature(value) {
+    return Number.isFinite(value) ? `${value.toFixed(1)}°C` : "--";
+  }
+
+  function formatUvIndex(value) {
+    return Number.isFinite(value) ? value.toFixed(1) : "--";
+  }
+
+  function uvInterpretation(uvIndex) {
+    if (!Number.isFinite(uvIndex)) {
+      return "Outdoor data is not available for this hour.";
+    }
+    if (uvIndex < 3) {
+      return "Low UV - limited vitamin D potential.";
+    }
+    if (uvIndex < 6) {
+      return "Moderate UV - reasonable exposure.";
+    }
+    return "High UV - strong exposure, be cautious.";
+  }
+
+  function setOutdoorText(status, temp, uv, strength, interpretation) {
+    if (outdoorLocationLabel) {
+      outdoorLocationLabel.textContent = environmentLocationLabel
+        || environmentLabelForReference(selectedEnvironmentReference());
+    }
+    if (outdoorConditionsStatus) {
+      outdoorConditionsStatus.textContent = status;
+    }
+    if (outdoorTemp) {
+      outdoorTemp.textContent = temp;
+    }
+    if (outdoorUv) {
+      outdoorUv.textContent = uv;
+    }
+    if (outdoorStrength) {
+      outdoorStrength.textContent = strength;
+    }
+    if (outdoorInterpretation) {
+      outdoorInterpretation.textContent = interpretation;
+    }
+  }
+
+  function renderOutdoorConditions() {
+    if (!outdoorInterpretation) {
+      return;
+    }
+    const selectedReference = selectedEnvironmentReference();
+    if (!selectedReference) {
+      setOutdoorText(
+        "No reference",
+        "--",
+        "--",
+        "--",
+        environmentReferenceCopy(null),
+      );
+      return;
+    }
+    if (environmentLoadState === "loading") {
+      setOutdoorText("Loading", "--", "--", "--", `Loading ${environmentLabelForReference(selectedReference)} hourly data...`);
+      return;
+    }
+    if (environmentLoadState === "error") {
+      setOutdoorText("Unavailable", "--", "--", "--", "Outdoor conditions could not be loaded.");
+      return;
+    }
+
+    const hourKey = selectedEnvironmentHourKey();
+    const environment = hourKey ? environmentByHour.get(hourKey) : null;
+    if (!environment) {
+      setOutdoorText("No data", "--", "--", "--", `No ${environmentLabelForReference(selectedReference)} data for this selected hour.`);
+      return;
+    }
+
+    const referenceCopy = environmentReferenceCopy(selectedReference);
+    setOutdoorText(
+      "Sample",
+      formatTemperature(environment.tempC),
+      formatUvIndex(environment.uvIndex),
+      sunlightStrengthLabel(environment.solarRadiation),
+      referenceCopy ? `${uvInterpretation(environment.uvIndex)} ${referenceCopy}` : uvInterpretation(environment.uvIndex),
+    );
   }
 
   function roundedNowInTimezone(timezoneName) {
@@ -156,6 +343,7 @@
 
     dayReadout.textContent = formatDateReadout(selectedDateInput.value);
     timeReadout.textContent = formatTimeReadout(parseInt(timeSlider.value, 10));
+    renderOutdoorConditions();
   }
 
   function syncInputsFromSliders() {
@@ -166,6 +354,7 @@
 
     dayReadout.textContent = formatDateReadout(selectedDateInput.value);
     timeReadout.textContent = selectedTimeInput.value;
+    renderOutdoorConditions();
   }
 
   function snapshotStateLabel(state) {
@@ -225,6 +414,7 @@
       setLocationPreset("custom", { applyPreset: false, openPanel: true, refresh: false });
       latitudeInput.value = lat.toFixed(4);
       longitudeInput.value = lng.toFixed(4);
+      loadEnvironmentData();
       scheduleRefresh();
     });
 
@@ -233,6 +423,7 @@
       marker.setLatLng(event.latlng);
       latitudeInput.value = event.latlng.lat.toFixed(4);
       longitudeInput.value = event.latlng.lng.toFixed(4);
+      loadEnvironmentData();
       scheduleRefresh();
     });
   }
@@ -279,6 +470,8 @@
         customLocationPanel.open = false;
       }
     }
+
+    loadEnvironmentData();
 
     if (refresh) {
       scheduleRefresh();
@@ -1633,6 +1826,52 @@
     }
   }
 
+  async function loadEnvironmentData() {
+    const reference = selectedEnvironmentReference();
+    const locationKey = reference?.key || null;
+    latestEnvironmentRequestId += 1;
+    const requestId = latestEnvironmentRequestId;
+
+    if (!locationKey) {
+      environmentLocationKey = null;
+      environmentLocationLabel = environmentLabelForReference(null);
+      environmentByHour = new Map();
+      environmentLoadState = "ready";
+      renderOutdoorConditions();
+      return;
+    }
+
+    environmentLocationKey = locationKey;
+    environmentLocationLabel = environmentLabelForReference(reference);
+
+    if (typeof window.fetchEnvironmentData !== "function") {
+      environmentLoadState = "error";
+      renderOutdoorConditions();
+      return;
+    }
+
+    environmentLoadState = "loading";
+    renderOutdoorConditions();
+    try {
+      const data = await window.fetchEnvironmentData(locationKey);
+      const latestReference = selectedEnvironmentReference();
+      if (requestId !== latestEnvironmentRequestId || locationKey !== latestReference?.key) {
+        return;
+      }
+      environmentByHour = new Map((data.hourly || []).map((entry) => [entry.time, entry]));
+      environmentLoadState = "ready";
+      environmentLocationLabel = environmentLabelForReference(latestReference);
+      renderOutdoorConditions();
+    } catch (error) {
+      if (requestId !== latestEnvironmentRequestId) {
+        return;
+      }
+      console.error(error);
+      environmentLoadState = "error";
+      renderOutdoorConditions();
+    }
+  }
+
   const debouncedRefresh = debounce(refreshSnapshot, 180);
 
   function refreshCustomCoordinates() {
@@ -1924,6 +2163,7 @@
     invalidateMapSoon();
   }
   baselinePayload = readStoredBaseline();
+  loadEnvironmentData();
   renderWindowBuilderFromTextarea();
   updateSnapshotDom(initialData);
   updateTimeScrubberReference(timezoneInput.value);
