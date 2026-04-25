@@ -22,6 +22,20 @@
   const outdoorUv = document.getElementById("outdoor-uv");
   const outdoorStrength = document.getElementById("outdoor-strength");
   const outdoorInterpretation = document.getElementById("outdoor-interpretation");
+  const outdoorYearSource = document.getElementById("outdoor-year-source");
+  const outdoorYearMetricButtons = document.querySelectorAll("[data-outdoor-year-metric]");
+  const outdoorYearWarmest = document.getElementById("outdoor-year-warmest");
+  const outdoorYearPeakUv = document.getElementById("outdoor-year-peak-uv");
+  const outdoorYearPeakSun = document.getElementById("outdoor-year-peak-sun");
+  const outdoorYearChartLabel = document.getElementById("outdoor-year-chart-label");
+  const outdoorYearChartValue = document.getElementById("outdoor-year-chart-value");
+  const outdoorYearChart = document.getElementById("outdoor-year-chart");
+  const outdoorYearMonthName = document.getElementById("outdoor-year-month-name");
+  const outdoorYearMonthTemp = document.getElementById("outdoor-year-month-temp");
+  const outdoorYearMonthUv = document.getElementById("outdoor-year-month-uv");
+  const outdoorYearMonthSolar = document.getElementById("outdoor-year-month-solar");
+  const outdoorYearMonthStrength = document.getElementById("outdoor-year-month-strength");
+  const outdoorYearCaption = document.getElementById("outdoor-year-caption");
 
   const locationPresetInput = document.getElementById("location-preset-input");
   const windowFacingInput = document.getElementById("window-facing-input");
@@ -81,6 +95,9 @@
   let environmentLocationKey = null;
   let environmentLocationLabel = "";
   let latestEnvironmentRequestId = 0;
+  let outdoorYearMonths = [];
+  let activeOutdoorYearMetric = "uv";
+  let activeOutdoorYearMonth = 0;
   let activeWindowDrag = null;
   let activeWindowResize = null;
   let suppressWindowBuilderSync = false;
@@ -221,6 +238,249 @@
 
   function formatUvIndex(value) {
     return Number.isFinite(value) ? value.toFixed(1) : "--";
+  }
+
+  function averageFinite(values) {
+    const finiteValues = values.filter(Number.isFinite);
+    if (!finiteValues.length) {
+      return null;
+    }
+    return finiteValues.reduce((sum, value) => sum + value, 0) / finiteValues.length;
+  }
+
+  function formatSolarRadiation(value) {
+    return Number.isFinite(value) ? `${Math.round(value)} W/m2` : "--";
+  }
+
+  function formatOutdoorYearMetric(metric, value) {
+    if (!Number.isFinite(value)) {
+      return "--";
+    }
+    if (metric === "temp") {
+      return formatTemperature(value);
+    }
+    if (metric === "solar") {
+      return formatSolarRadiation(value);
+    }
+    return formatUvIndex(value);
+  }
+
+  function outdoorYearMetricValue(month, metric = activeOutdoorYearMetric) {
+    if (!month) {
+      return null;
+    }
+    if (metric === "temp") {
+      return month.avgTemp;
+    }
+    if (metric === "solar") {
+      return month.middaySolar;
+    }
+    return month.middayUv;
+  }
+
+  function outdoorYearMetricLabel(metric = activeOutdoorYearMetric) {
+    if (metric === "temp") {
+      return "Average temperature";
+    }
+    if (metric === "solar") {
+      return "Midday sun strength";
+    }
+    return "Midday UV";
+  }
+
+  function bestMonthBy(months, key) {
+    return months
+      .filter((month) => Number.isFinite(month[key]))
+      .sort((a, b) => b[key] - a[key])[0] || null;
+  }
+
+  function summarizeOutdoorYear() {
+    const monthBuckets = Array.from({ length: 12 }, () => ({
+      temps: [],
+      middayUv: [],
+      middaySolar: [],
+    }));
+
+    environmentByHour.forEach((entry) => {
+      const monthIndex = parseInt(entry.time.slice(5, 7), 10) - 1;
+      const hour = parseInt(entry.time.slice(11, 13), 10);
+      const bucket = monthBuckets[monthIndex];
+      if (!bucket) {
+        return;
+      }
+      bucket.temps.push(entry.tempC);
+      if (hour >= 10 && hour <= 14) {
+        bucket.middayUv.push(entry.uvIndex);
+        bucket.middaySolar.push(entry.solarRadiation);
+      }
+    });
+
+    return monthBuckets.map((bucket, index) => ({
+      index,
+      label: new Date(2025, index, 1).toLocaleString(undefined, { month: "short" }),
+      avgTemp: averageFinite(bucket.temps),
+      middayUv: averageFinite(bucket.middayUv),
+      middaySolar: averageFinite(bucket.middaySolar),
+    }));
+  }
+
+  function setOutdoorYearEmpty(message) {
+    if (outdoorYearSource) {
+      outdoorYearSource.textContent = "Unavailable";
+    }
+    if (outdoorYearWarmest) {
+      outdoorYearWarmest.textContent = "--";
+    }
+    if (outdoorYearPeakUv) {
+      outdoorYearPeakUv.textContent = "--";
+    }
+    if (outdoorYearPeakSun) {
+      outdoorYearPeakSun.textContent = "--";
+    }
+    if (outdoorYearChartLabel) {
+      outdoorYearChartLabel.textContent = outdoorYearMetricLabel();
+    }
+    if (outdoorYearChartValue) {
+      outdoorYearChartValue.textContent = "--";
+    }
+    if (outdoorYearChart) {
+      outdoorYearChart.innerHTML = `<p class="outdoor-year-empty">${escapeHtml(message)}</p>`;
+    }
+    if (outdoorYearMonthName) {
+      outdoorYearMonthName.textContent = "--";
+    }
+    if (outdoorYearMonthTemp) {
+      outdoorYearMonthTemp.textContent = "--";
+    }
+    if (outdoorYearMonthUv) {
+      outdoorYearMonthUv.textContent = "--";
+    }
+    if (outdoorYearMonthSolar) {
+      outdoorYearMonthSolar.textContent = "--";
+    }
+    if (outdoorYearMonthStrength) {
+      outdoorYearMonthStrength.textContent = "--";
+    }
+    if (outdoorYearCaption) {
+      outdoorYearCaption.textContent = message;
+    }
+  }
+
+  function updateOutdoorMonthDetail(month) {
+    if (!month) {
+      return;
+    }
+    if (outdoorYearMonthName) {
+      outdoorYearMonthName.textContent = month.label;
+    }
+    if (outdoorYearMonthTemp) {
+      outdoorYearMonthTemp.textContent = formatTemperature(month.avgTemp);
+    }
+    if (outdoorYearMonthUv) {
+      outdoorYearMonthUv.textContent = formatUvIndex(month.middayUv);
+    }
+    if (outdoorYearMonthSolar) {
+      outdoorYearMonthSolar.textContent = formatSolarRadiation(month.middaySolar);
+    }
+    if (outdoorYearMonthStrength) {
+      outdoorYearMonthStrength.textContent = sunlightStrengthLabel(month.middaySolar);
+    }
+    if (outdoorYearCaption) {
+      outdoorYearCaption.textContent = "Midday values average the 10:00-14:00 hours for the selected month.";
+    }
+  }
+
+  function renderOutdoorYearChart() {
+    if (!outdoorYearChart || !outdoorYearMonths.length) {
+      return;
+    }
+    outdoorYearMetricButtons.forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.outdoorYearMetric === activeOutdoorYearMetric);
+    });
+    const values = outdoorYearMonths
+      .map((month) => outdoorYearMetricValue(month))
+      .filter(Number.isFinite);
+    const maxValue = values.length ? Math.max(...values) : 1;
+    const minValue = activeOutdoorYearMetric === "temp" && values.length ? Math.min(...values) : 0;
+    const range = Math.max(maxValue - minValue, 0.001);
+
+    outdoorYearChart.innerHTML = outdoorYearMonths.map((month) => {
+      const value = outdoorYearMetricValue(month);
+      const scaled = Number.isFinite(value) ? ((value - minValue) / range) * 100 : 0;
+      const height = Math.max(6, Math.min(100, scaled));
+      const isActive = month.index === activeOutdoorYearMonth;
+      return `
+        <button
+          type="button"
+          class="outdoor-year-bar${isActive ? " is-active" : ""}"
+          data-outdoor-month="${month.index}"
+          style="--bar-height: ${height}%"
+          aria-label="${escapeHtml(month.label)} ${escapeHtml(outdoorYearMetricLabel())}: ${escapeHtml(formatOutdoorYearMetric(activeOutdoorYearMetric, value))}"
+        >
+          <span class="outdoor-year-bar-fill"></span>
+          <span class="outdoor-year-bar-value">${escapeHtml(formatOutdoorYearMetric(activeOutdoorYearMetric, value))}</span>
+          <span class="outdoor-year-bar-label">${escapeHtml(month.label)}</span>
+        </button>
+      `;
+    }).join("");
+
+    outdoorYearChart.querySelectorAll("[data-outdoor-month]").forEach((button) => {
+      button.addEventListener("click", () => {
+        activeOutdoorYearMonth = parseInt(button.dataset.outdoorMonth, 10);
+        renderOutdoorYearPanel();
+      });
+    });
+  }
+
+  function renderOutdoorYearPanel() {
+    if (!outdoorYearChart) {
+      return;
+    }
+    const selectedReference = selectedEnvironmentReference();
+    if (!selectedReference) {
+      setOutdoorYearEmpty(environmentReferenceCopy(null));
+      return;
+    }
+    if (environmentLoadState === "loading") {
+      setOutdoorYearEmpty(`Loading ${environmentLabelForReference(selectedReference)} yearly data...`);
+      return;
+    }
+    if (environmentLoadState === "error") {
+      setOutdoorYearEmpty("Outdoor yearly data could not be loaded.");
+      return;
+    }
+    if (!environmentByHour.size) {
+      setOutdoorYearEmpty("No outdoor yearly data is loaded yet.");
+      return;
+    }
+
+    outdoorYearMonths = summarizeOutdoorYear();
+    activeOutdoorYearMonth = clamp(activeOutdoorYearMonth, 0, outdoorYearMonths.length - 1);
+    const selectedMonth = outdoorYearMonths[activeOutdoorYearMonth];
+    const warmest = bestMonthBy(outdoorYearMonths, "avgTemp");
+    const peakUv = bestMonthBy(outdoorYearMonths, "middayUv");
+    const peakSun = bestMonthBy(outdoorYearMonths, "middaySolar");
+
+    if (outdoorYearSource) {
+      outdoorYearSource.textContent = environmentLabelForReference(selectedReference);
+    }
+    if (outdoorYearWarmest) {
+      outdoorYearWarmest.textContent = warmest ? `${warmest.label} · ${formatTemperature(warmest.avgTemp)}` : "--";
+    }
+    if (outdoorYearPeakUv) {
+      outdoorYearPeakUv.textContent = peakUv ? `${peakUv.label} · ${formatUvIndex(peakUv.middayUv)}` : "--";
+    }
+    if (outdoorYearPeakSun) {
+      outdoorYearPeakSun.textContent = peakSun ? `${peakSun.label} · ${formatSolarRadiation(peakSun.middaySolar)}` : "--";
+    }
+    if (outdoorYearChartLabel) {
+      outdoorYearChartLabel.textContent = outdoorYearMetricLabel();
+    }
+    if (outdoorYearChartValue) {
+      outdoorYearChartValue.textContent = `${selectedMonth.label}: ${formatOutdoorYearMetric(activeOutdoorYearMetric, outdoorYearMetricValue(selectedMonth))}`;
+    }
+    updateOutdoorMonthDetail(selectedMonth);
+    renderOutdoorYearChart();
   }
 
   function uvInterpretation(uvIndex) {
@@ -1838,6 +2098,7 @@
       environmentByHour = new Map();
       environmentLoadState = "ready";
       renderOutdoorConditions();
+      renderOutdoorYearPanel();
       return;
     }
 
@@ -1847,11 +2108,13 @@
     if (typeof window.fetchEnvironmentData !== "function") {
       environmentLoadState = "error";
       renderOutdoorConditions();
+      renderOutdoorYearPanel();
       return;
     }
 
     environmentLoadState = "loading";
     renderOutdoorConditions();
+    renderOutdoorYearPanel();
     try {
       const data = await window.fetchEnvironmentData(locationKey);
       const latestReference = selectedEnvironmentReference();
@@ -1862,6 +2125,7 @@
       environmentLoadState = "ready";
       environmentLocationLabel = environmentLabelForReference(latestReference);
       renderOutdoorConditions();
+      renderOutdoorYearPanel();
     } catch (error) {
       if (requestId !== latestEnvironmentRequestId) {
         return;
@@ -1869,6 +2133,7 @@
       console.error(error);
       environmentLoadState = "error";
       renderOutdoorConditions();
+      renderOutdoorYearPanel();
     }
   }
 
@@ -1882,6 +2147,7 @@
       marker.setLatLng([latitude, longitude]);
       map.panTo(marker.getLatLng());
     }
+    loadEnvironmentData();
     scheduleRefresh();
   }
 
@@ -1946,6 +2212,20 @@
       if (selectedTab === "long-range") {
         fetchLongRangeExposure();
       }
+      if (selectedTab === "outdoor-year") {
+        const selectedMonth = parseInt(selectedDateInput.value.slice(5, 7), 10) - 1;
+        if (Number.isFinite(selectedMonth)) {
+          activeOutdoorYearMonth = clamp(selectedMonth, 0, 11);
+        }
+        renderOutdoorYearPanel();
+      }
+    });
+  });
+
+  outdoorYearMetricButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      activeOutdoorYearMetric = button.dataset.outdoorYearMetric;
+      renderOutdoorYearPanel();
     });
   });
 

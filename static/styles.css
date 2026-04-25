@@ -601,6 +601,150 @@ input[type="range"] {
   line-height: 1.35;
 }
 
+.outdoor-year-view {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.outdoor-year-header,
+.outdoor-chart-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: start;
+}
+
+.outdoor-year-header h2 {
+  margin: 0;
+  font-size: 1.24rem;
+  letter-spacing: -0.03em;
+}
+
+.outdoor-year-metric-row {
+  margin-top: -2px;
+}
+
+.outdoor-year-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.outdoor-year-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(240px, 0.7fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.outdoor-year-chart-card,
+.outdoor-month-detail {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.outdoor-chart-heading strong {
+  color: var(--ink);
+}
+
+.outdoor-year-chart {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+  min-height: 280px;
+}
+
+.outdoor-year-bar {
+  appearance: none;
+  display: grid;
+  grid-template-rows: 1fr auto auto;
+  gap: 6px;
+  align-items: end;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.outdoor-year-bar-fill {
+  display: block;
+  width: 100%;
+  height: max(10px, var(--bar-height));
+  border-radius: 8px 8px 4px 4px;
+  background: rgba(43, 98, 122, 0.28);
+  border: 1px solid rgba(43, 98, 122, 0.18);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.outdoor-year-bar:hover .outdoor-year-bar-fill,
+.outdoor-year-bar.is-active .outdoor-year-bar-fill {
+  background: rgba(200, 101, 48, 0.72);
+  border-color: rgba(142, 59, 24, 0.25);
+  transform: translateY(-2px);
+}
+
+.outdoor-year-bar-value,
+.outdoor-year-bar-label {
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.outdoor-year-bar-value {
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.outdoor-year-bar-label {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.outdoor-month-detail {
+  align-content: start;
+}
+
+.outdoor-month-detail h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: -0.04em;
+}
+
+.outdoor-month-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.outdoor-month-grid span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.outdoor-month-grid strong {
+  color: var(--ink);
+}
+
+.outdoor-year-empty {
+  align-self: center;
+  justify-self: center;
+  margin: 0;
+  color: var(--muted);
+  text-align: center;
+}
+
 .slider-header {
   display: flex;
   justify-content: space-between;
@@ -1102,6 +1246,16 @@ input[type="range"] {
 
   .daily-map-stats {
     grid-template-columns: 1fr;
+  }
+
+  .outdoor-year-summary,
+  .outdoor-year-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .outdoor-year-chart {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    min-height: 360px;
   }
 
   .outdoor-metrics {

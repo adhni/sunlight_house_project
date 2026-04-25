@@ -61,6 +61,7 @@
                 <button type="button" class="chip-button is-active" data-result-tab="current">Current Moment</button>
                 <button type="button" class="chip-button" data-result-tab="sunlight-map">Direct Sun Hours Today</button>
                 <button type="button" class="chip-button" data-result-tab="long-range">Yearly / Seasonal</button>
+                <button type="button" class="chip-button" data-result-tab="outdoor-year">Outdoor Year</button>
               </div>
               <div class="result-status-row">
                 <span id="update-status" class="update-status" data-state="idle">Preview is up to date.</span>
@@ -211,6 +212,63 @@
               <p id="long-range-exposure-caption" class="angle-caption room-caption">
                 Estimated direct sun exposure time across longer periods.
               </p>
+            </div>
+
+            <div class="result-view" data-result-panel="outdoor-year">
+              <section class="outdoor-year-view">
+                <div class="outdoor-year-header">
+                  <div>
+                    <p class="section-kicker">Outdoor Reference</p>
+                    <h2>Outdoor Conditions Through The Year</h2>
+                  </div>
+                  <span id="outdoor-year-source" class="outdoor-status">Loading</span>
+                </div>
+
+                <div class="chip-row outdoor-year-metric-row">
+                  <button type="button" class="chip-button is-active" data-outdoor-year-metric="uv">Midday UV</button>
+                  <button type="button" class="chip-button" data-outdoor-year-metric="solar">Sun strength</button>
+                  <button type="button" class="chip-button" data-outdoor-year-metric="temp">Temperature</button>
+                </div>
+
+                <div class="outdoor-year-summary">
+                  <article class="metric-card">
+                    <span class="metric-label">Warmest Month</span>
+                    <strong id="outdoor-year-warmest">--</strong>
+                  </article>
+                  <article class="metric-card">
+                    <span class="metric-label">Peak UV Month</span>
+                    <strong id="outdoor-year-peak-uv">--</strong>
+                  </article>
+                  <article class="metric-card">
+                    <span class="metric-label">Strongest Sun Month</span>
+                    <strong id="outdoor-year-peak-sun">--</strong>
+                  </article>
+                </div>
+
+                <div class="outdoor-year-layout">
+                  <section class="outdoor-year-chart-card">
+                    <div class="outdoor-chart-heading">
+                      <span id="outdoor-year-chart-label" class="explorer-label">Midday UV</span>
+                      <strong id="outdoor-year-chart-value">--</strong>
+                    </div>
+                    <div id="outdoor-year-chart" class="outdoor-year-chart" aria-label="Monthly outdoor conditions chart"></div>
+                  </section>
+
+                  <aside class="outdoor-month-detail">
+                    <span class="explorer-label">Selected Month</span>
+                    <h3 id="outdoor-year-month-name">--</h3>
+                    <div class="outdoor-month-grid">
+                      <span>Avg temp <strong id="outdoor-year-month-temp">--</strong></span>
+                      <span>Midday UV <strong id="outdoor-year-month-uv">--</strong></span>
+                      <span>Midday sun <strong id="outdoor-year-month-solar">--</strong></span>
+                      <span>Strength <strong id="outdoor-year-month-strength">--</strong></span>
+                    </div>
+                    <p id="outdoor-year-caption" class="angle-caption">
+                      Monthly values use the loaded 2025 outdoor reference data.
+                    </p>
+                  </aside>
+                </div>
+              </section>
             </div>
 
             <section class="summary-card summary-card-{{ initial_snapshot_payload.summary.tone }}">
