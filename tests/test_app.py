@@ -4,6 +4,7 @@ from pathlib import Path
 
 from app import (
     app,
+    build_config_and_moment,
     build_safe_form_values,
     default_form_values,
     parse_bounded_float,
@@ -263,6 +264,38 @@ class InputValidationAPITests(unittest.TestCase):
         defaults = default_form_values()
         values = build_safe_form_values(defaults | {"year_step_hours": "9999"}, defaults)
         self.assertEqual(values["year_step_hours"], defaults["year_step_hours"])
+
+    def test_snapshot_rejects_window_width_above_max(self) -> None:
+        """Single-window fallback path rejects window_width > _MAX_ROOM_DIM."""
+        values = default_form_values() | {"windows_json": ""}
+        values["window_width"] = "501"
+        with self.assertRaises(ValueError) as ctx:
+            build_config_and_moment(values)
+        self.assertIn("Window width", str(ctx.exception))
+
+    def test_snapshot_rejects_window_height_above_max(self) -> None:
+        """Single-window fallback path rejects window_height > _MAX_ROOM_DIM."""
+        values = default_form_values() | {"windows_json": ""}
+        values["window_height"] = "501"
+        with self.assertRaises(ValueError) as ctx:
+            build_config_and_moment(values)
+        self.assertIn("Window height", str(ctx.exception))
+
+    def test_snapshot_rejects_multi_window_width_above_max(self) -> None:
+        windows_json = json.dumps(
+            [{"name": "w1", "wall": "north", "span_center": 2.0, "sill_height": 0.5, "width": 501, "height": 1.0}]
+        )
+        response = self.client.get("/api/snapshot", query_string={"windows_json": windows_json})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("width", response.get_json()["error"])
+
+    def test_snapshot_rejects_multi_window_height_above_max(self) -> None:
+        windows_json = json.dumps(
+            [{"name": "w1", "wall": "north", "span_center": 2.0, "sill_height": 0.5, "width": 1.0, "height": 501}]
+        )
+        response = self.client.get("/api/snapshot", query_string={"windows_json": windows_json})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("height", response.get_json()["error"])
 
 
 if __name__ == "__main__":

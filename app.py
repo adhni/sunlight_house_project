@@ -253,14 +253,16 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
     )
     windows = parse_windows_json(form_values.get("windows_json", ""), room)
     if not windows:
+        window_width = parse_bounded_float(form_values["window_width"], "Window width", 0.0, _MAX_ROOM_DIM, exclusive_min=True)
+        window_height = parse_bounded_float(form_values["window_height"], "Window height", 0.0, _MAX_ROOM_DIM, exclusive_min=True)
         windows = (
             main_window(
                 room=room,
                 span_center=parse_float(form_values["window_span_center"], "Window span center"),
                 center_height=parse_float(form_values["window_sill_height"], "Window sill height")
-                + 0.5 * parse_positive_float(form_values["window_height"], "Window height"),
-                width=parse_bounded_float(form_values["window_width"], "Window width", 0.0, _MAX_ROOM_DIM, exclusive_min=True),
-                height=parse_bounded_float(form_values["window_height"], "Window height", 0.0, _MAX_ROOM_DIM, exclusive_min=True),
+                + 0.5 * window_height,
+                width=window_width,
+                height=window_height,
             ),
         )
 
