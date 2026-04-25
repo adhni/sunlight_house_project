@@ -312,7 +312,42 @@ def daylight_positions_for_day(
     ]
 
 
+_long_range_cache: dict[tuple, dict[str, dict[str, object]]] = {}
+
+
 def long_range_exposure_grids(config: SimulationConfig) -> dict[str, dict[str, object]]:
+    key = _long_range_cache_key(config)
+    if key not in _long_range_cache:
+        _long_range_cache[key] = _compute_long_range_exposure_grids(config)
+    return _long_range_cache[key]
+
+
+def _long_range_cache_key(config: SimulationConfig) -> tuple:
+    window_tuples = tuple(
+        (
+            w.name,
+            tuple(float(v) for v in w.center),
+            float(w.width),
+            float(w.height),
+            tuple(float(v) for v in w.outward_normal),
+        )
+        for w in config.windows
+    )
+    return (
+        config.location.latitude,
+        config.location.longitude,
+        config.location.timezone_name,
+        config.room.width,
+        config.room.depth,
+        config.room.height,
+        window_tuples,
+        config.window_facing_label,
+        config.year,
+        config.year_step_hours,
+    )
+
+
+def _compute_long_range_exposure_grids(config: SimulationConfig) -> dict[str, dict[str, object]]:
     samples_per_month = 8
     representative_days: list[tuple[date, int]] = []
     for month in range(1, 13):
