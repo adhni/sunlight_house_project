@@ -1,5 +1,6 @@
 import unittest
 import json
+from pathlib import Path
 
 from app import app, build_safe_form_values, default_form_values
 
@@ -73,6 +74,19 @@ class AppTests(unittest.TestCase):
         page = response.get_data(as_text=True)
         self.assertIn("Outdoor conditions", page)
         self.assertIn("environmentData.js", page)
+
+    def test_static_environment_data_files_have_expected_shape(self) -> None:
+        for location_key in ("melbourne", "jakarta", "boston"):
+            with self.subTest(location_key=location_key):
+                path = Path("static/env") / f"{location_key}-2025.json"
+                payload = json.loads(path.read_text(encoding="utf-8"))
+
+                self.assertEqual(payload["meta"]["locationKey"], location_key)
+                self.assertEqual(payload["meta"]["year"], 2025)
+                self.assertEqual(payload["meta"]["hours"], 8760)
+                self.assertEqual(payload["columns"], ["tempC", "uvIndex", "solarRadiation"])
+                self.assertEqual(len(payload["values"]), 8760)
+                self.assertEqual(len(payload["values"][0]), 3)
 
     def test_snapshot_api_accepts_multi_window_json(self) -> None:
         response = self.client.get(
