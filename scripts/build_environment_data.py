@@ -48,6 +48,7 @@ def power_url(latitude: float, longitude: float) -> str:
             "start": f"{YEAR}0101",
             "end": f"{YEAR}1231",
             "format": "JSON",
+            "time-standard": "UTC",
         }
     )
     return f"https://power.larc.nasa.gov/api/temporal/hourly/point?{query}"

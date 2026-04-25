@@ -313,11 +313,14 @@ def daylight_positions_for_day(
 
 
 _long_range_cache: dict[tuple, dict[str, dict[str, object]]] = {}
+_LONG_RANGE_CACHE_MAX = 100
 
 
 def long_range_exposure_grids(config: SimulationConfig) -> dict[str, dict[str, object]]:
     key = _long_range_cache_key(config)
     if key not in _long_range_cache:
+        if len(_long_range_cache) >= _LONG_RANGE_CACHE_MAX:
+            _long_range_cache.pop(next(iter(_long_range_cache)))
         _long_range_cache[key] = _compute_long_range_exposure_grids(config)
     return _long_range_cache[key]
 

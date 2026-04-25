@@ -2147,7 +2147,6 @@
       marker.setLatLng([latitude, longitude]);
       map.panTo(marker.getLatLng());
     }
-    loadEnvironmentData();
     scheduleRefresh();
   }
 
