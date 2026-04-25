@@ -24,7 +24,7 @@ The current app is designed around editable wall windows on a rectangular room. 
 
 ## Current Defaults
 
-The default scenario is a Melbourne daylight demo moment: `2026-01-15 10:00` in `Australia/Melbourne`. This keeps the first load visually useful even when the real current time is after sunset. Use the `Now` button to jump to the current time in the selected timezone.
+The default scenario is a Melbourne daylight demo moment: `2025-01-15 10:00` in `Australia/Melbourne`. This keeps the first load visually useful even when the real current time is after sunset. Use the `Now` button to jump to the current time in the selected timezone.
 
 Default room and window values:
 
