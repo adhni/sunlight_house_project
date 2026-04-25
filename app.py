@@ -597,22 +597,6 @@ def safe_bounded_int_string(raw_value: str, default_value: str, min_val: int, ma
     return str(value) if min_val <= value <= max_val else default_value
 
 
-def safe_positive_int_string(raw_value: str, default_value: str) -> str:
-    try:
-        value = int(float(raw_value))
-    except (TypeError, ValueError):
-        return default_value
-    return str(value) if value > 0 else default_value
-
-
-def safe_positive_float_string(raw_value: str, default_value: str) -> str:
-    try:
-        value = float(raw_value)
-    except (TypeError, ValueError):
-        return default_value
-    return str(value) if value > 0.0 else default_value
-
-
 def safe_date_string(raw_value: str, default_value: str) -> str:
     try:
         return datetime.strptime(raw_value, "%Y-%m-%d").date().isoformat()

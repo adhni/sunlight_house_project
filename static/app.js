@@ -141,13 +141,50 @@
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
   }
 
+  function localStringToUTCDate(localISONoTZ, timezone) {
+    // Convert a naive local datetime string (no timezone suffix) to a UTC Date,
+    // interpreting the local time in the given IANA timezone.
+    try {
+      const naive = new Date(localISONoTZ + "Z").getTime();
+      if (isNaN(naive)) {
+        return null;
+      }
+      const parts = new Intl.DateTimeFormat("en", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).formatToParts(new Date(naive));
+      const get = (type) =>
+        parseInt(parts.find((p) => p.type === type)?.value ?? "0", 10);
+      const tzLocalMs = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"));
+      return new Date(naive + (naive - tzLocalMs));
+    } catch {
+      return null;
+    }
+  }
+
   function selectedEnvironmentHourKey() {
     if (!isCompleteDateValue() || !isCompleteTimeValue()) {
       return null;
     }
+    const timezone = timezoneInput?.value?.trim() || "UTC";
     const monthDay = selectedDateInput.value.slice(5);
     const hour = selectedTimeInput.value.slice(0, 2);
-    return `2025-${monthDay}T${hour}:00`;
+    // Dataset is keyed in UTC. Convert the selected local MM-DD HH (in the
+    // configured timezone, mapped to dataset year 2025) to a UTC key.
+    const utcDate = localStringToUTCDate(`2025-${monthDay}T${hour}:00:00`, timezone);
+    if (!utcDate) {
+      return null;
+    }
+    const y = utcDate.getUTCFullYear();
+    const m = String(utcDate.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(utcDate.getUTCDate()).padStart(2, "0");
+    const h = String(utcDate.getUTCHours()).padStart(2, "0");
+    return `${y}-${m}-${d}T${h}:00`;
   }
 
   function degreesToRadians(degrees) {
@@ -295,6 +332,14 @@
   }
 
   function summarizeOutdoorYear() {
+    const locationTimezone =
+      window.environmentLocations?.[environmentLocationKey]?.timezone || "UTC";
+    const formatter = new Intl.DateTimeFormat("en", {
+      timeZone: locationTimezone,
+      month: "2-digit",
+      hour: "2-digit",
+      hour12: false,
+    });
     const monthBuckets = Array.from({ length: 12 }, () => ({
       temps: [],
       middayUv: [],
@@ -302,14 +347,16 @@
     }));
 
     environmentByHour.forEach((entry) => {
-      const monthIndex = parseInt(entry.time.slice(5, 7), 10) - 1;
-      const hour = parseInt(entry.time.slice(11, 13), 10);
+      const parts = formatter.formatToParts(new Date(entry.time + "Z"));
+      const localMonth = parseInt(parts.find((p) => p.type === "month")?.value ?? "0", 10);
+      const localHour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
+      const monthIndex = localMonth - 1;
       const bucket = monthBuckets[monthIndex];
       if (!bucket) {
         return;
       }
       bucket.temps.push(entry.tempC);
-      if (hour >= 10 && hour <= 14) {
+      if (localHour >= 10 && localHour <= 14) {
         bucket.middayUv.push(entry.uvIndex);
         bucket.middaySolar.push(entry.solarRadiation);
       }
