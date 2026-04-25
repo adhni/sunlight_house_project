@@ -88,6 +88,7 @@
   let currentPayload = initialData;
   let baselinePayload = null;
   const defaultUpdateMessage = "Map is up to date.";
+  const MAX_WINDOWS = 10;
   const baselineStorageKey = "sunlight-house-baseline";
   const environmentReferenceRadiusKm = 50;
   let environmentByHour = new Map();
@@ -1088,6 +1089,9 @@
     if (removeWindowButton) {
       removeWindowButton.hidden = activeWindowIndex === 0 || windowRows.length <= 1;
     }
+    if (addWindowRowButton) {
+      addWindowRowButton.disabled = windowRows.length >= MAX_WINDOWS;
+    }
     renderWindowSelector();
     if (currentPayload && currentPayload.windows && currentPayload.windows.length === windowRows.length) {
       updateSnapshotDom(currentPayload);
@@ -1107,6 +1111,9 @@
   }
 
   function addEmptyWindowRow() {
+    if (windowRows.length >= MAX_WINDOWS) {
+      return;
+    }
     persistActiveWindowEditor();
     const nextIndex = windowRows.length;
     const wallCycle = ["east", "south", "west"];
