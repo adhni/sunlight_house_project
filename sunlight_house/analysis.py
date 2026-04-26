@@ -137,18 +137,38 @@ def patches_for_plot(
 
 
 def point_in_polygon(point_xy: np.ndarray, polygon_xy: np.ndarray) -> bool:
-    x, y = float(point_xy[0]), float(point_xy[1])
-    inside = False
-    total = len(polygon_xy)
-    for idx in range(total):
-        x1, y1 = polygon_xy[idx]
-        x2, y2 = polygon_xy[(idx + 1) % total]
-        intersects = ((y1 > y) != (y2 > y)) and (
-            x < (x2 - x1) * (y - y1) / ((y2 - y1) if abs(y2 - y1) > 1e-12 else 1e-12) + x1
-        )
-        if intersects:
-            inside = not inside
-    return inside
+    """Single-point ray-casting test. Kept for external callers; delegates to vectorised helper."""
+    return bool(_points_in_polygon(np.array([[point_xy[0], point_xy[1]]]), polygon_xy)[0])
+
+
+def _points_in_polygon(points_xy: np.ndarray, polygon_xy: np.ndarray) -> np.ndarray:
+    """Vectorised ray-casting: returns bool array of shape (N,) for N query points.
+
+    Uses the same crossing-number algorithm as the original ``point_in_polygon``,
+    broadcast across all points simultaneously with numpy instead of a Python loop.
+    """
+    px = points_xy[:, 0]  # (N,)
+    py = points_xy[:, 1]  # (N,)
+    n = len(polygon_xy)
+    x1 = polygon_xy[:, 0]                          # (V,)
+    y1 = polygon_xy[:, 1]                          # (V,)
+    x2 = polygon_xy[np.arange(1, n + 1) % n, 0]   # (V,) rolled by 1
+    y2 = polygon_xy[np.arange(1, n + 1) % n, 1]   # (V,)
+
+    # Broadcast: (N, V)
+    py_b = py[:, np.newaxis]
+    px_b = px[:, np.newaxis]
+    y1_b = y1[np.newaxis, :]
+    y2_b = y2[np.newaxis, :]
+    x1_b = x1[np.newaxis, :]
+    x2_b = x2[np.newaxis, :]
+
+    straddles = (y1_b > py_b) != (y2_b > py_b)          # edge crosses ray y-level
+    dy = np.where(np.abs(y2_b - y1_b) > 1e-12, y2_b - y1_b, 1e-12)
+    x_intersect = (x2_b - x1_b) * (py_b - y1_b) / dy + x1_b
+    crosses = straddles & (px_b < x_intersect)
+
+    return np.count_nonzero(crosses, axis=1) % 2 == 1
 
 
 def daily_exposure_grid(
@@ -257,6 +277,14 @@ def accumulate_patch_hours(
     rows, cols = values.shape
     hit_mask = np.zeros((rows, cols), dtype=bool)
 
+    # Build grid of cell-centre coordinates once — shape (rows*cols, 2)
+    col_indices = np.arange(cols)
+    row_indices = np.arange(rows)
+    cx = (col_indices + 0.5) * cell_width   # (cols,)
+    cy = (row_indices + 0.5) * cell_height  # (rows,)
+    grid_cx, grid_cy = np.meshgrid(cx, cy)  # each (rows, cols)
+    points = np.column_stack([grid_cx.ravel(), grid_cy.ravel()])  # (rows*cols, 2)
+
     for patch in patches:
         polygon_xy = patch.polygon_xy
         min_x = float(np.min(polygon_xy[:, 0]))
@@ -269,14 +297,16 @@ def accumulate_patch_hours(
         min_row = max(0, int(np.floor(min_y / cell_height)))
         max_row = min(rows - 1, int(np.floor(max_y / cell_height)))
 
-        for row in range(min_row, max_row + 1):
-            center_y = (row + 0.5) * cell_height
-            for col in range(min_col, max_col + 1):
-                if hit_mask[row, col]:
-                    continue
-                point = np.array([(col + 0.5) * cell_width, center_y], dtype=float)
-                if point_in_polygon(point, polygon_xy):
-                    hit_mask[row, col] = True
+        # Only test cells inside the bounding box
+        row_slice = slice(min_row, max_row + 1)
+        col_slice = slice(min_col, max_col + 1)
+        sub_cx = grid_cx[row_slice, col_slice].ravel()
+        sub_cy = grid_cy[row_slice, col_slice].ravel()
+        sub_points = np.column_stack([sub_cx, sub_cy])
+
+        inside = _points_in_polygon(sub_points, polygon_xy)
+        sub_mask = inside.reshape(max_row - min_row + 1, max_col - min_col + 1)
+        hit_mask[row_slice, col_slice] |= sub_mask
 
     values[hit_mask] += sample_hours
 
@@ -312,7 +342,45 @@ def daylight_positions_for_day(
     ]
 
 
+_long_range_cache: dict[tuple, dict[str, dict[str, object]]] = {}
+_LONG_RANGE_CACHE_MAX = 100
+
+
 def long_range_exposure_grids(config: SimulationConfig) -> dict[str, dict[str, object]]:
+    key = _long_range_cache_key(config)
+    if key not in _long_range_cache:
+        if len(_long_range_cache) >= _LONG_RANGE_CACHE_MAX:
+            _long_range_cache.pop(next(iter(_long_range_cache)))
+        _long_range_cache[key] = _compute_long_range_exposure_grids(config)
+    return _long_range_cache[key]
+
+
+def _long_range_cache_key(config: SimulationConfig) -> tuple:
+    window_tuples = tuple(
+        (
+            w.name,
+            tuple(float(v) for v in w.center),
+            float(w.width),
+            float(w.height),
+            tuple(float(v) for v in w.outward_normal),
+        )
+        for w in config.windows
+    )
+    return (
+        config.location.latitude,
+        config.location.longitude,
+        config.location.timezone_name,
+        config.room.width,
+        config.room.depth,
+        config.room.height,
+        window_tuples,
+        config.window_facing_label,
+        config.year,
+        config.year_step_hours,
+    )
+
+
+def _compute_long_range_exposure_grids(config: SimulationConfig) -> dict[str, dict[str, object]]:
     samples_per_month = 8
     representative_days: list[tuple[date, int]] = []
     for month in range(1, 13):

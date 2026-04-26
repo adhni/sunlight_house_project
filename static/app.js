@@ -16,6 +16,26 @@
   const baselineDetails = document.getElementById("baseline-details");
   const baselineComparisonPanel = document.getElementById("baseline-comparison-panel");
   const windowEditHint = document.getElementById("window-edit-hint");
+  const outdoorConditionsStatus = document.getElementById("outdoor-conditions-status");
+  const outdoorLocationLabel = document.getElementById("outdoor-location-label");
+  const outdoorTemp = document.getElementById("outdoor-temp");
+  const outdoorUv = document.getElementById("outdoor-uv");
+  const outdoorStrength = document.getElementById("outdoor-strength");
+  const outdoorInterpretation = document.getElementById("outdoor-interpretation");
+  const outdoorYearSource = document.getElementById("outdoor-year-source");
+  const outdoorYearMetricButtons = document.querySelectorAll("[data-outdoor-year-metric]");
+  const outdoorYearWarmest = document.getElementById("outdoor-year-warmest");
+  const outdoorYearPeakUv = document.getElementById("outdoor-year-peak-uv");
+  const outdoorYearPeakSun = document.getElementById("outdoor-year-peak-sun");
+  const outdoorYearChartLabel = document.getElementById("outdoor-year-chart-label");
+  const outdoorYearChartValue = document.getElementById("outdoor-year-chart-value");
+  const outdoorYearChart = document.getElementById("outdoor-year-chart");
+  const outdoorYearMonthName = document.getElementById("outdoor-year-month-name");
+  const outdoorYearMonthTemp = document.getElementById("outdoor-year-month-temp");
+  const outdoorYearMonthUv = document.getElementById("outdoor-year-month-uv");
+  const outdoorYearMonthSolar = document.getElementById("outdoor-year-month-solar");
+  const outdoorYearMonthStrength = document.getElementById("outdoor-year-month-strength");
+  const outdoorYearCaption = document.getElementById("outdoor-year-caption");
 
   const locationPresetInput = document.getElementById("location-preset-input");
   const windowFacingInput = document.getElementById("window-facing-input");
@@ -68,7 +88,18 @@
   let currentPayload = initialData;
   let baselinePayload = null;
   const defaultUpdateMessage = "Map is up to date.";
+  const MAX_WINDOWS = 10;
   const baselineStorageKey = "sunlight-house-baseline";
+  const environmentReferenceRadiusKm = 50;
+  let environmentByHour = new Map();
+  let environmentMeta = null;
+  let environmentLoadState = "idle";
+  let environmentLocationKey = null;
+  let environmentLocationLabel = "";
+  let latestEnvironmentRequestId = 0;
+  let outdoorYearMonths = [];
+  let activeOutdoorYearMetric = "uv";
+  let activeOutdoorYearMonth = 0;
   let activeWindowDrag = null;
   let activeWindowResize = null;
   let suppressWindowBuilderSync = false;
@@ -110,6 +141,519 @@
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  }
+
+  // Returns the UTC offset in whole hours for |timezone| at the given UTC
+  // timestamp (milliseconds).  e.g. +11 for Australia/Melbourne during AEDT.
+  function intlUTCOffsetHours(utcMs, timezone) {
+    const opts = { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" };
+    const toParts = (tz) =>
+      Object.fromEntries(
+        new Intl.DateTimeFormat("en-CA", { timeZone: tz, ...opts })
+          .formatToParts(new Date(utcMs))
+          .map(({ type, value }) => [type, value])
+      );
+    const local = toParts(timezone);
+    const utc = toParts("UTC");
+    return (
+      (Date.UTC(+local.year, +local.month - 1, +local.day, +local.hour) -
+        Date.UTC(+utc.year, +utc.month - 1, +utc.day, +utc.hour)) /
+      3_600_000
+    );
+  }
+
+  // Convert a civil date+hour (local clock time in |timezone|) to the
+  // equivalent LST (Local Standard Time, no DST) date+hour object
+  // { date: "YYYY-MM-DD", hour: H }.
+  function civilToLSTDateHour(year, month, day, civilHour, timezone) {
+    // Standard UTC offset = minimum of January and July offsets.
+    // DST always adds hours, so standard time always has the smaller offset.
+    const stdOffset = Math.min(
+      intlUTCOffsetHours(Date.UTC(year, 0, 15, 12), timezone),
+      intlUTCOffsetHours(Date.UTC(year, 6, 15, 12), timezone)
+    );
+    // Approximate UTC ms using the standard offset, then get the actual civil offset.
+    const approxUtcMs = Date.UTC(year, month - 1, day, civilHour) - stdOffset * 3_600_000;
+    const civilOffset = intlUTCOffsetHours(approxUtcMs, timezone);
+    const dstHours = civilOffset - stdOffset; // 0 when standard time, 1 during DST
+    const rawHour = civilHour - dstHours;
+    const dateAdjust = rawHour < 0 ? -1 : rawHour >= 24 ? 1 : 0;
+    const d = new Date(Date.UTC(year, month - 1, day + dateAdjust));
+    return {
+      date: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`,
+      hour: ((rawHour % 24) + 24) % 24,
+    };
+  }
+
+  // Convert a civil date+hour in |timezone| to the UTC date+hour object
+  // { date: "YYYY-MM-DD", hour: H }.  Returns null for non-existent civil
+  // hours (e.g. the hour skipped at the DST spring-forward transition).
+  function civilToUTCDateHour(year, month, day, civilHour, timezone) {
+    const fmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      hourCycle: "h23",
+    });
+    // Start one day before the target date to handle timezones that are behind
+    // UTC and DST transitions that shift the boundary to an adjacent calendar day.
+    const startMs = Date.UTC(year, month - 1, day - 1, 0);
+    // A 72-hour window covers ±1 day on either side, accommodating all UTC
+    // offsets (UTC-12 to UTC+14) plus any DST shift.
+    for (let i = 0; i < 72; i++) {
+      const ms = startMs + i * 3_600_000;
+      const p = Object.fromEntries(fmt.formatToParts(new Date(ms)).map(({ type, value }) => [type, value]));
+      if (+p.year === year && +p.month === month && +p.day === day && +p.hour === civilHour) {
+        const d = new Date(ms);
+        return {
+          date: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`,
+          hour: d.getUTCHours(),
+        };
+      }
+    }
+    return null;
+  }
+
+  function selectedEnvironmentHourKey() {
+    if (!isCompleteDateValue() || !isCompleteTimeValue()) {
+      return null;
+    }
+    const [year, month, day] = selectedDateInput.value.split("-").map(Number);
+    const civilHour = parseInt(selectedTimeInput.value.slice(0, 2));
+    const reference = selectedEnvironmentReference();
+    const timezone = reference?.key ? window.environmentLocations?.[reference.key]?.timezone : null;
+    const timeStandard = environmentMeta?.timeStandard ?? null;
+
+    let result;
+    if (timezone && timeStandard === "UTC") {
+      // Dataset is stored in UTC: convert user's civil time to UTC.
+      result = civilToUTCDateHour(year, month, day, civilHour, timezone);
+    } else if (timezone && timeStandard === "LST") {
+      // Dataset is stored in Local Standard Time (no DST): remove DST offset.
+      result = civilToLSTDateHour(year, month, day, civilHour, timezone);
+    } else {
+      // Fallback for unknown or missing time standard: use the civil time as-is.
+      const monthDay = selectedDateInput.value.slice(5);
+      return `2025-${monthDay}T${String(civilHour).padStart(2, "0")}:00`;
+    }
+    if (!result) {
+      return null;
+    }
+    return `${result.date}T${String(result.hour).padStart(2, "0")}:00`;
+  }
+
+  function degreesToRadians(degrees) {
+    return (degrees * Math.PI) / 180;
+  }
+
+  function distanceKmBetweenPoints(pointA, pointB) {
+    const earthRadiusKm = 6371;
+    const latDelta = degreesToRadians(pointB.latitude - pointA.latitude);
+    const lonDelta = degreesToRadians(pointB.longitude - pointA.longitude);
+    const latA = degreesToRadians(pointA.latitude);
+    const latB = degreesToRadians(pointB.latitude);
+    const a = Math.sin(latDelta / 2) ** 2
+      + Math.cos(latA) * Math.cos(latB) * Math.sin(lonDelta / 2) ** 2;
+    return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function selectedEnvironmentReference() {
+    const presetKey = locationPresetInput.value;
+    const presetLocation = window.environmentLocations?.[presetKey];
+    if (presetLocation) {
+      return {
+        key: presetKey,
+        label: presetLocation.label,
+        distanceKm: 0,
+        isNearestReference: false,
+      };
+    }
+
+    const latitude = parseFiniteNumber(latitudeInput.value);
+    const longitude = parseFiniteNumber(longitudeInput.value);
+    if (latitude === null || longitude === null) {
+      return null;
+    }
+
+    const customPoint = { latitude, longitude };
+    const nearest = Object.entries(window.environmentLocations || {})
+      .map(([key, location]) => ({
+        key,
+        label: location.label,
+        distanceKm: distanceKmBetweenPoints(customPoint, location),
+        isNearestReference: true,
+      }))
+      .sort((a, b) => a.distanceKm - b.distanceKm)[0];
+
+    if (!nearest || nearest.distanceKm > environmentReferenceRadiusKm) {
+      return null;
+    }
+    return nearest;
+  }
+
+  function environmentLabelForReference(reference) {
+    if (!reference) {
+      return `No reference within ${environmentReferenceRadiusKm} km`;
+    }
+    if (reference.isNearestReference) {
+      return `${reference.label} 2025 reference`;
+    }
+    return `${reference.label} 2025`;
+  }
+
+  function environmentReferenceCopy(reference) {
+    if (!reference) {
+      const cityList = Object.values(window.environmentLocations || {})
+        .map((loc) => loc.label)
+        .join(", ");
+      return `Outdoor data is available within ${environmentReferenceRadiusKm} km of ${cityList || "a reference city"}.`;
+    }
+    if (reference.isNearestReference) {
+      return `Using nearest reference: ${reference.label}, ${Math.round(reference.distanceKm)} km away.`;
+    }
+    return "";
+  }
+
+  function sunlightStrengthLabel(solarRadiation) {
+    if (!Number.isFinite(solarRadiation)) {
+      return "Unknown";
+    }
+    if (solarRadiation < 250) {
+      return "Low";
+    }
+    if (solarRadiation < 600) {
+      return "Medium";
+    }
+    return "High";
+  }
+
+  function formatTemperature(value) {
+    return Number.isFinite(value) ? `${value.toFixed(1)}°C` : "--";
+  }
+
+  function formatUvIndex(value) {
+    return Number.isFinite(value) ? value.toFixed(1) : "--";
+  }
+
+  function averageFinite(values) {
+    const finiteValues = values.filter(Number.isFinite);
+    if (!finiteValues.length) {
+      return null;
+    }
+    return finiteValues.reduce((sum, value) => sum + value, 0) / finiteValues.length;
+  }
+
+  function formatSolarRadiation(value) {
+    return Number.isFinite(value) ? `${Math.round(value)} W/m2` : "--";
+  }
+
+  function formatOutdoorYearMetric(metric, value) {
+    if (!Number.isFinite(value)) {
+      return "--";
+    }
+    if (metric === "temp") {
+      return formatTemperature(value);
+    }
+    if (metric === "solar") {
+      return formatSolarRadiation(value);
+    }
+    return formatUvIndex(value);
+  }
+
+  function outdoorYearMetricValue(month, metric = activeOutdoorYearMetric) {
+    if (!month) {
+      return null;
+    }
+    if (metric === "temp") {
+      return month.avgTemp;
+    }
+    if (metric === "solar") {
+      return month.middaySolar;
+    }
+    return month.middayUv;
+  }
+
+  function outdoorYearMetricLabel(metric = activeOutdoorYearMetric) {
+    if (metric === "temp") {
+      return "Average temperature";
+    }
+    if (metric === "solar") {
+      return "Midday sun strength";
+    }
+    return "Midday UV";
+  }
+
+  function bestMonthBy(months, key) {
+    return months
+      .filter((month) => Number.isFinite(month[key]))
+      .sort((a, b) => b[key] - a[key])[0] || null;
+  }
+
+  function summarizeOutdoorYear() {
+    const monthBuckets = Array.from({ length: 12 }, () => ({
+      temps: [],
+      middayUv: [],
+      middaySolar: [],
+    }));
+
+    environmentByHour.forEach((entry) => {
+      const monthIndex = parseInt(entry.time.slice(5, 7), 10) - 1;
+      const hour = parseInt(entry.time.slice(11, 13), 10);
+      const bucket = monthBuckets[monthIndex];
+      if (!bucket) {
+        return;
+      }
+      bucket.temps.push(entry.tempC);
+      if (hour >= 10 && hour <= 14) {
+        bucket.middayUv.push(entry.uvIndex);
+        bucket.middaySolar.push(entry.solarRadiation);
+      }
+    });
+
+    return monthBuckets.map((bucket, index) => ({
+      index,
+      label: new Date(2025, index, 1).toLocaleString(undefined, { month: "short" }),
+      avgTemp: averageFinite(bucket.temps),
+      middayUv: averageFinite(bucket.middayUv),
+      middaySolar: averageFinite(bucket.middaySolar),
+    }));
+  }
+
+  function setOutdoorYearEmpty(message) {
+    if (outdoorYearSource) {
+      outdoorYearSource.textContent = "Unavailable";
+    }
+    if (outdoorYearWarmest) {
+      outdoorYearWarmest.textContent = "--";
+    }
+    if (outdoorYearPeakUv) {
+      outdoorYearPeakUv.textContent = "--";
+    }
+    if (outdoorYearPeakSun) {
+      outdoorYearPeakSun.textContent = "--";
+    }
+    if (outdoorYearChartLabel) {
+      outdoorYearChartLabel.textContent = outdoorYearMetricLabel();
+    }
+    if (outdoorYearChartValue) {
+      outdoorYearChartValue.textContent = "--";
+    }
+    if (outdoorYearChart) {
+      outdoorYearChart.innerHTML = `<p class="outdoor-year-empty">${escapeHtml(message)}</p>`;
+    }
+    if (outdoorYearMonthName) {
+      outdoorYearMonthName.textContent = "--";
+    }
+    if (outdoorYearMonthTemp) {
+      outdoorYearMonthTemp.textContent = "--";
+    }
+    if (outdoorYearMonthUv) {
+      outdoorYearMonthUv.textContent = "--";
+    }
+    if (outdoorYearMonthSolar) {
+      outdoorYearMonthSolar.textContent = "--";
+    }
+    if (outdoorYearMonthStrength) {
+      outdoorYearMonthStrength.textContent = "--";
+    }
+    if (outdoorYearCaption) {
+      outdoorYearCaption.textContent = message;
+    }
+  }
+
+  function updateOutdoorMonthDetail(month) {
+    if (!month) {
+      return;
+    }
+    if (outdoorYearMonthName) {
+      outdoorYearMonthName.textContent = month.label;
+    }
+    if (outdoorYearMonthTemp) {
+      outdoorYearMonthTemp.textContent = formatTemperature(month.avgTemp);
+    }
+    if (outdoorYearMonthUv) {
+      outdoorYearMonthUv.textContent = formatUvIndex(month.middayUv);
+    }
+    if (outdoorYearMonthSolar) {
+      outdoorYearMonthSolar.textContent = formatSolarRadiation(month.middaySolar);
+    }
+    if (outdoorYearMonthStrength) {
+      outdoorYearMonthStrength.textContent = sunlightStrengthLabel(month.middaySolar);
+    }
+    if (outdoorYearCaption) {
+      outdoorYearCaption.textContent = "Midday values average the 10:00-14:00 hours for the selected month.";
+    }
+  }
+
+  function renderOutdoorYearChart() {
+    if (!outdoorYearChart || !outdoorYearMonths.length) {
+      return;
+    }
+    outdoorYearMetricButtons.forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.outdoorYearMetric === activeOutdoorYearMetric);
+    });
+    const values = outdoorYearMonths
+      .map((month) => outdoorYearMetricValue(month))
+      .filter(Number.isFinite);
+    const maxValue = values.length ? Math.max(...values) : 1;
+    const minValue = activeOutdoorYearMetric === "temp" && values.length ? Math.min(...values) : 0;
+    const range = Math.max(maxValue - minValue, 0.001);
+
+    outdoorYearChart.innerHTML = outdoorYearMonths.map((month) => {
+      const value = outdoorYearMetricValue(month);
+      const scaled = Number.isFinite(value) ? ((value - minValue) / range) * 100 : 0;
+      const height = Math.max(6, Math.min(100, scaled));
+      const isActive = month.index === activeOutdoorYearMonth;
+      return `
+        <button
+          type="button"
+          class="outdoor-year-bar${isActive ? " is-active" : ""}"
+          data-outdoor-month="${month.index}"
+          style="--bar-height: ${height}%"
+          aria-label="${escapeHtml(month.label)} ${escapeHtml(outdoorYearMetricLabel())}: ${escapeHtml(formatOutdoorYearMetric(activeOutdoorYearMetric, value))}"
+        >
+          <span class="outdoor-year-bar-fill"></span>
+          <span class="outdoor-year-bar-value">${escapeHtml(formatOutdoorYearMetric(activeOutdoorYearMetric, value))}</span>
+          <span class="outdoor-year-bar-label">${escapeHtml(month.label)}</span>
+        </button>
+      `;
+    }).join("");
+
+    outdoorYearChart.querySelectorAll("[data-outdoor-month]").forEach((button) => {
+      button.addEventListener("click", () => {
+        activeOutdoorYearMonth = parseInt(button.dataset.outdoorMonth, 10);
+        renderOutdoorYearPanel();
+      });
+    });
+  }
+
+  function renderOutdoorYearPanel() {
+    if (!outdoorYearChart) {
+      return;
+    }
+    const selectedReference = selectedEnvironmentReference();
+    if (!selectedReference) {
+      setOutdoorYearEmpty(environmentReferenceCopy(null));
+      return;
+    }
+    if (environmentLoadState === "loading") {
+      setOutdoorYearEmpty(`Loading ${environmentLabelForReference(selectedReference)} yearly data...`);
+      return;
+    }
+    if (environmentLoadState === "error") {
+      setOutdoorYearEmpty("Outdoor yearly data could not be loaded.");
+      return;
+    }
+    if (!environmentByHour.size) {
+      setOutdoorYearEmpty("No outdoor yearly data is loaded yet.");
+      return;
+    }
+
+    outdoorYearMonths = summarizeOutdoorYear();
+    activeOutdoorYearMonth = clamp(activeOutdoorYearMonth, 0, outdoorYearMonths.length - 1);
+    const selectedMonth = outdoorYearMonths[activeOutdoorYearMonth];
+    const warmest = bestMonthBy(outdoorYearMonths, "avgTemp");
+    const peakUv = bestMonthBy(outdoorYearMonths, "middayUv");
+    const peakSun = bestMonthBy(outdoorYearMonths, "middaySolar");
+
+    if (outdoorYearSource) {
+      outdoorYearSource.textContent = environmentLabelForReference(selectedReference);
+    }
+    if (outdoorYearWarmest) {
+      outdoorYearWarmest.textContent = warmest ? `${warmest.label} · ${formatTemperature(warmest.avgTemp)}` : "--";
+    }
+    if (outdoorYearPeakUv) {
+      outdoorYearPeakUv.textContent = peakUv ? `${peakUv.label} · ${formatUvIndex(peakUv.middayUv)}` : "--";
+    }
+    if (outdoorYearPeakSun) {
+      outdoorYearPeakSun.textContent = peakSun ? `${peakSun.label} · ${formatSolarRadiation(peakSun.middaySolar)}` : "--";
+    }
+    if (outdoorYearChartLabel) {
+      outdoorYearChartLabel.textContent = outdoorYearMetricLabel();
+    }
+    if (outdoorYearChartValue) {
+      outdoorYearChartValue.textContent = `${selectedMonth.label}: ${formatOutdoorYearMetric(activeOutdoorYearMetric, outdoorYearMetricValue(selectedMonth))}`;
+    }
+    updateOutdoorMonthDetail(selectedMonth);
+    renderOutdoorYearChart();
+  }
+
+  function uvInterpretation(uvIndex) {
+    if (!Number.isFinite(uvIndex)) {
+      return "Outdoor data is not available for this hour.";
+    }
+    if (uvIndex < 3) {
+      return "Low UV - limited vitamin D potential.";
+    }
+    if (uvIndex < 6) {
+      return "Moderate UV - reasonable exposure.";
+    }
+    return "High UV - strong exposure, be cautious.";
+  }
+
+  function setOutdoorText(status, temp, uv, strength, interpretation) {
+    if (outdoorLocationLabel) {
+      outdoorLocationLabel.textContent = environmentLocationLabel
+        || environmentLabelForReference(selectedEnvironmentReference());
+    }
+    if (outdoorConditionsStatus) {
+      outdoorConditionsStatus.textContent = status;
+    }
+    if (outdoorTemp) {
+      outdoorTemp.textContent = temp;
+    }
+    if (outdoorUv) {
+      outdoorUv.textContent = uv;
+    }
+    if (outdoorStrength) {
+      outdoorStrength.textContent = strength;
+    }
+    if (outdoorInterpretation) {
+      outdoorInterpretation.textContent = interpretation;
+    }
+  }
+
+  function renderOutdoorConditions() {
+    if (!outdoorInterpretation) {
+      return;
+    }
+    const selectedReference = selectedEnvironmentReference();
+    if (!selectedReference) {
+      setOutdoorText(
+        "No reference",
+        "--",
+        "--",
+        "--",
+        environmentReferenceCopy(null),
+      );
+      return;
+    }
+    if (environmentLoadState === "loading") {
+      setOutdoorText("Loading", "--", "--", "--", `Loading ${environmentLabelForReference(selectedReference)} hourly data...`);
+      return;
+    }
+    if (environmentLoadState === "error") {
+      setOutdoorText("Unavailable", "--", "--", "--", "Outdoor conditions could not be loaded.");
+      return;
+    }
+
+    const hourKey = selectedEnvironmentHourKey();
+    const environment = hourKey ? environmentByHour.get(hourKey) : null;
+    if (!environment) {
+      setOutdoorText("No data", "--", "--", "--", `No ${environmentLabelForReference(selectedReference)} data for this selected hour.`);
+      return;
+    }
+
+    const referenceCopy = environmentReferenceCopy(selectedReference);
+    setOutdoorText(
+      "Sample",
+      formatTemperature(environment.tempC),
+      formatUvIndex(environment.uvIndex),
+      sunlightStrengthLabel(environment.solarRadiation),
+      referenceCopy ? `${uvInterpretation(environment.uvIndex)} ${referenceCopy}` : uvInterpretation(environment.uvIndex),
+    );
   }
 
   function roundedNowInTimezone(timezoneName) {
@@ -156,6 +700,7 @@
 
     dayReadout.textContent = formatDateReadout(selectedDateInput.value);
     timeReadout.textContent = formatTimeReadout(parseInt(timeSlider.value, 10));
+    renderOutdoorConditions();
   }
 
   function syncInputsFromSliders() {
@@ -166,6 +711,7 @@
 
     dayReadout.textContent = formatDateReadout(selectedDateInput.value);
     timeReadout.textContent = selectedTimeInput.value;
+    renderOutdoorConditions();
   }
 
   function snapshotStateLabel(state) {
@@ -225,6 +771,7 @@
       setLocationPreset("custom", { applyPreset: false, openPanel: true, refresh: false });
       latitudeInput.value = lat.toFixed(4);
       longitudeInput.value = lng.toFixed(4);
+      loadEnvironmentData();
       scheduleRefresh();
     });
 
@@ -233,6 +780,7 @@
       marker.setLatLng(event.latlng);
       latitudeInput.value = event.latlng.lat.toFixed(4);
       longitudeInput.value = event.latlng.lng.toFixed(4);
+      loadEnvironmentData();
       scheduleRefresh();
     });
   }
@@ -279,6 +827,8 @@
         customLocationPanel.open = false;
       }
     }
+
+    loadEnvironmentData();
 
     if (refresh) {
       scheduleRefresh();
@@ -627,6 +1177,9 @@
     if (removeWindowButton) {
       removeWindowButton.hidden = activeWindowIndex === 0 || windowRows.length <= 1;
     }
+    if (addWindowRowButton) {
+      addWindowRowButton.disabled = windowRows.length >= MAX_WINDOWS;
+    }
     renderWindowSelector();
     if (currentPayload && currentPayload.windows && currentPayload.windows.length === windowRows.length) {
       updateSnapshotDom(currentPayload);
@@ -646,6 +1199,9 @@
   }
 
   function addEmptyWindowRow() {
+    if (windowRows.length >= MAX_WINDOWS) {
+      return;
+    }
     persistActiveWindowEditor();
     const nextIndex = windowRows.length;
     const wallCycle = ["east", "south", "west"];
@@ -1633,6 +2189,58 @@
     }
   }
 
+  async function loadEnvironmentData() {
+    const reference = selectedEnvironmentReference();
+    const locationKey = reference?.key || null;
+    latestEnvironmentRequestId += 1;
+    const requestId = latestEnvironmentRequestId;
+
+    if (!locationKey) {
+      environmentLocationKey = null;
+      environmentLocationLabel = environmentLabelForReference(null);
+      environmentByHour = new Map();
+      environmentMeta = null;
+      environmentLoadState = "ready";
+      renderOutdoorYearPanel();
+      return;
+    }
+
+    environmentLocationKey = locationKey;
+    environmentLocationLabel = environmentLabelForReference(reference);
+
+    if (typeof window.fetchEnvironmentData !== "function") {
+      environmentLoadState = "error";
+      renderOutdoorConditions();
+      renderOutdoorYearPanel();
+      return;
+    }
+
+    environmentLoadState = "loading";
+    renderOutdoorConditions();
+    renderOutdoorYearPanel();
+    try {
+      const data = await window.fetchEnvironmentData(locationKey);
+      const latestReference = selectedEnvironmentReference();
+      if (requestId !== latestEnvironmentRequestId || locationKey !== latestReference?.key) {
+        return;
+      }
+      environmentByHour = new Map((data.hourly || []).map((entry) => [entry.time, entry]));
+      environmentMeta = data.meta ?? null;
+      environmentLoadState = "ready";
+      environmentLocationLabel = environmentLabelForReference(latestReference);
+      renderOutdoorConditions();
+      renderOutdoorYearPanel();
+    } catch (error) {
+      if (requestId !== latestEnvironmentRequestId) {
+        return;
+      }
+      console.error(error);
+      environmentLoadState = "error";
+      renderOutdoorConditions();
+      renderOutdoorYearPanel();
+    }
+  }
+
   const debouncedRefresh = debounce(refreshSnapshot, 180);
 
   function refreshCustomCoordinates() {
@@ -1707,6 +2315,20 @@
       if (selectedTab === "long-range") {
         fetchLongRangeExposure();
       }
+      if (selectedTab === "outdoor-year") {
+        const selectedMonth = parseInt(selectedDateInput.value.slice(5, 7), 10) - 1;
+        if (Number.isFinite(selectedMonth)) {
+          activeOutdoorYearMonth = clamp(selectedMonth, 0, 11);
+        }
+        renderOutdoorYearPanel();
+      }
+    });
+  });
+
+  outdoorYearMetricButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      activeOutdoorYearMetric = button.dataset.outdoorYearMetric;
+      renderOutdoorYearPanel();
     });
   });
 
@@ -1924,6 +2546,7 @@
     invalidateMapSoon();
   }
   baselinePayload = readStoredBaseline();
+  loadEnvironmentData();
   renderWindowBuilderFromTextarea();
   updateSnapshotDom(initialData);
   updateTimeScrubberReference(timezoneInput.value);

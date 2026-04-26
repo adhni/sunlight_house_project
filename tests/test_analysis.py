@@ -1,6 +1,6 @@
 import unittest
 
-from sunlight_house.analysis import long_range_exposure_grids, representative_days_for_month
+from sunlight_house.analysis import _long_range_cache, _long_range_cache_key, long_range_exposure_grids, representative_days_for_month
 from sunlight_house.config import Location, SimulationConfig, default_melbourne_scenario, main_window
 from sunlight_house.geometry import Room
 
@@ -48,6 +48,47 @@ class LongRangeExposureTests(unittest.TestCase):
         self.assertEqual(periods["spring"]["label"], "Spring (Mar-May)")
         self.assertEqual(periods["summer"]["label"], "Summer (Jun-Aug)")
         self.assertEqual(periods["fall"]["label"], "Fall (Sep-Nov)")
+
+
+class LongRangeCacheTests(unittest.TestCase):
+    def setUp(self) -> None:
+        _long_range_cache.clear()
+
+    def test_result_is_cached_on_second_call(self) -> None:
+        config = default_melbourne_scenario()
+        first = long_range_exposure_grids(config)
+        second = long_range_exposure_grids(config)
+        self.assertIs(first, second)
+
+    def test_cache_key_differs_for_different_configs(self) -> None:
+        config_a = default_melbourne_scenario()
+        room_b = Room(width=3.0, depth=4.0, height=2.5)
+        window_b = main_window(room=room_b, span_center=1.5, center_height=1.1, width=1.0, height=1.5)
+        config_b = SimulationConfig(
+            location=config_a.location,
+            room=room_b,
+            windows=(window_b,),
+            year=config_a.year,
+            window_facing_label=config_a.window_facing_label,
+        )
+        self.assertNotEqual(_long_range_cache_key(config_a), _long_range_cache_key(config_b))
+
+    def test_different_config_produces_cache_miss(self) -> None:
+        config_a = default_melbourne_scenario()
+        long_range_exposure_grids(config_a)
+        self.assertEqual(len(_long_range_cache), 1)
+
+        room_b = Room(width=3.0, depth=4.0, height=2.5)
+        window_b = main_window(room=room_b, span_center=1.5, center_height=1.1, width=1.0, height=1.5)
+        config_b = SimulationConfig(
+            location=config_a.location,
+            room=room_b,
+            windows=(window_b,),
+            year=config_a.year,
+            window_facing_label=config_a.window_facing_label,
+        )
+        long_range_exposure_grids(config_b)
+        self.assertEqual(len(_long_range_cache), 2)
 
 
 if __name__ == "__main__":
