@@ -48,6 +48,7 @@ def power_url(latitude: float, longitude: float) -> str:
             "start": f"{YEAR}0101",
             "end": f"{YEAR}1231",
             "format": "JSON",
+            "time-standard": "UTC",
         }
     )
     return f"https://power.larc.nasa.gov/api/temporal/hourly/point?{query}"
@@ -78,7 +79,7 @@ def compact_payload(location_key: str, location: dict, payload: dict) -> dict:
             "parameters": list(PARAMETERS),
             "start": f"{YEAR}-01-01T00:00",
             "hours": len(hour_keys),
-            "timeStandard": "local",
+            "timeStandard": "UTC",
             "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         },
         "columns": ["tempC", "uvIndex", "solarRadiation"],

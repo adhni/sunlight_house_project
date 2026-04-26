@@ -92,6 +92,7 @@
   const baselineStorageKey = "sunlight-house-baseline";
   const environmentReferenceRadiusKm = 50;
   let environmentByHour = new Map();
+  let environmentMeta = null;
   let environmentLoadState = "idle";
   let environmentLocationKey = null;
   let environmentLocationLabel = "";
@@ -142,18 +143,101 @@
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
   }
 
+  // Returns the UTC offset in whole hours for |timezone| at the given UTC
+  // timestamp (milliseconds).  e.g. +11 for Australia/Melbourne during AEDT.
+  function intlUTCOffsetHours(utcMs, timezone) {
+    const opts = { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" };
+    const toParts = (tz) =>
+      Object.fromEntries(
+        new Intl.DateTimeFormat("en-CA", { timeZone: tz, ...opts })
+          .formatToParts(new Date(utcMs))
+          .map(({ type, value }) => [type, value])
+      );
+    const local = toParts(timezone);
+    const utc = toParts("UTC");
+    return (
+      (Date.UTC(+local.year, +local.month - 1, +local.day, +local.hour) -
+        Date.UTC(+utc.year, +utc.month - 1, +utc.day, +utc.hour)) /
+      3_600_000
+    );
+  }
+
+  // Convert a civil date+hour (local clock time in |timezone|) to the
+  // equivalent LST (Local Standard Time, no DST) date+hour object
+  // { date: "YYYY-MM-DD", hour: H }.
+  function civilToLSTDateHour(year, month, day, civilHour, timezone) {
+    // Standard UTC offset = minimum of January and July offsets.
+    // DST always adds hours, so standard time always has the smaller offset.
+    const stdOffset = Math.min(
+      intlUTCOffsetHours(Date.UTC(2025, 0, 15, 12), timezone),
+      intlUTCOffsetHours(Date.UTC(2025, 6, 15, 12), timezone)
+    );
+    // Approximate UTC ms using the standard offset, then get the actual civil offset.
+    const approxUtcMs = Date.UTC(year, month - 1, day, civilHour) - stdOffset * 3_600_000;
+    const civilOffset = intlUTCOffsetHours(approxUtcMs, timezone);
+    const dstHours = civilOffset - stdOffset; // 0 when standard time, 1 during DST
+    const rawHour = civilHour - dstHours;
+    const dateAdjust = rawHour < 0 ? -1 : rawHour >= 24 ? 1 : 0;
+    const d = new Date(Date.UTC(year, month - 1, day + dateAdjust));
+    return {
+      date: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`,
+      hour: ((rawHour % 24) + 24) % 24,
+    };
+  }
+
+  // Convert a civil date+hour in |timezone| to the UTC date+hour object
+  // { date: "YYYY-MM-DD", hour: H }.  Returns null for non-existent civil
+  // hours (e.g. the hour skipped at the DST spring-forward transition).
+  function civilToUTCDateHour(year, month, day, civilHour, timezone) {
+    const fmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      hourCycle: "h23",
+    });
+    const startMs = Date.UTC(year, month - 1, day - 1, 0);
+    for (let i = 0; i < 72; i++) {
+      const ms = startMs + i * 3_600_000;
+      const p = Object.fromEntries(fmt.formatToParts(new Date(ms)).map(({ type, value }) => [type, value]));
+      if (+p.year === year && +p.month === month && +p.day === day && +p.hour === civilHour) {
+        const d = new Date(ms);
+        return {
+          date: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`,
+          hour: d.getUTCHours(),
+        };
+      }
+    }
+    return null;
+  }
+
   function selectedEnvironmentHourKey() {
     if (!isCompleteDateValue() || !isCompleteTimeValue()) {
       return null;
     }
-    // The static environment dataset is stored in local civil time (as returned
-    // by the NASA POWER API without a time-standard override). Keys are built
-    // from the sequential hour index and labelled as if they were UTC-midnight-
-    // anchored, so the correct lookup key is simply the selected month/day/hour
-    // mapped to the 2025 reference year — no timezone conversion needed.
-    const monthDay = selectedDateInput.value.slice(5);
-    const hour = selectedTimeInput.value.slice(0, 2);
-    return `2025-${monthDay}T${hour}:00`;
+    const [year, month, day] = selectedDateInput.value.split("-").map(Number);
+    const civilHour = parseInt(selectedTimeInput.value.slice(0, 2));
+    const reference = selectedEnvironmentReference();
+    const timezone = reference?.key ? window.environmentLocations?.[reference.key]?.timezone : null;
+    const timeStandard = environmentMeta?.timeStandard ?? null;
+
+    let result;
+    if (timezone && timeStandard === "UTC") {
+      // Dataset is stored in UTC: convert user's civil time to UTC.
+      result = civilToUTCDateHour(year, month, day, civilHour, timezone);
+    } else if (timezone && timeStandard === "LST") {
+      // Dataset is stored in Local Standard Time (no DST): remove DST offset.
+      result = civilToLSTDateHour(year, month, day, civilHour, timezone);
+    } else {
+      // Fallback for unknown or missing time standard: use the civil time as-is.
+      const monthDay = selectedDateInput.value.slice(5);
+      return `2025-${monthDay}T${String(civilHour).padStart(2, "0")}:00`;
+    }
+    if (!result) {
+      return null;
+    }
+    return `${result.date}T${String(result.hour).padStart(2, "0")}:00`;
   }
 
   function degreesToRadians(degrees) {
@@ -2111,8 +2195,8 @@
       environmentLocationKey = null;
       environmentLocationLabel = environmentLabelForReference(null);
       environmentByHour = new Map();
+      environmentMeta = null;
       environmentLoadState = "ready";
-      renderOutdoorConditions();
       renderOutdoorYearPanel();
       return;
     }
@@ -2137,6 +2221,7 @@
         return;
       }
       environmentByHour = new Map((data.hourly || []).map((entry) => [entry.time, entry]));
+      environmentMeta = data.meta ?? null;
       environmentLoadState = "ready";
       environmentLocationLabel = environmentLabelForReference(latestReference);
       renderOutdoorConditions();
