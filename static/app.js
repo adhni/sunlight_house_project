@@ -169,8 +169,8 @@
     // Standard UTC offset = minimum of January and July offsets.
     // DST always adds hours, so standard time always has the smaller offset.
     const stdOffset = Math.min(
-      intlUTCOffsetHours(Date.UTC(2025, 0, 15, 12), timezone),
-      intlUTCOffsetHours(Date.UTC(2025, 6, 15, 12), timezone)
+      intlUTCOffsetHours(Date.UTC(year, 0, 15, 12), timezone),
+      intlUTCOffsetHours(Date.UTC(year, 6, 15, 12), timezone)
     );
     // Approximate UTC ms using the standard offset, then get the actual civil offset.
     const approxUtcMs = Date.UTC(year, month - 1, day, civilHour) - stdOffset * 3_600_000;
@@ -197,7 +197,11 @@
       hour: "2-digit",
       hourCycle: "h23",
     });
+    // Start one day before the target date to handle timezones that are behind
+    // UTC and DST transitions that shift the boundary to an adjacent calendar day.
     const startMs = Date.UTC(year, month - 1, day - 1, 0);
+    // A 72-hour window covers ±1 day on either side, accommodating all UTC
+    // offsets (UTC-12 to UTC+14) plus any DST shift.
     for (let i = 0; i < 72; i++) {
       const ms = startMs + i * 3_600_000;
       const p = Object.fromEntries(fmt.formatToParts(new Date(ms)).map(({ type, value }) => [type, value]));
