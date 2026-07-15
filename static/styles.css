@@ -189,6 +189,33 @@ summary {
   color: var(--muted);
 }
 
+.summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.summary-metric {
+  display: grid;
+  gap: 5px;
+  padding: 11px 12px;
+  border: 1px solid rgba(43, 98, 122, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.summary-metric strong {
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.summary-assumptions {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .summary-tone {
   display: inline-flex;
   align-items: center;
@@ -921,6 +948,44 @@ input[type="range"] {
   white-space: nowrap;
 }
 
+.ifc-import-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.ifc-import-row input[type="file"] {
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink);
+}
+
+.ifc-import-group summary {
+  display: grid;
+  gap: 2px;
+}
+
+.ifc-import-group[open] summary {
+  margin-bottom: 4px;
+}
+
+#ifc-import-status {
+  margin: 0;
+}
+
+#ifc-import-status[data-tone="error"] {
+  color: var(--accent-deep);
+}
+
+#ifc-import-status[data-tone="draft"] {
+  color: #8a6a1f;
+}
+
 .window-json-textarea {
   width: 100%;
   font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
@@ -981,6 +1046,10 @@ input[type="range"] {
 
 .result-tab-row {
   margin-top: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 3px;
+  scrollbar-width: thin;
 }
 
 .result-view {
@@ -1154,12 +1223,6 @@ input[type="range"] {
   transition: opacity 0.15s ease;
 }
 
-@media (min-width: 1280px) {
-  body {
-    zoom: 0.8;
-  }
-}
-
 @media (max-width: 1180px) {
   .page-shell {
     width: min(100% - 40px, 1360px);
@@ -1238,6 +1301,10 @@ input[type="range"] {
 
   .room-snapshot-large {
     min-height: 320px;
+  }
+
+  .summary-metrics {
+    grid-template-columns: 1fr;
   }
 
   .metric-grid {

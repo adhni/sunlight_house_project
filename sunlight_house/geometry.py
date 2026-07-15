@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Iterable
 
 import numpy as np
@@ -11,6 +12,11 @@ class Room:
     width: float
     depth: float
     height: float
+
+    def __post_init__(self) -> None:
+        dimensions = (self.width, self.depth, self.height)
+        if not all(math.isfinite(float(value)) and float(value) > 0.0 for value in dimensions):
+            raise ValueError("Room width, depth, and height must be finite positive numbers.")
 
     def contains_xy(self, point_xy: np.ndarray, *, tol: float = 1e-9) -> bool:
         x, y = np.asarray(point_xy, dtype=float)
@@ -59,11 +65,16 @@ class Window:
     outward_normal: np.ndarray
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "center", np.asarray(self.center, dtype=float))
+        center = np.asarray(self.center, dtype=float)
+        if center.shape != (3,) or not np.all(np.isfinite(center)):
+            raise ValueError("Window center must contain three finite coordinates.")
+        if not math.isfinite(float(self.width)) or not math.isfinite(float(self.height)):
+            raise ValueError("Window width and height must be finite numbers.")
+        object.__setattr__(self, "center", center)
         normal = np.asarray(self.outward_normal, dtype=float)
         norm = np.linalg.norm(normal)
-        if norm == 0:
-            raise ValueError("Window normal cannot be zero.")
+        if normal.shape != (3,) or not np.all(np.isfinite(normal)) or norm == 0:
+            raise ValueError("Window normal must contain three finite coordinates and cannot be zero.")
         object.__setattr__(self, "outward_normal", normal / norm)
 
     @property

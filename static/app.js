@@ -61,6 +61,7 @@
   const timeReadout = document.getElementById("time-of-day-readout");
   const roomWidthInput = form.querySelector('input[name="room_width"]');
   const roomDepthInput = form.querySelector('input[name="room_depth"]');
+  const roomHeightInput = form.querySelector('input[name="room_height"]');
   const windowWidthInput = form.querySelector('input[name="window_width"]');
   const windowHeightInput = form.querySelector('input[name="window_height"]');
   const windowSpanCenterInput = form.querySelector('input[name="window_span_center"]');
@@ -73,6 +74,10 @@
   const selectedWindowFacingCopy = document.getElementById("selected-window-facing-copy");
   const windowEditorTitle = document.getElementById("window-editor-title");
   const windowEditorCopy = document.getElementById("window-editor-copy");
+  const windowPositionLabel = document.getElementById("window-position-label");
+  const ifcFileInput = document.getElementById("ifc-file-input");
+  const ifcImportButton = document.getElementById("ifc-import-button");
+  const ifcImportStatus = document.getElementById("ifc-import-status");
 
   const mapElement = document.getElementById("location-map");
   let map = null;
@@ -744,7 +749,9 @@
 
   function setActiveButtons(buttons, dataKey, value) {
     buttons.forEach((button) => {
-      button.classList.toggle("is-active", button.dataset[dataKey] === value);
+      const isActive = button.dataset[dataKey] === value;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
     });
   }
 
@@ -879,6 +886,29 @@
     setText("sun-summary-tone", summary.tone.replace(/_/g, " "));
     setText("sun-summary-supporting", summary.supporting_text);
     setText("sun-summary-moment", summary.moment_text);
+  }
+
+  function updateSummaryMetrics(payload) {
+    const grid = payload?.daily?.exposure_grid;
+    if (!grid) {
+      return;
+    }
+    setText("summary-peak-hours", `${Number(grid.peak_hours || 0).toFixed(1)} h`);
+    setText(
+      "summary-sunlit-fraction",
+      `${Math.round(Number(grid.sunlit_fraction || 0) * 100)}%`,
+    );
+    const peakTime = payload.daily.peak_time;
+    setText("summary-peak-time", peakTime ? formatTimeForZone(peakTime, payload.location.timezone_name) : "--");
+  }
+
+  function formatTimeForZone(isoTime, timeZone) {
+    return new Date(isoTime).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone,
+      timeZoneName: "short",
+    });
   }
 
   function setPendingState(isPending) {
@@ -1055,7 +1085,7 @@
   function normalizeWindowRow(row, index) {
     return {
       name: (row.name || `window_${index + 1}`).toString(),
-      wall: index === 0 ? "north" : (row.wall || "east").toString().toLowerCase(),
+      wall: (row.wall || (index === 0 ? "north" : "east")).toString().toLowerCase(),
       span_center: formatWindowNumber(row.span_center),
       sill_height: formatWindowNumber(row.sill_height),
       width: formatWindowNumber(row.width),
@@ -1068,7 +1098,7 @@
       windowRows = [windowRowFromLegacyInputs()];
     }
     const activeRow = windowRows[activeWindowIndex] || windowRows[0];
-    activeRow.wall = activeWindowIndex === 0 ? "north" : selectedWindowWallSelect.value;
+    activeRow.wall = selectedWindowWallSelect.value;
     activeRow.span_center = windowSpanCenterInput.value;
     activeRow.sill_height = windowSillHeightInput.value;
     activeRow.width = windowWidthInput.value;
@@ -1158,13 +1188,16 @@
       windowEditorTitle.textContent = windowRows.length === 1 ? "Window" : `Window ${activeWindowIndex + 1}`;
     }
     if (windowEditorCopy) {
-      windowEditorCopy.textContent = activeWindowIndex === 0
-        ? "Front wall; defines room orientation."
-        : "Compass direction is derived from Window 1.";
+      windowEditorCopy.textContent = "Compass direction is derived from the selected room facing.";
     }
     if (selectedWindowWallSelect) {
       selectedWindowWallSelect.value = activeRow.wall;
-      selectedWindowWallSelect.disabled = activeWindowIndex === 0;
+      selectedWindowWallSelect.disabled = false;
+    }
+    if (windowPositionLabel) {
+      windowPositionLabel.textContent = activeRow.wall === "north" || activeRow.wall === "south"
+        ? "Position along wall (width axis, m)"
+        : "Position along wall (depth axis, m)";
     }
     windowSpanCenterInput.value = activeRow.span_center;
     windowSillHeightInput.value = activeRow.sill_height;
@@ -1196,6 +1229,81 @@
   function renderWindowBuilderFromTextarea() {
     const rows = parseWindowsJsonValue(windowsJsonInput ? windowsJsonInput.value : "");
     renderWindowBuilderFromRows(rows);
+  }
+
+  function setIfcImportStatus(message, tone = "idle") {
+    if (!ifcImportStatus) {
+      return;
+    }
+    ifcImportStatus.textContent = message;
+    ifcImportStatus.dataset.tone = tone;
+  }
+
+  function applyIfcImportPayload(payload) {
+    if (!payload || !payload.room) {
+      setIfcImportStatus("IFC import returned no room data.", "error");
+      return;
+    }
+    roomWidthInput.value = payload.room.width;
+    roomDepthInput.value = payload.room.depth;
+    roomHeightInput.value = payload.room.height;
+
+    if (payload.window_facing) {
+      setWindowFacing(payload.window_facing, false);
+    }
+    const spaceName = payload.space && payload.space.name ? payload.space.name : "IFC space";
+    let importMessage = `Imported ${spaceName}.`;
+    if (Array.isArray(payload.windows) && payload.windows.length) {
+      renderWindowBuilderFromRows(payload.windows);
+    } else {
+      const starterWindow = {
+        name: "main_window",
+        wall: "north",
+        span_center: Number(payload.room.width) * 0.5,
+        sill_height: Number(payload.room.height) * 0.1,
+        width: Number(payload.room.width) * 0.5,
+        height: Number(payload.room.height) * 0.6,
+      };
+      renderWindowBuilderFromRows([starterWindow]);
+      importMessage += " No windows were found, so a starter window was added.";
+    }
+
+    const diagnosticText = Array.isArray(payload.diagnostics) && payload.diagnostics.length
+      ? ` ${payload.diagnostics.join(" ")}`
+      : "";
+    setIfcImportStatus(`${importMessage}${diagnosticText}`, payload.diagnostics?.length ? "draft" : "idle");
+    scheduleRefresh("Imported IFC room. Updating preview...");
+  }
+
+  async function importIfcFile() {
+    if (!ifcFileInput || !ifcFileInput.files || !ifcFileInput.files.length) {
+      setIfcImportStatus("Choose an .ifc file first.", "error");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("ifc_file", ifcFileInput.files[0]);
+    if (ifcImportButton) {
+      ifcImportButton.disabled = true;
+    }
+    setIfcImportStatus("Importing IFC...", "draft");
+    try {
+      const response = await fetch("/api/import-ifc", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "IFC import failed.");
+      }
+      applyIfcImportPayload(payload);
+    } catch (error) {
+      setIfcImportStatus(error.message || "IFC import failed.", "error");
+    } finally {
+      if (ifcImportButton) {
+        ifcImportButton.disabled = false;
+      }
+    }
   }
 
   function addEmptyWindowRow() {
@@ -1965,6 +2073,7 @@
     const sunActiveWindowCount = snapshot.window_intensities.filter((entry) => entry.intensity > 0).length;
     const floorPatchCount = snapshot.patches.length;
     updateSummaryDom(payload.summary);
+    updateSummaryMetrics(payload);
 
     setText("selected-moment-label", new Date(payload.selected_moment).toLocaleString(undefined, {
       day: "2-digit",
@@ -1978,18 +2087,13 @@
 
     setText("live-elevation", `${snapshot.elevation_deg.toFixed(2)} deg`);
     setText("live-azimuth", `${snapshot.azimuth_deg.toFixed(2)} deg`);
-    setText("live-entry", snapshot.entered_direct_sun ? "Yes" : "No");
+    setText("live-entry", snapshot.entered_direct_sun ? "Yes — reaches floor" : "No floor patch");
     setText("live-strongest", snapshot.strongest_window
       ? `${snapshot.strongest_window} (${snapshot.strongest_intensity.toFixed(3)})`
       : "None");
     setText("live-vector", `(${snapshot.vector.map((value) => value.toFixed(3)).join(", ")})`);
     setText("live-daily-peak", daily.peak_time
-      ? `${daily.peak_intensity.toFixed(3)} at ${new Date(daily.peak_time).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-          timeZone,
-          timeZoneName: "short",
-        })}`
+      ? `${daily.peak_intensity.toFixed(3)} at ${formatTimeForZone(daily.peak_time, timeZone)}`
       : "No direct sun");
 
     setHtml("room-snapshot-svg", createRoomSvg(payload));
@@ -2022,8 +2126,8 @@
     setText(
       "snapshot-window-fact",
       payload.is_multi_window
-        ? `Room orientation: Window 1 faces ${payload.window_facing_label} · ${payload.windows.length} windows`
-        : `Window 1 faces ${payload.window_facing_label}`,
+        ? `Room front wall faces ${payload.window_facing_label} · ${payload.windows.length} windows`
+        : `Window faces ${wallFacingLabel(payload.windows[0]?.wall || "north")}`,
     );
     setText("snapshot-azimuth-fact", `Azimuth: ${snapshot.azimuth_deg.toFixed(1)}°`);
     setText("snapshot-elevation-fact", `Elevation: ${snapshot.elevation_deg.toFixed(1)}°`);
@@ -2308,9 +2412,12 @@
       activeResultTab = selectedTab;
       resultTabButtons.forEach((item) => {
         item.classList.toggle("is-active", item === button);
+        item.setAttribute("aria-pressed", String(item === button));
       });
       resultPanels.forEach((panel) => {
-        panel.classList.toggle("is-active", panel.dataset.resultPanel === selectedTab);
+        const isActive = panel.dataset.resultPanel === selectedTab;
+        panel.classList.toggle("is-active", isActive);
+        panel.setAttribute("aria-hidden", String(!isActive));
       });
       if (selectedTab === "long-range") {
         fetchLongRangeExposure();
@@ -2477,6 +2584,10 @@
     });
   }
 
+  if (ifcImportButton) {
+    ifcImportButton.addEventListener("click", importIfcFile);
+  }
+
   const windowGeometryInputs = new Set([
     windowSpanCenterInput,
     windowSillHeightInput,
@@ -2541,6 +2652,12 @@
   syncSlidersFromInputs();
   setActiveButtons(locationChipButtons, "locationPreset", locationPresetInput.value);
   setActiveButtons(windowFacingButtons, "windowFacing", windowFacingInput.value);
+  resultTabButtons.forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.resultTab === activeResultTab));
+  });
+  resultPanels.forEach((panel) => {
+    panel.setAttribute("aria-hidden", String(panel.dataset.resultPanel !== activeResultTab));
+  });
   if (locationPresetInput.value === "custom") {
     ensureMap();
     invalidateMapSoon();

@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import json
+import math
 import os
+import tempfile
 from datetime import datetime
 from time import perf_counter
 from zoneinfo import ZoneInfo
 
 from flask import Flask, jsonify, render_template, request, url_for
+from werkzeug.exceptions import RequestEntityTooLarge
 
 _MAX_WINDOWS = 10
 _MAX_LOCATION_NAME_LEN = 200
+_MAX_WINDOW_NAME_LEN = 120
+_MAX_WINDOWS_JSON_BYTES = 100_000
 _MAX_ROOM_DIM = 500.0  # metres -- sanity cap to prevent extreme compute
+_MAX_IFC_UPLOAD_BYTES = 25 * 1024 * 1024
 
 from sunlight_house.analysis import (
     analyze_day,
@@ -31,11 +37,19 @@ from sunlight_house.config import (
     window_on_wall,
 )
 from sunlight_house.geometry import Room
+from sunlight_house.ifc_import import IfcImportError, import_ifc_room
 from sunlight_house.insights import summarize_direct_sun
 
 
 def create_app() -> Flask:
     app = Flask(__name__)
+    app.config["MAX_CONTENT_LENGTH"] = _MAX_IFC_UPLOAD_BYTES
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def request_entity_too_large(_error):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "Request is too large. IFC uploads are limited to 25 MB."}), 413
+        return "Request is too large.", 413
 
     @app.get("/")
     def index() -> str:
@@ -127,6 +141,31 @@ def create_app() -> Flask:
         )
         return jsonify(payload)
 
+    @app.post("/api/import-ifc")
+    def api_import_ifc():
+        upload = request.files.get("ifc_file")
+        if upload is None or not upload.filename:
+            return jsonify({"error": "Upload an IFC file using the 'ifc_file' field."}), 400
+        if not upload.filename.lower().endswith(".ifc"):
+            return jsonify({"error": "IFC upload must use a .ifc file."}), 400
+
+        content_length = request.content_length
+        if content_length is not None and content_length > _MAX_IFC_UPLOAD_BYTES:
+            return jsonify({"error": "IFC upload is too large. Maximum size is 25 MB."}), 413
+
+        with tempfile.NamedTemporaryFile(suffix=".ifc", delete=True) as temp_file:
+            try:
+                _save_upload_with_limit(upload, temp_file, _MAX_IFC_UPLOAD_BYTES)
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 413
+            temp_file.flush()
+            try:
+                payload = import_ifc_room(temp_file.name, max_windows=_MAX_WINDOWS)
+            except IfcImportError as exc:
+                return jsonify({"error": str(exc)}), 422
+
+        return jsonify(payload)
+
     @app.get("/healthz")
     def healthz() -> tuple[str, int]:
         return "ok", 200
@@ -134,12 +173,25 @@ def create_app() -> Flask:
     return app
 
 
+def _save_upload_with_limit(upload, destination, max_bytes: int) -> None:
+    """Copy an uploaded file while enforcing a limit independent of headers."""
+    total = 0
+    while True:
+        chunk = upload.stream.read(1024 * 1024)
+        if not chunk:
+            return
+        total += len(chunk)
+        if total > max_bytes:
+            raise ValueError(f"IFC upload is too large. Maximum size is {max_bytes // (1024 * 1024)} MB.")
+        destination.write(chunk)
+
+
 def default_form_values() -> dict[str, str]:
     scenario = default_melbourne_scenario()
     room = scenario.room
     window = scenario.windows[0]
     preset = default_location_preset()
-    demo_date = "2025-01-15"
+    demo_date = f"{scenario.year}-01-15"
     demo_time = "10:00"
     return {
         "location_preset": preset,
@@ -165,25 +217,22 @@ def default_form_values() -> dict[str, str]:
 
 
 def default_demo_windows_json() -> str:
+    scenario = default_melbourne_scenario()
+
+    def payload_for_window(window) -> dict[str, object]:
+        wall = wall_name_for_window(window)
+        span_center = window.center[0] if wall in {"north", "south"} else window.center[1]
+        return {
+            "name": window.name,
+            "wall": wall,
+            "span_center": float(span_center),
+            "sill_height": float(window.center[2] - window.height / 2.0),
+            "width": float(window.width),
+            "height": float(window.height),
+        }
+
     return json.dumps(
-        [
-            {
-                "name": "main_window",
-                "wall": "north",
-                "span_center": 3.0,
-                "sill_height": 0.1,
-                "width": 1.5,
-                "height": 2.0,
-            },
-            {
-                "name": "side_window",
-                "wall": "east",
-                "span_center": 2.8,
-                "sill_height": 0.1,
-                "width": 1.5,
-                "height": 2.0,
-            },
-        ],
+        [payload_for_window(window) for window in scenario.windows],
         indent=2,
     )
 
@@ -192,6 +241,8 @@ def parse_windows_json(raw_value: str, room: Room) -> tuple:
     raw_text = raw_value.strip()
     if not raw_text:
         return ()
+    if len(raw_text.encode("utf-8")) > _MAX_WINDOWS_JSON_BYTES:
+        raise ValueError("Multi-window JSON is too large.")
     try:
         payload = json.loads(raw_text)
     except json.JSONDecodeError as exc:
@@ -203,6 +254,7 @@ def parse_windows_json(raw_value: str, room: Room) -> tuple:
         raise ValueError(f"Too many windows: maximum is {_MAX_WINDOWS}.")
 
     windows = []
+    names: set[str] = set()
     for index, item in enumerate(payload, start=1):
         if not isinstance(item, dict):
             raise ValueError(f"Window {index} must be an object.")
@@ -210,6 +262,11 @@ def parse_windows_json(raw_value: str, room: Room) -> tuple:
         if not wall:
             raise ValueError(f"Window {index} must include a wall.")
         name = str(item.get("name", f"window_{index}")).strip() or f"window_{index}"
+        if len(name) > _MAX_WINDOW_NAME_LEN:
+            raise ValueError(f"Window {index} name must be at most {_MAX_WINDOW_NAME_LEN} characters.")
+        if name in names:
+            raise ValueError(f"Window names must be unique; '{name}' is repeated.")
+        names.add(name)
         span_center = parse_float(str(item.get("span_center", "")), f"Window {index} span center")
         sill_height = parse_float(str(item.get("sill_height", "")), f"Window {index} sill height")
         width = parse_bounded_float(str(item.get("width", "")), f"Window {index} width", 0.0, _MAX_ROOM_DIM, exclusive_min=True)
@@ -297,9 +354,12 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
 
 def parse_float(raw_value: str, label: str) -> float:
     try:
-        return float(raw_value)
-    except ValueError as exc:
+        value = float(raw_value)
+    except (TypeError, ValueError) as exc:
         raise ValueError(f"{label} must be a number.") from exc
+    if not math.isfinite(value):
+        raise ValueError(f"{label} must be a finite number.")
+    return value
 
 
 def parse_bounded_float(
@@ -529,16 +589,35 @@ def build_safe_form_values(form_values: dict[str, str], defaults: dict[str, str]
 
 
 def safe_windows_json_string(raw_value: object, default_value: str, room: Room) -> str:
-    if not isinstance(raw_value, str):
-        return default_value
-    candidate = raw_value.strip()
-    if not candidate:
-        return default_value
-    try:
-        parse_windows_json(candidate, room)
-    except ValueError:
-        return default_value
-    return candidate
+    candidate_value = raw_value.strip() if isinstance(raw_value, str) else ""
+    candidates = [candidate_value, default_value.strip()]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            parse_windows_json(candidate, room)
+        except ValueError:
+            continue
+        return candidate
+
+    return json.dumps(fallback_windows_for_room(room), indent=2)
+
+
+def fallback_windows_for_room(room: Room) -> list[dict[str, object]]:
+    """Return a valid starter window for any positive room dimensions."""
+    width = room.width * 0.5
+    height = room.height * 0.6
+    sill_height = room.height * 0.1
+    return [
+        {
+            "name": "main_window",
+            "wall": "north",
+            "span_center": room.width * 0.5,
+            "sill_height": sill_height,
+            "width": width,
+            "height": height,
+        }
+    ]
 
 
 def has_window_override(form_values: dict[str, str]) -> bool:
@@ -561,10 +640,12 @@ def seasonal_preset_urls(base_values: dict[str, str], year: int) -> dict[str, st
 
 def safe_float_string(raw_value: str, default_value: str) -> str:
     try:
-        return str(float(raw_value))
+        value = float(raw_value)
     except (TypeError, ValueError):
         return default_value
-
+    if not math.isfinite(value):
+        return default_value
+    return str(value)
 
 def safe_bounded_float_string(
     raw_value: str,
@@ -578,6 +659,8 @@ def safe_bounded_float_string(
         value = float(raw_value)
     except (TypeError, ValueError):
         return default_value
+    if not math.isfinite(value):
+        return default_value
     below = value <= min_val if exclusive_min else value < min_val
     if below or value > max_val:
         return default_value
@@ -586,10 +669,13 @@ def safe_bounded_float_string(
 
 def safe_bounded_int_string(raw_value: str, default_value: str, min_val: int, max_val: int) -> str:
     try:
-        value = int(float(raw_value))
+        value = float(raw_value)
     except (TypeError, ValueError):
         return default_value
-    return str(value) if min_val <= value <= max_val else default_value
+    if not math.isfinite(value) or not value.is_integer():
+        return default_value
+    int_value = int(value)
+    return str(int_value) if min_val <= int_value <= max_val else default_value
 
 
 def safe_date_string(raw_value: str, default_value: str) -> str:
@@ -645,4 +731,8 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=True)
+    app.run(
+        host=os.environ.get("HOST", "127.0.0.1"),
+        port=int(os.environ.get("PORT", "5000")),
+        debug=os.environ.get("FLASK_DEBUG", "0") == "1",
+    )

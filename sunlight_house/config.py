@@ -56,7 +56,7 @@ class SimulationConfig:
     location: Location
     room: Room
     windows: tuple[Window, ...]
-    year: int = 2026
+    year: int = 2025
     day_step_minutes: int = 10
     year_step_hours: int = 1
     window_facing_label: str = "N"
@@ -163,11 +163,21 @@ def default_melbourne_scenario() -> SimulationConfig:
             width=1.5,
             height=2.0,
         ),
+        window_on_wall(
+            name="side_window",
+            room=room,
+            wall="east",
+            span_center=2.8,
+            center_height=1.1,
+            width=1.5,
+            height=2.0,
+        ),
     )
 
     return SimulationConfig(
         location=location_from_preset(default_location_preset()),
         room=room,
         windows=windows,
+        year=2025,
         window_facing_label="NE",
     )
