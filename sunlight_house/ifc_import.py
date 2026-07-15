@@ -53,7 +53,6 @@ def import_ifc_room(path: str | Path, *, max_windows: int = 10) -> dict[str, Any
     try:
         import ifcopenshell
         import ifcopenshell.geom
-        from ifcopenshell.util.unit import calculate_unit_scale
     except ImportError as exc:
         raise IfcImportError("IFC import requires the optional 'ifcopenshell' package.") from exc
 
@@ -61,7 +60,6 @@ def import_ifc_room(path: str | Path, *, max_windows: int = 10) -> dict[str, Any
         model = ifcopenshell.open(str(path))
         settings = ifcopenshell.geom.settings()
         settings.set(settings.USE_WORLD_COORDS, True)
-        unit_scale = float(calculate_unit_scale(model))
     except Exception as exc:
         raise IfcImportError("The uploaded file could not be opened as IFC.") from exc
 
@@ -77,7 +75,7 @@ def import_ifc_room(path: str | Path, *, max_windows: int = 10) -> dict[str, Any
             f"The IFC file contains too many windows to inspect (maximum {_MAX_WINDOWS_TO_INSPECT})."
         )
 
-    spaces = _elements_with_boxes(space_elements, settings, unit_scale)
+    spaces = _elements_with_boxes(space_elements, settings)
     if not spaces:
         raise IfcImportError("No IfcSpace geometry was found in this IFC file.")
 
@@ -86,10 +84,12 @@ def import_ifc_room(path: str | Path, *, max_windows: int = 10) -> dict[str, Any
         raise IfcImportError("The selected IfcSpace has invalid geometry.")
 
     windows = []
+    used_window_names: set[str] = set()
     diagnostics: list[str] = []
-    for element, box in _elements_with_boxes(window_elements, settings, unit_scale):
+    for element, box in _elements_with_boxes(window_elements, settings):
         mapped = _map_window_to_room(element, box, space_box)
         if mapped is not None:
+            mapped["name"] = _unique_window_name(element, used_window_names)
             windows.append(mapped)
         elif _near_space(box, space_box):
             diagnostics.append(f"Skipped window '{_element_name(element)}' because it does not sit on a main room wall.")
@@ -120,13 +120,11 @@ def import_ifc_room(path: str | Path, *, max_windows: int = 10) -> dict[str, Any
     }
 
 
-def _elements_with_boxes(
-    elements: list[Any], settings: Any, unit_scale: float = 1.0
-) -> list[tuple[Any, BoundingBox]]:
+def _elements_with_boxes(elements: list[Any], settings: Any) -> list[tuple[Any, BoundingBox]]:
     boxes = []
     for element in elements:
         try:
-            box = _element_box(element, settings, unit_scale)
+            box = _element_box(element, settings)
         except Exception:
             continue
         if box is not None:
@@ -134,11 +132,13 @@ def _elements_with_boxes(
     return boxes
 
 
-def _element_box(element: Any, settings: Any, unit_scale: float = 1.0) -> BoundingBox | None:
+def _element_box(element: Any, settings: Any) -> BoundingBox | None:
     import ifcopenshell.geom
 
     shape = ifcopenshell.geom.create_shape(settings, element)
-    verts = tuple(float(value) * unit_scale for value in shape.geometry.verts)
+    # IfcOpenShell returns geometry in metres by default, including for IFC
+    # projects authored in millimetres. Do not apply project unit scaling here.
+    verts = tuple(float(value) for value in shape.geometry.verts)
     if len(verts) < 3:
         return None
     xs = verts[0::3]
@@ -204,6 +204,21 @@ def _near_space(box: BoundingBox, room: BoundingBox) -> bool:
 
 def _element_name(element: Any) -> str:
     return str(getattr(element, "Name", "") or getattr(element, "GlobalId", "") or "IFC element")
+
+
+def _unique_window_name(element: Any, used_names: set[str]) -> str:
+    """Keep imported window names stable and unique for the JSON model contract."""
+    base_name = (_element_name(element).strip() or "IFC window")[:120]
+    global_id = str(getattr(element, "GlobalId", "") or "").strip()
+    candidate = base_name
+    suffix = global_id or "window"
+    counter = 2
+    while candidate in used_names:
+        marker = f" ({suffix})" if counter == 2 else f" ({suffix}-{counter})"
+        candidate = f"{base_name[: max(1, 120 - len(marker))]}{marker}"
+        counter += 1
+    used_names.add(candidate)
+    return candidate
 
 
 def _round_m(value: float) -> float:

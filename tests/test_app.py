@@ -2,6 +2,7 @@ import unittest
 import json
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app import (
@@ -14,7 +15,7 @@ from app import (
     parse_positive_int,
     _MAX_WINDOWS,
 )
-from sunlight_house.ifc_import import IfcImportError
+from sunlight_house.ifc_import import IfcImportError, _element_box, _unique_window_name
 
 
 class AppTests(unittest.TestCase):
@@ -410,6 +411,47 @@ class InputValidationAPITests(unittest.TestCase):
         response = self.client.get("/api/snapshot", query_string={"windows_json": windows_json})
         self.assertEqual(response.status_code, 400)
         self.assertIn("height", response.get_json()["error"])
+
+
+class IfcImportUnitTests(unittest.TestCase):
+    def test_element_box_preserves_ifcopenshell_metre_output(self) -> None:
+        shape = SimpleNamespace(
+            geometry=SimpleNamespace(
+                verts=(
+                    0.0, 0.0, 0.0,
+                    4.0, 0.0, 0.0,
+                    4.0, 5.0, 3.0,
+                )
+            )
+        )
+
+        with patch("ifcopenshell.geom.create_shape", return_value=shape):
+            box = _element_box(SimpleNamespace(), SimpleNamespace())
+
+        self.assertIsNotNone(box)
+        self.assertEqual(box.width, 4.0)
+        self.assertEqual(box.depth, 5.0)
+        self.assertEqual(box.height, 3.0)
+
+    def test_unique_window_name_adds_global_id_suffix_for_duplicates(self) -> None:
+        used_names: set[str] = set()
+        first = SimpleNamespace(Name="Window", GlobalId="first-guid")
+        second = SimpleNamespace(Name="Window", GlobalId="second-guid")
+
+        first_name = _unique_window_name(first, used_names)
+        second_name = _unique_window_name(second, used_names)
+
+        self.assertEqual(first_name, "Window")
+        self.assertEqual(second_name, "Window (second-guid)")
+        self.assertEqual(len(used_names), 2)
+
+    def test_unique_window_name_respects_model_name_limit(self) -> None:
+        used_names: set[str] = set()
+        element = SimpleNamespace(Name="W" * 200, GlobalId="long-guid")
+
+        name = _unique_window_name(element, used_names)
+
+        self.assertLessEqual(len(name), 120)
 
 
 if __name__ == "__main__":
