@@ -93,6 +93,7 @@ The app currently includes:
 - a `Now` button for the selected timezone
 - a `Current Moment` room snapshot
 - a lazy-loaded `3D room` view with real window openings, named window selection, compass/front indicators, camera-aware walls, orbit, zoom, pan, and camera reset
+- cached 3D day playback with a time scrubber plus morning, solar-noon, and evening presets
 - a `Direct Sun Hours Today` floor map with legend, stats, and in-chart tooltip
 - a `Yearly / Seasonal` floor map with `Year`, `Winter`, `Spring`, `Summer`, and `Fall`
 - an advanced IFC room/window import workflow

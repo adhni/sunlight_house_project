@@ -1111,6 +1111,56 @@ input[type="range"] {
   justify-content: flex-end;
 }
 
+.room3d-animation-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 16px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 253, 248, 0.7);
+}
+
+.room3d-animation-primary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.room3d-animation-primary .chip-button {
+  white-space: nowrap;
+}
+
+.room3d-time-readout {
+  min-width: 4.6rem;
+  color: var(--ink);
+  font-size: 1.08rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.room3d-animation-status {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
+.room3d-time-slider {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.room3d-time-presets {
+  grid-column: 2;
+  grid-row: 1;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
 .room3d-container {
   position: relative;
   min-height: 500px;
@@ -1469,6 +1519,25 @@ input[type="range"] {
 
   .room3d-actions {
     justify-content: flex-start;
+  }
+
+  .room3d-animation-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .room3d-animation-primary {
+    flex-wrap: wrap;
+  }
+
+  .room3d-animation-status {
+    grid-row: auto;
+  }
+
+  .room3d-time-presets {
+    grid-column: 1;
+    grid-row: auto;
+    justify-content: flex-start;
+    overflow-x: auto;
   }
 
   .room3d-container,

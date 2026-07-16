@@ -82,6 +82,12 @@
   const room3dStatus = document.getElementById("room3d-status");
   const room3dResetButton = document.getElementById("room3d-reset-camera");
   const room3dWallsButton = document.getElementById("room3d-toggle-walls");
+  const room3dAnimationControls = document.getElementById("room3d-animation-controls");
+  const room3dPlayButton = document.getElementById("room3d-play");
+  const room3dTimeSlider = document.getElementById("room3d-time-slider");
+  const room3dTimeReadout = document.getElementById("room3d-time-readout");
+  const room3dAnimationStatus = document.getElementById("room3d-animation-status");
+  const room3dPresetButtons = document.querySelectorAll("[data-room3d-time-preset]");
 
   const mapElement = document.getElementById("location-map");
   let map = null;
@@ -116,6 +122,13 @@
   let windowRows = [];
   let room3dViewer = null;
   let room3dViewerPromise = null;
+  let dayAnimationPayload = null;
+  let dayAnimationKey = "";
+  let dayAnimationIndex = 0;
+  let dayAnimationController = null;
+  let dayAnimationTimer = null;
+  const dayAnimationCache = new Map();
+  const DAY_ANIMATION_CACHE_MAX = 4;
 
   function isLeapYear(year) {
     return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
@@ -894,6 +907,16 @@
     setText("sun-summary-moment", summary.moment_text);
   }
 
+  function snapshotMomentText(state) {
+    if (state === "floor_hit") {
+      return "At the selected time, the sun reaches the floor.";
+    }
+    if (state === "through_window_no_floor_hit") {
+      return "At the selected time, the sun enters the window but does not reach the floor.";
+    }
+    return "At the selected time, the sun does not enter this window.";
+  }
+
   function updateSummaryMetrics(payload) {
     const grid = payload?.daily?.exposure_grid;
     if (!grid) {
@@ -951,6 +974,7 @@
             resetButton: room3dResetButton,
             wallsButton: room3dWallsButton,
             onWindowSelect: selectWindowFrom3d,
+            onUnavailable: pauseRoom3dAnimation,
           });
           room3dViewer.update(currentPayload);
           room3dViewer.setSelectedWindow(windowRows[activeWindowIndex]?.name);
@@ -973,12 +997,248 @@
 
   async function setRoom3dActive(active) {
     if (!active) {
+      pauseRoom3dAnimation();
       room3dViewer?.setActive(false);
       return;
     }
     const viewer = await ensureRoom3dViewer();
     if (viewer && activeResultTab === "room-3d") {
       viewer.setActive(true);
+      await ensureDayAnimation();
+    }
+  }
+
+  function setDayAnimationStatus(message, state = "idle") {
+    if (room3dAnimationStatus) room3dAnimationStatus.textContent = message;
+    if (room3dAnimationControls) room3dAnimationControls.dataset.state = state;
+  }
+
+  function setDayAnimationEnabled(enabled) {
+    if (room3dPlayButton) room3dPlayButton.disabled = !enabled;
+    if (room3dTimeSlider) room3dTimeSlider.disabled = !enabled;
+    room3dPresetButtons.forEach((button) => {
+      button.disabled = !enabled;
+    });
+  }
+
+  function dayAnimationQuery() {
+    syncWindowsJsonFromEditor();
+    return new URLSearchParams(new FormData(form));
+  }
+
+  function currentDayAnimationKey() {
+    const params = dayAnimationQuery();
+    [
+      "selected_time",
+      "day_step_minutes",
+      "year_step_hours",
+      "window_span_center",
+      "window_sill_height",
+      "window_width",
+      "window_height",
+      "location_name",
+    ].forEach((key) => params.delete(key));
+    return params.toString();
+  }
+
+  function selectedTimeMinutes() {
+    const [hours, minutes] = selectedTimeInput.value.split(":").map(Number);
+    return hours * 60 + minutes;
+  }
+
+  function animationFrameMinutes(frame) {
+    const time = frame.selected_moment.slice(11, 16);
+    const [hours, minutes] = time.split(":").map(Number);
+    return hours * 60 + minutes;
+  }
+
+  function nearestAnimationFrameIndex(payload = dayAnimationPayload) {
+    if (!payload?.frames?.length) return 0;
+    const target = selectedTimeMinutes();
+    return payload.frames.reduce((bestIndex, frame, index) => (
+      Math.abs(animationFrameMinutes(frame) - target)
+        < Math.abs(animationFrameMinutes(payload.frames[bestIndex]) - target)
+        ? index
+        : bestIndex
+    ), 0);
+  }
+
+  function cacheDayAnimation(key, payload) {
+    if (dayAnimationCache.has(key)) dayAnimationCache.delete(key);
+    dayAnimationCache.set(key, payload);
+    while (dayAnimationCache.size > DAY_ANIMATION_CACHE_MAX) {
+      dayAnimationCache.delete(dayAnimationCache.keys().next().value);
+    }
+  }
+
+  function installDayAnimation(payload, key, source) {
+    dayAnimationPayload = payload;
+    dayAnimationKey = key;
+    dayAnimationIndex = nearestAnimationFrameIndex(payload);
+    if (room3dTimeSlider) {
+      room3dTimeSlider.max = String(payload.frames.length - 1);
+      room3dTimeSlider.value = String(dayAnimationIndex);
+    }
+    const frame = payload.frames[dayAnimationIndex];
+    if (room3dTimeReadout && frame) room3dTimeReadout.textContent = frame.selected_moment.slice(11, 16);
+    room3dPresetButtons.forEach((button) => {
+      const preset = payload.presets[button.dataset.room3dTimePreset];
+      if (preset) button.textContent = preset.label;
+    });
+    setDayAnimationEnabled(true);
+    setDayAnimationStatus(
+      `${payload.frames.length} frames ready · ${payload.step_minutes}-minute steps${source === "cache" || payload.cache_hit ? " · cached" : ""}.`,
+      "ready",
+    );
+    if (room3dContainer) {
+      room3dContainer.dataset.animationFrameCount = String(payload.frames.length);
+      room3dContainer.dataset.animationCache = source === "cache" || payload.cache_hit ? "hit" : "miss";
+    }
+  }
+
+  async function ensureDayAnimation() {
+    if (!room3dViewer || !room3dContainer || room3dViewer.destroyed) return null;
+    const key = currentDayAnimationKey();
+    if (dayAnimationPayload && dayAnimationKey === key) {
+      dayAnimationIndex = nearestAnimationFrameIndex();
+      if (room3dTimeSlider) room3dTimeSlider.value = String(dayAnimationIndex);
+      return dayAnimationPayload;
+    }
+    const cached = dayAnimationCache.get(key);
+    if (cached) {
+      installDayAnimation(cached, key, "cache");
+      return cached;
+    }
+
+    dayAnimationController?.abort();
+    dayAnimationController = new AbortController();
+    const requestController = dayAnimationController;
+    setDayAnimationEnabled(false);
+    setDayAnimationStatus("Calculating the day…", "loading");
+    try {
+      const response = await fetch(`/api/day-animation?${dayAnimationQuery().toString()}`, {
+        signal: requestController.signal,
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Day animation request failed.");
+      if (requestController !== dayAnimationController || key !== currentDayAnimationKey()) return null;
+      cacheDayAnimation(key, payload);
+      installDayAnimation(payload, key, "network");
+      return payload;
+    } catch (error) {
+      if (error.name === "AbortError") return null;
+      console.error(error);
+      setDayAnimationStatus("Could not load the day animation.", "error");
+      return null;
+    }
+  }
+
+  function pauseRoom3dAnimation() {
+    if (dayAnimationTimer) {
+      window.clearInterval(dayAnimationTimer);
+      dayAnimationTimer = null;
+    }
+    if (room3dPlayButton) {
+      room3dPlayButton.textContent = "Play day";
+      room3dPlayButton.setAttribute("aria-pressed", "false");
+    }
+    if (room3dContainer) room3dContainer.dataset.animationPlaying = "false";
+  }
+
+  function updateAnimatedMomentDom(payload) {
+    const snapshot = payload.snapshot;
+    setText("sun-summary-moment", snapshotMomentText(snapshot.state));
+    setText("selected-moment-label", formatSelectedMoment(payload));
+    setText("live-elevation", `${snapshot.elevation_deg.toFixed(2)} deg`);
+    setText("live-azimuth", `${snapshot.azimuth_deg.toFixed(2)} deg`);
+    setText("live-entry", snapshot.entered_direct_sun ? "Yes — reaches floor" : "No floor patch");
+    setText("live-strongest", snapshot.strongest_window
+      ? `${snapshot.strongest_window} (${snapshot.strongest_intensity.toFixed(3)})`
+      : "None");
+    setText("live-vector", `(${snapshot.vector.map((value) => value.toFixed(3)).join(", ")})`);
+    setHtml("room-snapshot-svg", createRoomSvg(payload));
+    wireRoomWindowDrag();
+    wireRoomWindowResize();
+    const snapshotStatus = document.getElementById("room-snapshot-status");
+    if (snapshotStatus) {
+      snapshotStatus.textContent = snapshotStateLabel(snapshot.state);
+      snapshotStatus.className = snapshotStateClass(snapshot.state);
+    }
+    setText("snapshot-azimuth-fact", `Azimuth: ${snapshot.azimuth_deg.toFixed(1)}°`);
+    setText("snapshot-elevation-fact", `Elevation: ${snapshot.elevation_deg.toFixed(1)}°`);
+    renderOutdoorConditions();
+    renderBaselineComparison();
+  }
+
+  function applyDayAnimationFrame(index) {
+    if (!dayAnimationPayload?.frames?.length) return;
+    const boundedIndex = clamp(index, 0, dayAnimationPayload.frames.length - 1);
+    const frame = dayAnimationPayload.frames[boundedIndex];
+    dayAnimationIndex = boundedIndex;
+    const localTime = frame.selected_moment.slice(11, 16);
+    selectedDateInput.value = frame.selected_moment.slice(0, 10);
+    selectedTimeInput.value = localTime;
+    timeSlider.value = String(animationFrameMinutes(frame));
+    timeReadout.textContent = localTime;
+    dayReadout.textContent = formatDateReadout(selectedDateInput.value);
+    if (room3dTimeSlider) room3dTimeSlider.value = String(boundedIndex);
+    if (room3dTimeReadout) room3dTimeReadout.textContent = localTime;
+    currentPayload = {
+      ...currentPayload,
+      selected_moment: frame.selected_moment,
+      snapshot: frame.snapshot,
+      summary: {
+        ...currentPayload.summary,
+        moment_text: snapshotMomentText(frame.snapshot.state),
+      },
+    };
+    room3dViewer?.updateSunlightFrame(frame.snapshot, frame.selected_moment);
+    updateAnimatedMomentDom(currentPayload);
+    room3dPresetButtons.forEach((button) => {
+      const preset = dayAnimationPayload.presets[button.dataset.room3dTimePreset];
+      button.classList.toggle("is-active", preset?.index === boundedIndex);
+    });
+    if (room3dContainer) room3dContainer.dataset.animationIndex = String(boundedIndex);
+  }
+
+  async function playRoom3dAnimation() {
+    const payload = await ensureDayAnimation();
+    if (!payload) return;
+    if (dayAnimationTimer) {
+      pauseRoom3dAnimation();
+      return;
+    }
+    if (dayAnimationIndex < payload.playback_start_index || dayAnimationIndex >= payload.playback_end_index) {
+      applyDayAnimationFrame(payload.playback_start_index);
+    }
+    room3dPlayButton.textContent = "Pause";
+    room3dPlayButton.setAttribute("aria-pressed", "true");
+    if (room3dContainer) room3dContainer.dataset.animationPlaying = "true";
+    dayAnimationTimer = window.setInterval(() => {
+      const next = dayAnimationIndex >= payload.playback_end_index
+        ? payload.playback_start_index
+        : dayAnimationIndex + 1;
+      applyDayAnimationFrame(next);
+    }, 120);
+  }
+
+  function syncDayAnimationAfterSnapshot() {
+    const key = currentDayAnimationKey();
+    if (dayAnimationKey && dayAnimationKey !== key) {
+      pauseRoom3dAnimation();
+      dayAnimationController?.abort();
+      dayAnimationPayload = null;
+      dayAnimationKey = "";
+      setDayAnimationEnabled(false);
+      setDayAnimationStatus("Room changed · reload the day to continue.", "idle");
+      if (activeResultTab === "room-3d") ensureDayAnimation();
+      return;
+    }
+    if (dayAnimationPayload) {
+      dayAnimationIndex = nearestAnimationFrameIndex();
+      if (room3dTimeSlider) room3dTimeSlider.value = String(dayAnimationIndex);
+      const frame = dayAnimationPayload.frames[dayAnimationIndex];
+      if (room3dTimeReadout && frame) room3dTimeReadout.textContent = frame.selected_moment.slice(11, 16);
     }
   }
 
@@ -1702,6 +1962,7 @@
       setUpdateStatus("Finish the current field to update.", "draft");
       return;
     }
+    pauseRoom3dAnimation();
     syncWindowsJsonFromEditor();
     setUpdateStatus(message, "pending");
     debouncedRefresh();
@@ -2222,6 +2483,7 @@
       "daily-exposure-caption",
       `${Math.round(payload.daily.exposure_grid.sunlit_fraction * 100)}% of the room gets some direct sun today. Darker cells mean more direct sun exposure time. Peak floor cell exposure: ${payload.daily.exposure_grid.peak_hours.toFixed(1)} h.`
     );
+    syncDayAnimationAfterSnapshot();
     renderBaselineComparison();
   }
 
@@ -2536,6 +2798,26 @@
     });
   });
 
+  if (room3dPlayButton) {
+    room3dPlayButton.addEventListener("click", playRoom3dAnimation);
+  }
+
+  if (room3dTimeSlider) {
+    room3dTimeSlider.addEventListener("input", () => {
+      pauseRoom3dAnimation();
+      applyDayAnimationFrame(parseInt(room3dTimeSlider.value, 10));
+    });
+  }
+
+  room3dPresetButtons.forEach((button) => {
+    button.addEventListener("click", async () => {
+      pauseRoom3dAnimation();
+      const payload = await ensureDayAnimation();
+      const preset = payload?.presets?.[button.dataset.room3dTimePreset];
+      if (preset) applyDayAnimationFrame(preset.index);
+    });
+  });
+
   wireExposureInteractions("daily-exposure-svg", dailyExposureTooltip);
   wireExposureInteractions("long-range-exposure-svg", longRangeExposureTooltip);
 
@@ -2681,6 +2963,7 @@
 
   windowGeometryInputs.forEach((input) => {
     input.addEventListener("input", () => {
+      pauseRoom3dAnimation();
       persistActiveWindowEditor();
       setUpdateStatus(
         windowsAreComplete() ? "Finish the current field to update." : "Complete the selected window to update the preview.",
@@ -2752,5 +3035,12 @@
   updateSnapshotDom(initialData);
   updateTimeScrubberReference(timezoneInput.value);
   setUpdateStatus(defaultUpdateMessage, "idle");
-  window.addEventListener("beforeunload", () => room3dViewer?.destroy(), { once: true });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") pauseRoom3dAnimation();
+  });
+  window.addEventListener("beforeunload", () => {
+    pauseRoom3dAnimation();
+    dayAnimationController?.abort();
+    room3dViewer?.destroy();
+  }, { once: true });
 })();
