@@ -20,6 +20,7 @@ The current app is designed around editable wall windows on a rectangular room. 
 - renders a top-down room snapshot for a selected moment
 - estimates daily direct-sun-hours exposure across the floor
 - estimates yearly and seasonal floor exposure using representative-day sampling
+- imports one rectangular room and nearby windows from an IFC file
 - exposes the model through a Flask web UI suitable for local use or Render deployment
 
 ## Current Defaults
@@ -35,7 +36,10 @@ Default room and window values:
 - Window 1: front wall, centre from left `3.0 m`, sill `0.1 m`, width `1.5 m`, height `2.0 m`
 - Window 2: right wall, centre from left `2.8 m`, sill `0.1 m`, width `1.5 m`, height `2.0 m`
 
-The main result tab opens on `Current Moment`.
+The primary workflow is intentionally simple: choose a location, set the room and
+window geometry, then compare the current moment, today's direct-sun map, and the
+estimated yearly view. IFC import, custom maps, outdoor reference data, and baseline
+comparison are advanced tools.
 
 ## Coordinate System
 
@@ -89,6 +93,7 @@ The app currently includes:
 - a `Current Moment` room snapshot
 - a `Direct Sun Hours Today` floor map with legend, stats, and in-chart tooltip
 - a `Yearly / Seasonal` floor map with `Year`, `Winter`, `Spring`, `Summer`, and `Fall`
+- an advanced IFC room/window import workflow
 - a frontend-only baseline compare tool using `localStorage`
 
 ## Long-Range Exposure Logic
@@ -98,7 +103,7 @@ Daily exposure uses the selected day with the configured day step.
 Yearly and seasonal exposure are estimated rather than fully simulated. The current long-range method:
 
 - chooses `8` representative days per month
-- samples each representative day hourly
+- samples each representative day at the configured yearly step (1–12 hours; larger values can skip daylight)
 - keeps only daylight hours where solar elevation is above the horizon
 - weights each representative day by how many calendar days it stands in for
 - renders long-range results on a coarser floor grid than the daily map
@@ -153,6 +158,8 @@ sunlight_house_project/
     ├── analysis.py
     ├── config.py
     ├── geometry.py
+    ├── ifc_import.py
+    ├── insights.py
     ├── plotting.py
     └── solar.py
 ```
@@ -187,5 +194,9 @@ Render uses:
 
 - The geometry model is intentionally simple and axis-aligned.
 - The web app exposes compact controls for multiple axis-aligned wall windows.
+- IFC import uses bounding boxes and assumes the imported room is rectangular and
+  axis-aligned. Verify the imported room bearing and windows before relying on the result.
 - The model does not include blinds, overhangs, furniture, diffuse sky light, reflections, or external obstructions.
 - Floor patches are generated from projected window corners and clipped into room bounds, so edge behavior is still a simplification.
+- Outdoor conditions are historical 2025 reference data for Melbourne, Jakarta, and Boston;
+  they are contextual samples rather than a live forecast.

@@ -1,6 +1,9 @@
 import unittest
 import json
+from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from app import (
     app,
@@ -8,9 +11,11 @@ from app import (
     build_safe_form_values,
     default_form_values,
     parse_bounded_float,
+    parse_float,
     parse_positive_int,
     _MAX_WINDOWS,
 )
+from sunlight_house.ifc_import import IfcImportError, _element_box, _unique_window_name
 
 
 class AppTests(unittest.TestCase):
@@ -81,8 +86,16 @@ class AppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         page = response.get_data(as_text=True)
         self.assertIn("Outdoor conditions", page)
-        self.assertIn("Outdoor Year", page)
+        self.assertIn("Outdoor context", page)
         self.assertIn("environmentData.js", page)
+
+    def test_index_handles_room_dimensions_that_do_not_fit_default_windows(self) -> None:
+        for field in ("room_width", "room_depth", "room_height"):
+            with self.subTest(field=field):
+                response = self.client.get("/", query_string={field: "1"})
+
+                self.assertEqual(response.status_code, 200)
+                self.assertIn('name="' + field + '" value="1"', response.get_data(as_text=True))
 
     def test_static_environment_data_files_have_expected_shape(self) -> None:
         for location_key in ("melbourne", "jakarta", "boston"):
@@ -137,6 +150,82 @@ class AppTests(unittest.TestCase):
 
         self.assertEqual(values["windows_json"], defaults["windows_json"])
 
+    def test_import_ifc_rejects_missing_file(self) -> None:
+        response = self.client.post("/api/import-ifc")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("IFC", response.get_json()["error"])
+
+    def test_import_ifc_rejects_non_ifc_extension(self) -> None:
+        response = self.client.post(
+            "/api/import-ifc",
+            data={"ifc_file": (BytesIO(b"not ifc"), "room.txt")},
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(".ifc", response.get_json()["error"])
+
+    def test_import_ifc_returns_converted_payload(self) -> None:
+        imported = {
+            "source": "ifc",
+            "space": {"name": "Living Room", "global_id": "abc"},
+            "room": {"width": 4.0, "depth": 5.0, "height": 3.0},
+            "window_facing": "N",
+            "windows": [
+                {"name": "Window A", "wall": "north", "span_center": 2.0, "sill_height": 0.8, "width": 1.2, "height": 1.4}
+            ],
+            "diagnostics": [],
+        }
+
+        with patch("app.import_ifc_room", return_value=imported):
+            response = self.client.post(
+                "/api/import-ifc",
+                data={"ifc_file": (BytesIO(b"ISO-10303-21;"), "room.ifc")},
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["source"], "ifc")
+        self.assertEqual(payload["room"]["width"], 4.0)
+        self.assertEqual(payload["windows"][0]["wall"], "north")
+
+    def test_import_ifc_reports_converter_error(self) -> None:
+        with patch("app.import_ifc_room", side_effect=IfcImportError("No IfcSpace geometry was found in this IFC file.")):
+            response = self.client.post(
+                "/api/import-ifc",
+                data={"ifc_file": (BytesIO(b"ISO-10303-21;"), "empty.ifc")},
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("IfcSpace", response.get_json()["error"])
+
+    def test_import_ifc_sample_file(self) -> None:
+        with Path("docs/sample-simple-room.ifc").open("rb") as handle:
+            response = self.client.post(
+                "/api/import-ifc",
+                data={"ifc_file": (handle, "sample-simple-room.ifc")},
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["room"], {"width": 4.0, "depth": 5.0, "height": 3.0})
+        self.assertEqual(len(payload["windows"]), 2)
+        self.assertTrue(payload["diagnostics"])
+
+    def test_import_ifc_rejects_oversized_upload(self) -> None:
+        with patch("app._MAX_IFC_UPLOAD_BYTES", 1):
+            response = self.client.post(
+                "/api/import-ifc",
+                data={"ifc_file": (BytesIO(b"ISO-10303-21;"), "room.ifc")},
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 413)
+
 
 class InputValidationUnitTests(unittest.TestCase):
     """Tests for the new parse_bounded_float / parse_positive_int helpers."""
@@ -163,6 +252,11 @@ class InputValidationUnitTests(unittest.TestCase):
     def test_bounded_float_rejects_non_numeric(self) -> None:
         with self.assertRaises(ValueError):
             parse_bounded_float("abc", "Latitude", -90.0, 90.0)
+
+    def test_float_rejects_non_finite_values(self) -> None:
+        for raw_value in ("nan", "inf", "-inf"):
+            with self.subTest(raw_value=raw_value), self.assertRaises(ValueError):
+                parse_float(raw_value, "Latitude")
 
     def test_positive_int_accepts_valid(self) -> None:
         self.assertEqual(parse_positive_int("10", "Step", max_val=60), 10)
@@ -206,6 +300,27 @@ class InputValidationAPITests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("Longitude", response.get_json()["error"])
 
+    def test_snapshot_rejects_non_finite_custom_coordinates(self) -> None:
+        response = self.client.get(
+            "/api/snapshot",
+            query_string={"location_preset": "custom", "latitude": "nan", "longitude": "0"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("finite", response.get_json()["error"])
+
+    def test_snapshot_rejects_duplicate_window_names(self) -> None:
+        windows_json = json.dumps(
+            [
+                {"name": "same", "wall": "north", "span_center": 1.0, "sill_height": 0.5, "width": 0.5, "height": 0.5},
+                {"name": "same", "wall": "east", "span_center": 1.0, "sill_height": 0.5, "width": 0.5, "height": 0.5},
+            ]
+        )
+        response = self.client.get("/api/snapshot", query_string={"windows_json": windows_json})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("unique", response.get_json()["error"])
+
     def test_snapshot_rejects_too_many_windows(self) -> None:
         too_many = json.dumps(
             [
@@ -229,6 +344,11 @@ class InputValidationAPITests(unittest.TestCase):
 
     def test_snapshot_rejects_year_step_too_large(self) -> None:
         response = self.client.get("/api/snapshot", query_string={"year_step_hours": "9999"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Yearly step", response.get_json()["error"])
+
+    def test_snapshot_rejects_year_step_that_can_skip_daylight(self) -> None:
+        response = self.client.get("/api/snapshot", query_string={"year_step_hours": "13"})
         self.assertEqual(response.status_code, 400)
         self.assertIn("Yearly step", response.get_json()["error"])
 
@@ -296,6 +416,47 @@ class InputValidationAPITests(unittest.TestCase):
         response = self.client.get("/api/snapshot", query_string={"windows_json": windows_json})
         self.assertEqual(response.status_code, 400)
         self.assertIn("height", response.get_json()["error"])
+
+
+class IfcImportUnitTests(unittest.TestCase):
+    def test_element_box_preserves_ifcopenshell_metre_output(self) -> None:
+        shape = SimpleNamespace(
+            geometry=SimpleNamespace(
+                verts=(
+                    0.0, 0.0, 0.0,
+                    4.0, 0.0, 0.0,
+                    4.0, 5.0, 3.0,
+                )
+            )
+        )
+
+        with patch("ifcopenshell.geom.create_shape", return_value=shape):
+            box = _element_box(SimpleNamespace(), SimpleNamespace())
+
+        self.assertIsNotNone(box)
+        self.assertEqual(box.width, 4.0)
+        self.assertEqual(box.depth, 5.0)
+        self.assertEqual(box.height, 3.0)
+
+    def test_unique_window_name_adds_global_id_suffix_for_duplicates(self) -> None:
+        used_names: set[str] = set()
+        first = SimpleNamespace(Name="Window", GlobalId="first-guid")
+        second = SimpleNamespace(Name="Window", GlobalId="second-guid")
+
+        first_name = _unique_window_name(first, used_names)
+        second_name = _unique_window_name(second, used_names)
+
+        self.assertEqual(first_name, "Window")
+        self.assertEqual(second_name, "Window (second-guid)")
+        self.assertEqual(len(used_names), 2)
+
+    def test_unique_window_name_respects_model_name_limit(self) -> None:
+        used_names: set[str] = set()
+        element = SimpleNamespace(Name="W" * 200, GlobalId="long-guid")
+
+        name = _unique_window_name(element, used_names)
+
+        self.assertLessEqual(len(name), 120)
 
 
 if __name__ == "__main__":

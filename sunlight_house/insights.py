@@ -37,7 +37,7 @@ def summarize_direct_sun(
     ]
 
     if peak_time is not None and entered_direct_sun:
-        supporting_bits.append(f"and the strongest floor patch appears around {peak_time.strftime('%H:%M %Z')}")
+        supporting_bits.append(f"and the strongest window incidence appears around {peak_time.strftime('%H:%M %Z')}")
 
     supporting_text = ", ".join(supporting_bits) + "."
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, datetime, time
+from threading import Lock
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -344,15 +345,17 @@ def daylight_positions_for_day(
 
 _long_range_cache: dict[tuple, dict[str, dict[str, object]]] = {}
 _LONG_RANGE_CACHE_MAX = 100
+_long_range_cache_lock = Lock()
 
 
 def long_range_exposure_grids(config: SimulationConfig) -> dict[str, dict[str, object]]:
     key = _long_range_cache_key(config)
-    if key not in _long_range_cache:
-        if len(_long_range_cache) >= _LONG_RANGE_CACHE_MAX:
-            _long_range_cache.pop(next(iter(_long_range_cache)))
-        _long_range_cache[key] = _compute_long_range_exposure_grids(config)
-    return _long_range_cache[key]
+    with _long_range_cache_lock:
+        if key not in _long_range_cache:
+            if len(_long_range_cache) >= _LONG_RANGE_CACHE_MAX:
+                _long_range_cache.pop(next(iter(_long_range_cache)))
+            _long_range_cache[key] = _compute_long_range_exposure_grids(config)
+        return _long_range_cache[key]
 
 
 def _long_range_cache_key(config: SimulationConfig) -> tuple:
@@ -382,6 +385,7 @@ def _long_range_cache_key(config: SimulationConfig) -> tuple:
 
 def _compute_long_range_exposure_grids(config: SimulationConfig) -> dict[str, dict[str, object]]:
     samples_per_month = 8
+    sample_step_hours = config.year_step_hours
     representative_days: list[tuple[date, int]] = []
     for month in range(1, 13):
         representative_days.extend(
@@ -416,8 +420,12 @@ def _compute_long_range_exposure_grids(config: SimulationConfig) -> dict[str, di
     }
 
     for sample_date, weight_days in representative_days:
-        daylight_positions = daylight_positions_for_day(config, sample_date, step_minutes=60)
-        weighted_hours_per_sample = float(weight_days)
+        daylight_positions = daylight_positions_for_day(
+            config,
+            sample_date,
+            step_minutes=sample_step_hours * 60,
+        )
+        weighted_hours_per_sample = float(weight_days * sample_step_hours)
         for _dt, patches in patches_for_positions(config, daylight_positions):
             weighted_samples_by_period["year"].append((patches, weighted_hours_per_sample))
             if sample_date.month in winter_months:
@@ -432,23 +440,23 @@ def _compute_long_range_exposure_grids(config: SimulationConfig) -> dict[str, di
     period_definitions = {
         "year": (
             "Year",
-            f"Estimated direct sun hours across the full year using {samples_per_month} representative days per month and hourly daylight samples",
+            f"Estimated direct sun hours across the full year using {samples_per_month} representative days per month and {sample_step_hours}-hour daylight samples",
         ),
         "winter": (
             f"Winter ({winter_label})",
-            f"Estimated direct sun hours across winter ({winter_label}) using {samples_per_month} representative days per month and hourly daylight samples",
+            f"Estimated direct sun hours across winter ({winter_label}) using {samples_per_month} representative days per month and {sample_step_hours}-hour daylight samples",
         ),
         "summer": (
             f"Summer ({summer_label})",
-            f"Estimated direct sun hours across summer ({summer_label}) using {samples_per_month} representative days per month and hourly daylight samples",
+            f"Estimated direct sun hours across summer ({summer_label}) using {samples_per_month} representative days per month and {sample_step_hours}-hour daylight samples",
         ),
         "fall": (
             f"Fall ({fall_label})",
-            f"Estimated direct sun hours across fall ({fall_label}) using {samples_per_month} representative days per month and hourly daylight samples",
+            f"Estimated direct sun hours across fall ({fall_label}) using {samples_per_month} representative days per month and {sample_step_hours}-hour daylight samples",
         ),
         "spring": (
             f"Spring ({spring_label})",
-            f"Estimated direct sun hours across spring ({spring_label}) using {samples_per_month} representative days per month and hourly daylight samples",
+            f"Estimated direct sun hours across spring ({spring_label}) using {samples_per_month} representative days per month and {sample_step_hours}-hour daylight samples",
         ),
     }
 

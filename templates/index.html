@@ -19,7 +19,7 @@
           <p class="eyebrow">Solar Position + Room Geometry</p>
           <h1>Sunlight House Lab</h1>
           <p class="hero-copy">
-            Change the room and time on the right, then watch where direct sunlight lands in the room.
+            Explore how much direct sunlight reaches a room, when it arrives, and where it lands on the floor.
           </p>
         </div>
       </header>
@@ -58,13 +58,13 @@
 
             <div class="result-toolbar">
               <div class="chip-row result-tab-row">
-                <button type="button" class="chip-button is-active" data-result-tab="current">Current Moment</button>
-                <button type="button" class="chip-button" data-result-tab="sunlight-map">Direct Sun Hours Today</button>
-                <button type="button" class="chip-button" data-result-tab="long-range">Yearly / Seasonal</button>
-                <button type="button" class="chip-button" data-result-tab="outdoor-year">Outdoor Year</button>
+                <button type="button" class="chip-button is-active" data-result-tab="current">Now</button>
+                <button type="button" class="chip-button" data-result-tab="sunlight-map">Today</button>
+                <button type="button" class="chip-button" data-result-tab="long-range">Year estimate</button>
+                <button type="button" class="chip-button" data-result-tab="outdoor-year">Outdoor context</button>
               </div>
               <div class="result-status-row">
-                <span id="update-status" class="update-status" data-state="idle">Preview is up to date.</span>
+                <span id="update-status" class="update-status" data-state="idle" aria-live="polite">Preview is up to date.</span>
               </div>
             </div>
 
@@ -129,7 +129,7 @@
               </div>
 
               <div class="snapshot-facts">
-                <span id="snapshot-window-fact">Window facing: {{ form_values.window_facing }}</span>
+                <span id="snapshot-window-fact">Room front wall: {{ form_values.window_facing }}</span>
                 <span id="snapshot-azimuth-fact">Azimuth: {{ "%.1f"|format(snapshot.position.azimuth_deg) }}°</span>
                 <span id="snapshot-elevation-fact">Elevation: {{ "%.1f"|format(snapshot.position.elevation_deg) }}°</span>
               </div>
@@ -146,7 +146,7 @@
               </div>
               <div class="daily-map-meta">
                 <div class="daily-map-legend">
-                  <span class="explorer-label">Exposure Time</span>
+                  <span class="explorer-label">Direct sunlight hours today</span>
                   <div class="legend-ramp" aria-hidden="true"></div>
                   <div class="legend-labels">
                     <span>0 h</span>
@@ -187,7 +187,7 @@
               </div>
               <div class="daily-map-meta">
                 <div class="daily-map-legend">
-                  <span class="explorer-label">Exposure Time</span>
+                  <span class="explorer-label">Estimated direct sunlight hours</span>
                   <div class="legend-ramp" aria-hidden="true"></div>
                   <div class="legend-labels">
                     <span>0 h</span>
@@ -281,6 +281,21 @@
               </div>
               <p id="sun-summary-supporting" class="summary-copy">{{ initial_snapshot_payload.summary.supporting_text }}</p>
               <p id="sun-summary-moment" class="summary-copy summary-copy-secondary">{{ initial_snapshot_payload.summary.moment_text }}</p>
+              <div class="summary-metrics" aria-label="Sunlight summary metrics">
+                <article class="summary-metric">
+                  <span class="metric-label">Peak floor cell</span>
+                  <strong id="summary-peak-hours">{{ "%.1f"|format(initial_snapshot_payload.daily.exposure_grid.peak_hours) }} h</strong>
+                </article>
+                <article class="summary-metric">
+                  <span class="metric-label">Strongest window time</span>
+                  <strong id="summary-peak-time">{% if initial_snapshot_payload.daily.peak_time %}{{ initial_snapshot_payload.daily.peak_time[11:16] }}{% else %}--{% endif %}</strong>
+                </article>
+                <article class="summary-metric">
+                  <span class="metric-label">Room with any sun</span>
+                  <strong id="summary-sunlit-fraction">{{ (initial_snapshot_payload.daily.exposure_grid.sunlit_fraction * 100)|round|int }}%</strong>
+                </article>
+              </div>
+              <p class="summary-assumptions">Direct sun only · no furniture, blinds, or external obstructions.</p>
             </section>
           </article>
 
@@ -355,7 +370,7 @@
               </section>
 
               <section class="control-group">
-                <span class="explorer-label">Which Way Does Window 1 Face?</span>
+                <span class="explorer-label">Which way does the room front wall face?</span>
                 <div class="chip-row" id="window-facing-chip-row">
                   {% for facing in compass_options %}
                   <button
@@ -369,11 +384,29 @@
                 </div>
               </section>
 
+              <details class="subtle-details control-group ifc-import-group">
+                <summary>
+                  <span class="section-kicker">Advanced import</span>
+                  <strong>Import from IFC</strong>
+                </summary>
+                <div class="window-builder-header">
+                  <div>
+                    <span class="explorer-label">IFC room import</span>
+                    <p class="window-builder-copy">Import one rectangular room and its nearby windows. Verify the room bearing after import.</p>
+                  </div>
+                </div>
+                <div class="ifc-import-row">
+                  <input id="ifc-file-input" type="file" accept=".ifc">
+                  <button id="ifc-import-button" type="button" class="chip-button chip-button-soft">Import IFC</button>
+                </div>
+                <p id="ifc-import-status" class="field-help" role="status"></p>
+              </details>
+
               <section class="control-group">
                 <div class="window-builder-header">
                   <div>
                     <span id="window-editor-title" class="explorer-label">Window 1</span>
-                    <p id="window-editor-copy" class="window-builder-copy">Front wall; defines room orientation.</p>
+                    <p id="window-editor-copy" class="window-builder-copy">Compass direction is derived from the selected room facing.</p>
                   </div>
                   <button id="add-window-row-button" type="button" class="chip-button chip-button-soft">+ Add window</button>
                 </div>
@@ -395,20 +428,20 @@
                   <p id="selected-window-facing-copy" class="field-help">This window faces {{ form_values.window_facing }}.</p>
                   <div class="field-row field-row-4">
                     <label>
-                      <span>Centre from left (m)</span>
-                      <input type="number" step="0.1" name="window_span_center" value="{{ form_values.window_span_center }}">
+                        <span id="window-position-label">Position along wall (m)</span>
+                        <input type="number" min="0.01" step="0.1" name="window_span_center" value="{{ form_values.window_span_center }}">
                     </label>
                     <label>
                       <span>Sill (m)</span>
-                      <input type="number" step="0.1" name="window_sill_height" value="{{ form_values.window_sill_height }}">
+                        <input type="number" min="0" step="0.1" name="window_sill_height" value="{{ form_values.window_sill_height }}">
                     </label>
                     <label>
                       <span>Width (m)</span>
-                      <input type="number" step="0.1" name="window_width" value="{{ form_values.window_width }}">
+                        <input type="number" min="0.01" step="0.1" name="window_width" value="{{ form_values.window_width }}">
                     </label>
                     <label>
                       <span>Height (m)</span>
-                      <input type="number" step="0.1" name="window_height" value="{{ form_values.window_height }}">
+                        <input type="number" min="0.01" step="0.1" name="window_height" value="{{ form_values.window_height }}">
                     </label>
                   </div>
                   <button id="remove-window-button" type="button" class="chip-button chip-button-soft">Remove this window</button>
@@ -426,15 +459,15 @@
                     <div class="field-row field-row-3">
                       <label>
                         <span>Width (m)</span>
-                        <input type="number" step="0.1" name="room_width" value="{{ form_values.room_width }}">
+                        <input type="number" min="0.1" step="0.1" name="room_width" value="{{ form_values.room_width }}">
                       </label>
                       <label>
                         <span>Depth (m)</span>
-                        <input type="number" step="0.1" name="room_depth" value="{{ form_values.room_depth }}">
+                        <input type="number" min="0.1" step="0.1" name="room_depth" value="{{ form_values.room_depth }}">
                       </label>
                       <label>
                         <span>Ceiling (m)</span>
-                        <input type="number" step="0.1" name="room_height" value="{{ form_values.room_height }}">
+                        <input type="number" min="0.1" step="0.1" name="room_height" value="{{ form_values.room_height }}">
                       </label>
                     </div>
                   </section>
@@ -472,11 +505,11 @@
                   <div class="field-row">
                     <label>
                       <span>Latitude</span>
-                      <input id="latitude-input" type="number" step="0.0001" name="latitude" value="{{ form_values.latitude }}">
+                      <input id="latitude-input" type="number" min="-90" max="90" step="0.0001" name="latitude" value="{{ form_values.latitude }}">
                     </label>
                     <label>
                       <span>Longitude</span>
-                      <input id="longitude-input" type="number" step="0.0001" name="longitude" value="{{ form_values.longitude }}">
+                      <input id="longitude-input" type="number" min="-180" max="180" step="0.0001" name="longitude" value="{{ form_values.longitude }}">
                     </label>
                   </div>
                   <details class="subtle-details custom-location-advanced">
@@ -507,8 +540,8 @@
                       <strong id="live-azimuth">{{ "%.2f"|format(snapshot.position.azimuth_deg) }} deg</strong>
                     </article>
                     <article class="metric-card">
-                      <span class="metric-label">Sunlight Entry</span>
-                      <strong id="live-entry">{{ "Yes" if snapshot.entered_direct_sun else "No" }}</strong>
+                      <span class="metric-label">Sun reaches floor</span>
+                      <strong id="live-entry">{{ "Yes — reaches floor" if snapshot.entered_direct_sun else "No floor patch" }}</strong>
                     </article>
                     <article class="metric-card">
                       <span class="metric-label">Strongest Window</span>
@@ -520,7 +553,7 @@
                   <div class="vector-card vector-card-compact">
                     <span class="metric-label">Sun Vector</span>
                     <strong id="live-vector">({{ "%.3f"|format(snapshot.vector[0]) }}, {{ "%.3f"|format(snapshot.vector[1]) }}, {{ "%.3f"|format(snapshot.vector[2]) }})</strong>
-                    <span class="metric-label">Daily Peak</span>
+                    <span class="metric-label">Peak window factor</span>
                     <strong id="live-daily-peak">
                       {% if daily.peak_time %}
                       {{ "%.3f"|format(daily.peak_intensity) }} at {{ daily.peak_time.strftime('%H:%M %Z') }}
