@@ -77,6 +77,11 @@ test("loads cached day frames and applies presets without rebuilding the room", 
   );
   await expect(viewer).toHaveAttribute("data-scene-build-count", sceneBuildCount);
   await expect.poll(() => viewer.getAttribute("data-sunlight-update-count")).not.toBe(sunlightUpdateCount);
+
+  await page.locator("#room3d-time-slider").fill("0");
+  await expect(page.locator("#sun-summary-moment")).toHaveText(
+    "At the selected time, the sun does not enter this window.",
+  );
 });
 
 test("plays and pauses daylight while keeping the selected time synchronized", async ({ page }) => {

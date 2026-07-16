@@ -907,6 +907,16 @@
     setText("sun-summary-moment", summary.moment_text);
   }
 
+  function snapshotMomentText(state) {
+    if (state === "floor_hit") {
+      return "At the selected time, the sun reaches the floor.";
+    }
+    if (state === "through_window_no_floor_hit") {
+      return "At the selected time, the sun enters the window but does not reach the floor.";
+    }
+    return "At the selected time, the sun does not enter this window.";
+  }
+
   function updateSummaryMetrics(payload) {
     const grid = payload?.daily?.exposure_grid;
     if (!grid) {
@@ -1137,6 +1147,7 @@
 
   function updateAnimatedMomentDom(payload) {
     const snapshot = payload.snapshot;
+    setText("sun-summary-moment", snapshotMomentText(snapshot.state));
     setText("selected-moment-label", formatSelectedMoment(payload));
     setText("live-elevation", `${snapshot.elevation_deg.toFixed(2)} deg`);
     setText("live-azimuth", `${snapshot.azimuth_deg.toFixed(2)} deg`);
