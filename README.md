@@ -174,10 +174,19 @@ pip install -r requirements.txt
 
 ## Run Tests
 
-The repo uses Python's built-in `unittest` test runner.
+The model and API use Python's built-in `unittest` runner:
 
 ```bash
 python3 -m unittest discover -s tests
+```
+
+Critical UI interactions use Playwright so dragging, resizing, tabs, window selection,
+and the laptop layout are exercised in a real browser:
+
+```bash
+npm install
+npx playwright install chromium
+PYTHON=./.venv/bin/python npm run test:browser
 ```
 
 ## Render Deployment

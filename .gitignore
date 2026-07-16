@@ -11,6 +11,9 @@ venv/
 .ruff_cache/
 .coverage
 htmlcov/
+node_modules/
+playwright-report/
+test-results/
 build/
 dist/
 *.egg-info/

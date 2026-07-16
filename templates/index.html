@@ -384,24 +384,6 @@
                 </div>
               </section>
 
-              <details class="subtle-details control-group ifc-import-group">
-                <summary>
-                  <span class="section-kicker">Advanced import</span>
-                  <strong>Import from IFC</strong>
-                </summary>
-                <div class="window-builder-header">
-                  <div>
-                    <span class="explorer-label">IFC room import</span>
-                    <p class="window-builder-copy">Import one rectangular room and its nearby windows. Verify the room bearing after import.</p>
-                  </div>
-                </div>
-                <div class="ifc-import-row">
-                  <input id="ifc-file-input" type="file" accept=".ifc">
-                  <button id="ifc-import-button" type="button" class="chip-button chip-button-soft">Import IFC</button>
-                </div>
-                <p id="ifc-import-status" class="field-help" role="status"></p>
-              </details>
-
               <section class="control-group">
                 <div class="window-builder-header">
                   <div>
@@ -429,19 +411,19 @@
                   <div class="field-row field-row-4">
                     <label>
                         <span id="window-position-label">Position along wall (m)</span>
-                        <input type="number" min="0.01" step="0.1" name="window_span_center" value="{{ form_values.window_span_center }}">
+                        <input type="number" min="0.01" step="any" name="window_span_center" value="{{ form_values.window_span_center }}">
                     </label>
                     <label>
                       <span>Sill (m)</span>
-                        <input type="number" min="0" step="0.1" name="window_sill_height" value="{{ form_values.window_sill_height }}">
+                        <input type="number" min="0" step="any" name="window_sill_height" value="{{ form_values.window_sill_height }}">
                     </label>
                     <label>
                       <span>Width (m)</span>
-                        <input type="number" min="0.01" step="0.1" name="window_width" value="{{ form_values.window_width }}">
+                        <input type="number" min="0.01" step="any" name="window_width" value="{{ form_values.window_width }}">
                     </label>
                     <label>
                       <span>Height (m)</span>
-                        <input type="number" min="0.01" step="0.1" name="window_height" value="{{ form_values.window_height }}">
+                        <input type="number" min="0.01" step="any" name="window_height" value="{{ form_values.window_height }}">
                     </label>
                   </div>
                   <button id="remove-window-button" type="button" class="chip-button chip-button-soft">Remove this window</button>
@@ -459,15 +441,15 @@
                     <div class="field-row field-row-3">
                       <label>
                         <span>Width (m)</span>
-                        <input type="number" min="0.1" step="0.1" name="room_width" value="{{ form_values.room_width }}">
+                        <input type="number" min="0.1" step="any" name="room_width" value="{{ form_values.room_width }}">
                       </label>
                       <label>
                         <span>Depth (m)</span>
-                        <input type="number" min="0.1" step="0.1" name="room_depth" value="{{ form_values.room_depth }}">
+                        <input type="number" min="0.1" step="any" name="room_depth" value="{{ form_values.room_depth }}">
                       </label>
                       <label>
                         <span>Ceiling (m)</span>
-                        <input type="number" min="0.1" step="0.1" name="room_height" value="{{ form_values.room_height }}">
+                        <input type="number" min="0.1" step="any" name="room_height" value="{{ form_values.room_height }}">
                       </label>
                     </div>
                   </section>
@@ -522,6 +504,19 @@
                     </div>
                   </details>
                 </div>
+              </details>
+
+              <details class="subtle-details control-group ifc-import-group">
+                <summary>
+                  <span class="section-kicker">Advanced</span>
+                  <strong>Import an IFC room</strong>
+                </summary>
+                <p class="window-builder-copy">Import one rectangular room and nearby windows, then verify its bearing.</p>
+                <div class="ifc-import-row">
+                  <input id="ifc-file-input" type="file" accept=".ifc">
+                  <button id="ifc-import-button" type="button" class="chip-button chip-button-soft">Import</button>
+                </div>
+                <p id="ifc-import-status" class="field-help" role="status"></p>
               </details>
 
               <details class="subtle-details control-group current-moment-details">
