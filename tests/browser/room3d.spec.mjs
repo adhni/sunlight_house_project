@@ -45,6 +45,9 @@ test("lazy-loads the current room and sunlight in WebGL", async ({ page }) => {
 
 test("selects and highlights a named window from the 3D view", async ({ page }) => {
   const viewer = await open3dRoom(page);
+  await expect(page.locator("#room3d-play")).toBeEnabled();
+  const animationRequestsBeforeSelection = await page.evaluate(() => performance.getEntries()
+    .filter((entry) => entry.name.includes("/api/day-animation?")).length);
   const sideWindowLabel = page.locator('.room3d-window-label[data-window-name="side_window"]');
   await expect(sideWindowLabel).toBeVisible();
   await sideWindowLabel.click();
@@ -53,6 +56,44 @@ test("selects and highlights a named window from the 3D view", async ({ page }) 
   await expect(sideWindowLabel).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#window-editor-title")).toHaveText("Window 2");
   await expect(page.locator("#selected-window-wall")).toHaveValue("east");
+  const animationRequestsAfterSelection = await page.evaluate(() => performance.getEntries()
+    .filter((entry) => entry.name.includes("/api/day-animation?")).length);
+  expect(animationRequestsAfterSelection).toBe(animationRequestsBeforeSelection);
+});
+
+test("loads cached day frames and applies presets without rebuilding the room", async ({ page }) => {
+  const viewer = await open3dRoom(page);
+  const playButton = page.locator("#room3d-play");
+  await expect(playButton).toBeEnabled();
+  await expect(viewer).toHaveAttribute("data-animation-frame-count", "144");
+  const sceneBuildCount = await viewer.getAttribute("data-scene-build-count");
+  const sunlightUpdateCount = await viewer.getAttribute("data-sunlight-update-count");
+
+  await page.locator('[data-room3d-time-preset="noon"]').click();
+
+  await expect(page.locator("#room3d-time-readout")).not.toHaveText("--:--");
+  await expect(page.locator("#selected-time-input")).toHaveValue(
+    await page.locator("#room3d-time-readout").textContent(),
+  );
+  await expect(viewer).toHaveAttribute("data-scene-build-count", sceneBuildCount);
+  await expect.poll(() => viewer.getAttribute("data-sunlight-update-count")).not.toBe(sunlightUpdateCount);
+});
+
+test("plays and pauses daylight while keeping the selected time synchronized", async ({ page }) => {
+  const viewer = await open3dRoom(page);
+  await expect(page.locator("#room3d-play")).toBeEnabled();
+  await page.locator('[data-room3d-time-preset="morning"]').click();
+  const initialIndex = await viewer.getAttribute("data-animation-index");
+
+  await page.locator("#room3d-play").click();
+  await expect(viewer).toHaveAttribute("data-animation-playing", "true");
+  await expect.poll(() => viewer.getAttribute("data-animation-index")).not.toBe(initialIndex);
+  await page.locator("#room3d-play").click();
+
+  await expect(viewer).toHaveAttribute("data-animation-playing", "false");
+  await expect(page.locator("#selected-time-input")).toHaveValue(
+    await page.locator("#room3d-time-readout").textContent(),
+  );
 });
 
 test("orbits, resets, and toggles walls", async ({ page }) => {
@@ -107,11 +148,15 @@ test("supports keyboard orbit, pan, and zoom", async ({ page }) => {
 
 test("permanently tears down a viewer after WebGL context loss", async ({ page }) => {
   const viewer = await open3dRoom(page);
+  await expect(page.locator("#room3d-play")).toBeEnabled();
+  await page.locator("#room3d-play").click();
+  await expect(viewer).toHaveAttribute("data-animation-playing", "true");
   await viewer.locator("canvas").dispatchEvent("webglcontextlost");
 
   await expect(viewer).toHaveAttribute("data-viewer-state", "fallback");
   await expect(viewer).toHaveAttribute("data-viewer-destroyed", "true");
   await expect(viewer).toHaveAttribute("data-rendering", "false");
+  await expect(viewer).toHaveAttribute("data-animation-playing", "false");
   await expect(viewer.locator("canvas")).toHaveCount(0);
 
   await page.locator('[data-result-tab="current"]').click();

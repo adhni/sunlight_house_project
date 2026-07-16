@@ -151,6 +151,29 @@
                   <button id="room3d-toggle-walls" type="button" class="chip-button chip-button-soft" aria-pressed="true">Walls auto</button>
                 </div>
               </div>
+              <div id="room3d-animation-controls" class="room3d-animation-controls" data-state="idle">
+                <div class="room3d-animation-primary">
+                  <button id="room3d-play" type="button" class="chip-button" aria-pressed="false" disabled>Play day</button>
+                  <output id="room3d-time-readout" class="room3d-time-readout" for="room3d-time-slider">--:--</output>
+                </div>
+                <input
+                  id="room3d-time-slider"
+                  class="room3d-time-slider"
+                  type="range"
+                  min="0"
+                  max="143"
+                  value="60"
+                  step="1"
+                  aria-label="Sunlight animation time"
+                  disabled
+                >
+                <div class="chip-row room3d-time-presets" aria-label="Sunlight time presets">
+                  <button type="button" class="chip-button chip-button-soft" data-room3d-time-preset="morning" disabled>Morning</button>
+                  <button type="button" class="chip-button chip-button-soft" data-room3d-time-preset="noon" disabled>Solar noon</button>
+                  <button type="button" class="chip-button chip-button-soft" data-room3d-time-preset="evening" disabled>Evening</button>
+                </div>
+                <span id="room3d-animation-status" class="angle-caption room3d-animation-status" role="status">Open the 3D view to load the day.</span>
+              </div>
               <div
                 id="room3d-container"
                 class="room3d-container"

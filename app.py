@@ -4,7 +4,9 @@ import json
 import math
 import os
 import tempfile
-from datetime import datetime
+from collections import OrderedDict
+from datetime import date, datetime, timedelta
+from threading import Lock
 from time import perf_counter
 from zoneinfo import ZoneInfo
 
@@ -18,6 +20,10 @@ _MAX_WINDOWS_JSON_BYTES = 100_000
 _MAX_ROOM_DIM = 500.0  # metres -- sanity cap to prevent extreme compute
 _MAX_IFC_UPLOAD_BYTES = 25 * 1024 * 1024
 _MAX_YEAR_STEP_HOURS = 12
+_ANIMATION_STEP_MINUTES = 10
+_DAY_ANIMATION_CACHE_MAX = 24
+_day_animation_cache: OrderedDict[tuple, dict[str, object]] = OrderedDict()
+_day_animation_cache_lock = Lock()
 
 from sunlight_house.analysis import (
     analyze_day,
@@ -114,6 +120,29 @@ def create_app() -> Flask:
                 window_override_active=has_window_override(raw_values),
             )
         )
+
+    @app.get("/api/day-animation")
+    def api_day_animation():
+        defaults = default_form_values()
+        raw_values = defaults | {key: value for key, value in request.args.items() if value != ""}
+
+        try:
+            config, selected_moment = build_config_and_moment(raw_values)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        started_at = perf_counter()
+        payload, cache_hit = day_animation_payload(config, selected_moment.date())
+        elapsed_ms = (perf_counter() - started_at) * 1000.0
+        app.logger.info(
+            "Day animation %s in %.1f ms for %s on %s (%d frames)",
+            "cache hit" if cache_hit else "computed",
+            elapsed_ms,
+            config.location.name,
+            selected_moment.date().isoformat(),
+            len(payload["frames"]),
+        )
+        return jsonify(payload | {"cache_hit": cache_hit})
 
     @app.get("/api/long-range-exposure")
     def api_long_range_exposure():
@@ -501,6 +530,119 @@ def window_payload(window: Window) -> dict[str, object]:
         "outward_normal": [float(value) for value in window.outward_normal],
         "wall_segment_xy": window.wall_segment_xy().tolist(),
     }
+
+
+def _day_animation_cache_key(config: SimulationConfig, target_date: date) -> tuple:
+    windows = tuple(
+        (
+            window.name,
+            tuple(float(value) for value in window.center),
+            float(window.width),
+            float(window.height),
+            tuple(float(value) for value in window.outward_normal),
+        )
+        for window in config.windows
+    )
+    return (
+        target_date.isoformat(),
+        float(config.location.latitude),
+        float(config.location.longitude),
+        config.location.timezone_name,
+        float(config.room.width),
+        float(config.room.depth),
+        float(config.room.height),
+        windows,
+        config.window_facing_label,
+        _ANIMATION_STEP_MINUTES,
+    )
+
+
+def _animation_snapshot_payload(config: SimulationConfig, moment: datetime) -> dict[str, object]:
+    snapshot = analyze_snapshot(config, moment)
+    strongest_window, strongest_intensity = snapshot.strongest_window
+    return {
+        "selected_moment": moment.isoformat(),
+        "snapshot": {
+            "elevation_deg": snapshot.position.elevation_deg,
+            "azimuth_deg": snapshot.position.azimuth_deg,
+            "room_azimuth_deg": room_relative_azimuth(config, snapshot.position.azimuth_deg),
+            "vector": [float(value) for value in snapshot.vector],
+            "room_vector": [float(value) for value in snapshot.room_vector],
+            "entered_direct_sun": snapshot.entered_direct_sun,
+            "strongest_window": strongest_window,
+            "strongest_intensity": strongest_intensity,
+            "state": snapshot_state(snapshot.entered_direct_sun, strongest_intensity),
+            "window_intensities": [
+                {"name": name, "intensity": intensity} for name, intensity in snapshot.window_intensities.items()
+            ],
+            "patches": [
+                {
+                    "window_name": patch.window_name,
+                    "intensity": patch.intensity,
+                    "polygon_xy": patch.polygon_xy.tolist(),
+                }
+                for patch in snapshot.patches
+            ],
+        },
+    }
+
+
+def _compute_day_animation_payload(config: SimulationConfig, target_date: date) -> dict[str, object]:
+    timezone = ZoneInfo(config.location.timezone_name)
+    midnight = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone)
+    frames = [
+        _animation_snapshot_payload(config, midnight + timedelta(minutes=minute))
+        for minute in range(0, 24 * 60, _ANIMATION_STEP_MINUTES)
+    ]
+    daylight_indices = [
+        index for index, frame in enumerate(frames) if frame["snapshot"]["elevation_deg"] > 0.0
+    ]
+    if daylight_indices:
+        morning_index = daylight_indices[len(daylight_indices) // 4]
+        noon_index = max(daylight_indices, key=lambda index: frames[index]["snapshot"]["elevation_deg"])
+        evening_index = daylight_indices[(len(daylight_indices) * 3) // 4]
+        playback_start_index = daylight_indices[0]
+        playback_end_index = daylight_indices[-1]
+    else:
+        morning_index = 9 * 60 // _ANIMATION_STEP_MINUTES
+        noon_index = 12 * 60 // _ANIMATION_STEP_MINUTES
+        evening_index = 17 * 60 // _ANIMATION_STEP_MINUTES
+        playback_start_index = 0
+        playback_end_index = len(frames) - 1
+
+    return {
+        "selected_date": target_date.isoformat(),
+        "timezone_name": config.location.timezone_name,
+        "step_minutes": _ANIMATION_STEP_MINUTES,
+        "playback_start_index": playback_start_index,
+        "playback_end_index": playback_end_index,
+        "presets": {
+            "morning": {"label": "Morning", "index": morning_index},
+            "noon": {"label": "Solar noon", "index": noon_index},
+            "evening": {"label": "Evening", "index": evening_index},
+        },
+        "frames": frames,
+    }
+
+
+def day_animation_payload(config: SimulationConfig, target_date: date) -> tuple[dict[str, object], bool]:
+    key = _day_animation_cache_key(config, target_date)
+    with _day_animation_cache_lock:
+        cached = _day_animation_cache.get(key)
+        if cached is not None:
+            _day_animation_cache.move_to_end(key)
+            return cached, True
+
+    payload = _compute_day_animation_payload(config, target_date)
+    with _day_animation_cache_lock:
+        existing = _day_animation_cache.get(key)
+        if existing is not None:
+            _day_animation_cache.move_to_end(key)
+            return existing, True
+        _day_animation_cache[key] = payload
+        while len(_day_animation_cache) > _DAY_ANIMATION_CACHE_MAX:
+            _day_animation_cache.popitem(last=False)
+    return payload, False
 
 
 def location_presets_payload() -> dict[str, dict[str, str | float]]:

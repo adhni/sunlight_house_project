@@ -71,6 +71,35 @@ class AppTests(unittest.TestCase):
         self.assertEqual(len(first_window["corners_xyz"]), 4)
         self.assertEqual(first_window["outward_normal"], [0.0, 1.0, 0.0])
 
+    def test_day_animation_api_returns_cached_lightweight_frames(self) -> None:
+        query = {"selected_date": "2025-02-13", "selected_time": "13:07"}
+
+        first_response = self.client.get("/api/day-animation", query_string=query)
+        second_response = self.client.get("/api/day-animation", query_string=query)
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        first = first_response.get_json()
+        second = second_response.get_json()
+        self.assertFalse(first["cache_hit"])
+        self.assertTrue(second["cache_hit"])
+        self.assertEqual(first["step_minutes"], 10)
+        self.assertEqual(len(first["frames"]), 144)
+        self.assertLess(first["playback_start_index"], first["playback_end_index"])
+        self.assertEqual(set(first["presets"]), {"morning", "noon", "evening"})
+        self.assertIn("snapshot", first["frames"][0])
+        self.assertIn("patches", first["frames"][0]["snapshot"])
+        self.assertEqual(first["frames"], second["frames"])
+
+    def test_day_animation_api_does_not_run_daily_exposure_analysis(self) -> None:
+        with patch("app.analyze_day", side_effect=AssertionError("daily analysis should not run")):
+            response = self.client.get(
+                "/api/day-animation",
+                query_string={"selected_date": "2025-03-11"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+
     def test_index_invalid_windows_json_falls_back_instead_of_500(self) -> None:
         response = self.client.get("/?windows_json=not-json")
 

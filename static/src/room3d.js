@@ -371,7 +371,7 @@ function displayWindowName(name) {
 }
 
 class Room3DViewer {
-  constructor({ container, statusElement, resetButton, wallsButton, onWindowSelect }) {
+  constructor({ container, statusElement, resetButton, wallsButton, onWindowSelect, onUnavailable }) {
     if (window.__SUNLIGHT_FORCE_WEBGL_FAILURE__) {
       throw new Error("WebGL was disabled for this session.");
     }
@@ -380,6 +380,7 @@ class Room3DViewer {
     this.resetButton = resetButton;
     this.wallsButton = wallsButton;
     this.onWindowSelect = onWindowSelect;
+    this.onUnavailable = onUnavailable;
     this.payload = null;
     this.active = false;
     this.destroyed = false;
@@ -388,6 +389,8 @@ class Room3DViewer {
     this.selectedWindowName = null;
     this.windowVisuals = new Map();
     this.labelElements = new Map();
+    this.sceneBuildCount = 0;
+    this.sunlightUpdateCount = 0;
     this.raycaster = new THREE.Raycaster();
     this.pointerStart = null;
 
@@ -471,6 +474,7 @@ class Room3DViewer {
 
   showFallback(message) {
     this.destroy();
+    this.onUnavailable?.();
     this.container.dataset.viewerState = "fallback";
     this.container.replaceChildren();
     const fallbackMessage = document.createElement("div");
@@ -493,6 +497,7 @@ class Room3DViewer {
   update(payload) {
     if (this.destroyed || !payload?.room || !Array.isArray(payload.windows)) return;
     this.payload = payload;
+    this.sceneBuildCount += 1;
     const room = payload.room;
     replaceGroupContents(this.floorGroup);
     replaceGroupContents(this.wallGroup);
@@ -522,14 +527,7 @@ class Room3DViewer {
       this.addWindowLabel(windowData, visual.center);
     });
 
-    const windowsByName = new Map(payload.windows.map((windowData) => [windowData.name, windowData]));
-    payload.snapshot.patches.forEach((patch) => {
-      this.sunlightGroup.add(makePatch(patch, room));
-      const windowData = windowsByName.get(patch.window_name);
-      if (windowData && patch.polygon_xy.length) {
-        this.sunlightGroup.add(makeBeam(windowData, patch, room));
-      }
-    });
+    this.updateSunlightFrame(payload.snapshot, payload.selected_moment, { updateStatus: false });
 
     const orientation = makeOrientation(room, payload.window_facing_label);
     this.orientationGroup.add(orientation);
@@ -559,6 +557,7 @@ class Room3DViewer {
     this.container.dataset.selectedMoment = payload.selected_moment;
     this.container.dataset.roomSize = `${room.width},${room.depth},${room.height}`;
     this.container.dataset.frontFacing = payload.window_facing_label;
+    this.container.dataset.sceneBuildCount = String(this.sceneBuildCount);
     this.container.dataset.windowGeometry = JSON.stringify(payload.windows.map((windowData) => ({
       name: windowData.name,
       wall: windowData.wall,
@@ -570,6 +569,29 @@ class Room3DViewer {
       `${payload.windows.length} window opening${payload.windows.length === 1 ? "" : "s"} · ${payload.snapshot.patches.length} floor patch${payload.snapshot.patches.length === 1 ? "" : "es"} · front ${payload.window_facing_label}.`,
     );
     this.updateDebugState();
+  }
+
+  updateSunlightFrame(snapshot, selectedMoment, { updateStatus = true } = {}) {
+    if (this.destroyed || !this.payload || !snapshot?.patches) return;
+    replaceGroupContents(this.sunlightGroup);
+    const room = this.payload.room;
+    const windowsByName = new Map(this.payload.windows.map((windowData) => [windowData.name, windowData]));
+    snapshot.patches.forEach((patch) => {
+      this.sunlightGroup.add(makePatch(patch, room));
+      const windowData = windowsByName.get(patch.window_name);
+      if (windowData && patch.polygon_xy.length) {
+        this.sunlightGroup.add(makeBeam(windowData, patch, room));
+      }
+    });
+    this.sunlightUpdateCount += 1;
+    this.container.dataset.sunlightUpdateCount = String(this.sunlightUpdateCount);
+    this.container.dataset.patchCount = String(snapshot.patches.length);
+    if (selectedMoment) this.container.dataset.selectedMoment = selectedMoment;
+    if (updateStatus) {
+      this.setStatus(
+        `${snapshot.patches.length} sunlight patch${snapshot.patches.length === 1 ? "" : "es"} at ${String(selectedMoment || "").slice(11, 16)}.`,
+      );
+    }
   }
 
   addWindowLabel(windowData, center) {
