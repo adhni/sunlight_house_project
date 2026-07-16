@@ -1183,7 +1183,15 @@
     dayReadout.textContent = formatDateReadout(selectedDateInput.value);
     if (room3dTimeSlider) room3dTimeSlider.value = String(boundedIndex);
     if (room3dTimeReadout) room3dTimeReadout.textContent = localTime;
-    currentPayload = { ...currentPayload, selected_moment: frame.selected_moment, snapshot: frame.snapshot };
+    currentPayload = {
+      ...currentPayload,
+      selected_moment: frame.selected_moment,
+      snapshot: frame.snapshot,
+      summary: {
+        ...currentPayload.summary,
+        moment_text: snapshotMomentText(frame.snapshot.state),
+      },
+    };
     room3dViewer?.updateSunlightFrame(frame.snapshot, frame.selected_moment);
     updateAnimatedMomentDom(currentPayload);
     room3dPresetButtons.forEach((button) => {

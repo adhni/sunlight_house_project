@@ -82,6 +82,10 @@ test("loads cached day frames and applies presets without rebuilding the room", 
   await expect(page.locator("#sun-summary-moment")).toHaveText(
     "At the selected time, the sun does not enter this window.",
   );
+  await page.locator('.room3d-window-label[data-window-name="side_window"]').click();
+  await expect(page.locator("#sun-summary-moment")).toHaveText(
+    "At the selected time, the sun does not enter this window.",
+  );
 });
 
 test("plays and pauses daylight while keeping the selected time synchronized", async ({ page }) => {
