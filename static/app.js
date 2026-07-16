@@ -950,8 +950,10 @@
             statusElement: room3dStatus,
             resetButton: room3dResetButton,
             wallsButton: room3dWallsButton,
+            onWindowSelect: selectWindowFrom3d,
           });
           room3dViewer.update(currentPayload);
+          room3dViewer.setSelectedWindow(windowRows[activeWindowIndex]?.name);
           return room3dViewer;
         })
         .catch((error) => {
@@ -1279,9 +1281,21 @@
       addWindowRowButton.disabled = windowRows.length >= MAX_WINDOWS;
     }
     renderWindowSelector();
+    room3dViewer?.setSelectedWindow(activeRow.name);
     if (currentPayload && currentPayload.windows && currentPayload.windows.length === windowRows.length) {
       updateSnapshotDom(currentPayload);
     }
+  }
+
+  function selectWindowFrom3d(windowName) {
+    const nextIndex = windowRows.findIndex((row) => row.name === windowName);
+    if (nextIndex < 0 || nextIndex === activeWindowIndex) {
+      return;
+    }
+    persistActiveWindowEditor();
+    activeWindowIndex = nextIndex;
+    renderWindowEditor();
+    setUpdateStatus(`${windowName.replace(/_/g, " ")} selected.`, "idle");
   }
 
   function renderWindowBuilderFromRows(rows) {
@@ -2135,6 +2149,7 @@
   function updateSnapshotDom(payload) {
     currentPayload = payload;
     room3dViewer?.update(payload);
+    room3dViewer?.setSelectedWindow(windowRows[activeWindowIndex]?.name);
     const snapshot = payload.snapshot;
     const daily = payload.daily;
     const timeZone = payload.location.timezone_name;

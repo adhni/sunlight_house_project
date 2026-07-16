@@ -1139,6 +1139,89 @@ input[type="range"] {
   outline-offset: -5px;
 }
 
+.room3d-label-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.room3d-window-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  white-space: nowrap;
+  transform-origin: 0 0;
+}
+
+.room3d-window-label {
+  padding: 5px 9px;
+  border: 1px solid rgba(43, 98, 122, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.9);
+  box-shadow: 0 4px 16px rgba(31, 39, 50, 0.12);
+  color: var(--cool);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 750;
+  line-height: 1;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.room3d-window-label:hover,
+.room3d-window-label:focus-visible,
+.room3d-window-label.is-selected {
+  border-color: rgba(200, 101, 48, 0.82);
+  background: rgba(255, 241, 221, 0.96);
+  color: var(--accent-deep);
+}
+
+.room3d-window-label:focus-visible {
+  outline: 3px solid rgba(200, 101, 48, 0.32);
+  outline-offset: 2px;
+}
+
+.room3d-compass-legend {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  display: grid;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid rgba(95, 109, 119, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.9);
+  box-shadow: 0 5px 18px rgba(31, 39, 50, 0.1);
+}
+
+.room3d-compass-key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cool);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.room3d-compass-key::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cool);
+  content: "";
+}
+
+.room3d-compass-key-front {
+  color: var(--accent-deep);
+}
+
+.room3d-compass-key-front::before {
+  background: var(--accent);
+}
+
 .room3d-loading,
 .room3d-fallback {
   position: absolute;
