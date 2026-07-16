@@ -1134,6 +1134,11 @@ input[type="range"] {
   cursor: grabbing;
 }
 
+.room3d-container canvas:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -5px;
+}
+
 .room3d-loading,
 .room3d-fallback {
   position: absolute;

@@ -175,6 +175,7 @@ class Room3DViewer {
     this.wallsButton = wallsButton;
     this.payload = null;
     this.active = false;
+    this.destroyed = false;
     this.hasFramedScene = false;
     this.wallsVisible = true;
 
@@ -185,11 +186,16 @@ class Room3DViewer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = false;
+    this.renderer.domElement.tabIndex = 0;
     this.renderer.domElement.setAttribute("aria-label", "Orbitable 3D room model");
-    this.renderer.domElement.addEventListener("webglcontextlost", (event) => {
+    this.renderer.domElement.setAttribute("aria-describedby", "room3d-keyboard-help");
+    this.onContextLost = (event) => {
       event.preventDefault();
       this.showFallback("The 3D renderer stopped. The 2D views are still available.");
-    });
+    };
+    this.onKeyDown = (event) => this.handleKeyDown(event);
+    this.renderer.domElement.addEventListener("webglcontextlost", this.onContextLost);
+    this.renderer.domElement.addEventListener("keydown", this.onKeyDown);
     container.replaceChildren(this.renderer.domElement);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -232,13 +238,20 @@ class Room3DViewer {
   }
 
   showFallback(message) {
-    this.setActive(false);
+    this.destroy();
     this.container.dataset.viewerState = "fallback";
-    this.container.innerHTML = `<div class="room3d-fallback">${message}</div>`;
+    this.container.replaceChildren();
+    const fallbackMessage = document.createElement("div");
+    fallbackMessage.className = "room3d-fallback";
+    fallbackMessage.textContent = message;
+    this.container.append(fallbackMessage);
     this.setStatus(message);
   }
 
   resize() {
+    if (this.destroyed) {
+      return;
+    }
     const width = Math.max(this.container.clientWidth, 1);
     const height = Math.max(this.container.clientHeight, 1);
     this.camera.aspect = width / height;
@@ -247,7 +260,7 @@ class Room3DViewer {
   }
 
   update(payload) {
-    if (!payload?.room || !Array.isArray(payload.windows)) {
+    if (this.destroyed || !payload?.room || !Array.isArray(payload.windows)) {
       return;
     }
     this.payload = payload;
@@ -321,7 +334,7 @@ class Room3DViewer {
   }
 
   frameScene() {
-    if (!this.payload) {
+    if (this.destroyed || !this.payload) {
       return;
     }
     const room = this.payload.room;
@@ -339,6 +352,9 @@ class Room3DViewer {
   }
 
   toggleWalls() {
+    if (this.destroyed) {
+      return;
+    }
     this.wallsVisible = !this.wallsVisible;
     this.wallGroup.visible = this.wallsVisible;
     if (this.wallsButton) {
@@ -353,7 +369,57 @@ class Room3DViewer {
     this.container.dataset.cameraTarget = this.controls.target.toArray().map((value) => value.toFixed(3)).join(",");
   }
 
+  handleKeyDown(event) {
+    if (this.destroyed || event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+    const isArrow = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key);
+    const isZoom = ["+", "=", "-", "_"].includes(event.key);
+    if (!isArrow && !isZoom) {
+      return;
+    }
+    event.preventDefault();
+
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    const distance = Math.max(offset.length(), 0.1);
+    if (event.shiftKey && isArrow) {
+      this.camera.updateMatrix();
+      const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 0).normalize();
+      const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1).normalize();
+      const direction = new THREE.Vector3();
+      const panStep = distance * 0.055;
+      if (event.key === "ArrowLeft") direction.addScaledVector(right, -panStep);
+      if (event.key === "ArrowRight") direction.addScaledVector(right, panStep);
+      if (event.key === "ArrowUp") direction.addScaledVector(up, panStep);
+      if (event.key === "ArrowDown") direction.addScaledVector(up, -panStep);
+      this.camera.position.add(direction);
+      this.controls.target.add(direction);
+    } else if (isArrow) {
+      const spherical = new THREE.Spherical().setFromVector3(offset);
+      const orbitStep = Math.PI / 36;
+      if (event.key === "ArrowLeft") spherical.theta -= orbitStep;
+      if (event.key === "ArrowRight") spherical.theta += orbitStep;
+      if (event.key === "ArrowUp") spherical.phi -= orbitStep;
+      if (event.key === "ArrowDown") spherical.phi += orbitStep;
+      spherical.phi = THREE.MathUtils.clamp(
+        spherical.phi,
+        this.controls.minPolarAngle,
+        this.controls.maxPolarAngle,
+      );
+      this.camera.position.copy(this.controls.target).add(new THREE.Vector3().setFromSpherical(spherical));
+    } else {
+      const zoomFactor = event.key === "+" || event.key === "=" ? 0.9 : 1.1;
+      this.camera.position.copy(this.controls.target).add(offset.multiplyScalar(zoomFactor));
+    }
+    this.camera.lookAt(this.controls.target);
+    this.controls.update();
+    this.updateDebugState();
+  }
+
   setActive(active) {
+    if (this.destroyed) {
+      return;
+    }
     this.active = Boolean(active);
     this.applyAnimationState();
     if (this.active) {
@@ -362,6 +428,9 @@ class Room3DViewer {
   }
 
   applyAnimationState() {
+    if (this.destroyed) {
+      return;
+    }
     const shouldRender = this.active && document.visibilityState !== "hidden";
     this.renderer.setAnimationLoop(shouldRender ? () => {
       this.controls.update();
@@ -372,14 +441,23 @@ class Room3DViewer {
   }
 
   destroy() {
-    this.setActive(false);
+    if (this.destroyed) {
+      return;
+    }
+    this.active = false;
+    this.renderer.setAnimationLoop(null);
+    this.container.dataset.rendering = "false";
     this.resizeObserver.disconnect();
     document.removeEventListener("visibilitychange", this.onVisibilityChange);
     this.resetButton?.removeEventListener("click", this.onReset);
     this.wallsButton?.removeEventListener("click", this.onToggleWalls);
+    this.renderer.domElement.removeEventListener("webglcontextlost", this.onContextLost);
+    this.renderer.domElement.removeEventListener("keydown", this.onKeyDown);
     disposeObject(this.contentGroup);
     this.controls.dispose();
     this.renderer.dispose();
+    this.destroyed = true;
+    this.container.dataset.viewerDestroyed = "true";
   }
 }
 

@@ -54,6 +54,41 @@ test("orbits, resets, and toggles walls", async ({ page }) => {
   await expect(viewer.locator("canvas")).toBeVisible();
 });
 
+test("supports keyboard orbit, pan, and zoom", async ({ page }) => {
+  const viewer = await open3dRoom(page);
+  const canvas = viewer.locator("canvas");
+  await canvas.focus();
+  await expect(canvas).toBeFocused();
+  await expect(canvas).toHaveAttribute("aria-describedby", "room3d-keyboard-help");
+
+  const initialCamera = await viewer.getAttribute("data-camera-position");
+  await canvas.press("ArrowLeft");
+  await expect.poll(() => viewer.getAttribute("data-camera-position")).not.toBe(initialCamera);
+
+  const initialTarget = await viewer.getAttribute("data-camera-target");
+  await canvas.press("Shift+ArrowRight");
+  await expect.poll(() => viewer.getAttribute("data-camera-target")).not.toBe(initialTarget);
+
+  const cameraBeforeZoom = await viewer.getAttribute("data-camera-position");
+  await canvas.press("+");
+  await expect.poll(() => viewer.getAttribute("data-camera-position")).not.toBe(cameraBeforeZoom);
+});
+
+test("permanently tears down a viewer after WebGL context loss", async ({ page }) => {
+  const viewer = await open3dRoom(page);
+  await viewer.locator("canvas").dispatchEvent("webglcontextlost");
+
+  await expect(viewer).toHaveAttribute("data-viewer-state", "fallback");
+  await expect(viewer).toHaveAttribute("data-viewer-destroyed", "true");
+  await expect(viewer).toHaveAttribute("data-rendering", "false");
+  await expect(viewer.locator("canvas")).toHaveCount(0);
+
+  await page.locator('[data-result-tab="current"]').click();
+  await page.locator('[data-result-tab="room-3d"]').click();
+  await expect(viewer).toHaveAttribute("data-rendering", "false");
+  await expect(viewer).toHaveAttribute("data-viewer-state", "fallback");
+});
+
 test("keeps the camera while live room dimensions update", async ({ page }) => {
   const viewer = await open3dRoom(page);
   const defaultCamera = await viewer.getAttribute("data-camera-position");
