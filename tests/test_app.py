@@ -63,6 +63,13 @@ class AppTests(unittest.TestCase):
         self.assertTrue(payload["window_override_active"])
         self.assertTrue(payload["snapshot"]["entered_direct_sun"])
         self.assertEqual(len(payload["windows"]), 2)
+        first_window = payload["windows"][0]
+        self.assertEqual(first_window["width"], 1.5)
+        self.assertEqual(first_window["height"], 2.0)
+        self.assertAlmostEqual(first_window["sill_height"], 0.1)
+        self.assertEqual(first_window["center_xyz"], [3.0, 5.0, 1.1])
+        self.assertEqual(len(first_window["corners_xyz"]), 4)
+        self.assertEqual(first_window["outward_normal"], [0.0, 1.0, 0.0])
 
     def test_index_invalid_windows_json_falls_back_instead_of_500(self) -> None:
         response = self.client.get("/?windows_json=not-json")

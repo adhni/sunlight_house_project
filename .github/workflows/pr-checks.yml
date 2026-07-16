@@ -46,3 +46,6 @@ jobs:
 
       - name: Run browser interaction tests
         run: npm run test:browser
+
+      - name: Verify generated 3D bundle is committed
+        run: git diff --exit-code -- static/room3d.bundle.js

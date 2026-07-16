@@ -59,6 +59,7 @@
             <div class="result-toolbar">
               <div class="chip-row result-tab-row">
                 <button type="button" class="chip-button is-active" data-result-tab="current">Now</button>
+                <button type="button" class="chip-button" data-result-tab="room-3d">3D room</button>
                 <button type="button" class="chip-button" data-result-tab="sunlight-map">Today</button>
                 <button type="button" class="chip-button" data-result-tab="long-range">Year estimate</button>
                 <button type="button" class="chip-button" data-result-tab="outdoor-year">Outdoor context</button>
@@ -137,6 +138,30 @@
               <p id="room-angle-caption" class="angle-caption room-caption">
                 Room edges show both room angle and compass direction.
               </p>
+            </div>
+
+            <div class="result-view" data-result-panel="room-3d">
+              <div class="room3d-header">
+                <div>
+                  <p class="section-kicker">Interactive view</p>
+                  <h3>Sunlight inside the room</h3>
+                </div>
+                <div class="chip-row room3d-actions">
+                  <button id="room3d-reset-camera" type="button" class="chip-button chip-button-soft">Reset view</button>
+                  <button id="room3d-toggle-walls" type="button" class="chip-button chip-button-soft" aria-pressed="true">Walls on</button>
+                </div>
+              </div>
+              <div
+                id="room3d-container"
+                class="room3d-container"
+                data-viewer-state="idle"
+                role="img"
+                aria-label="Interactive 3D model of the room and its current direct sunlight"
+              ></div>
+              <div class="room3d-footer">
+                <p id="room3d-status" class="angle-caption" role="status">Open this tab to load the 3D room.</p>
+                <p id="room3d-keyboard-help" class="angle-caption">Drag to orbit · scroll to zoom · right-drag to pan. Keyboard: arrows orbit · Shift + arrows pan · +/− zoom.</p>
+              </div>
             </div>
 
             <div class="result-view" data-result-panel="sunlight-map">

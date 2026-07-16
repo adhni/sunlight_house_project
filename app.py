@@ -37,7 +37,7 @@ from sunlight_house.config import (
     main_window,
     window_on_wall,
 )
-from sunlight_house.geometry import Room
+from sunlight_house.geometry import Room, Window
 from sunlight_house.ifc_import import IfcImportError, import_ifc_room
 from sunlight_house.insights import summarize_direct_sun
 
@@ -462,14 +462,7 @@ def snapshot_payload(
             "depth": config.room.depth,
             "height": config.room.height,
         },
-        "windows": [
-            {
-                "name": window.name,
-                "wall": wall_name_for_window(window),
-                "wall_segment_xy": window.wall_segment_xy().tolist(),
-            }
-            for window in config.windows
-        ],
+        "windows": [window_payload(window) for window in config.windows],
         "active_window": {
             "name": config.windows[0].name,
             "wall": wall_name_for_window(config.windows[0]),
@@ -489,16 +482,24 @@ def long_range_payload(config: SimulationConfig) -> dict[str, object]:
             "depth": config.room.depth,
             "height": config.room.height,
         },
-        "windows": [
-            {
-                "name": window.name,
-                "wall": wall_name_for_window(window),
-                "wall_segment_xy": window.wall_segment_xy().tolist(),
-            }
-            for window in config.windows
-        ],
+        "windows": [window_payload(window) for window in config.windows],
         "window_facing_label": config.window_facing_label,
         "periods": long_range_exposure_grids(config),
+    }
+
+
+def window_payload(window: Window) -> dict[str, object]:
+    """Serialize complete window geometry for both 2D and 3D clients."""
+    return {
+        "name": window.name,
+        "wall": wall_name_for_window(window),
+        "width": float(window.width),
+        "height": float(window.height),
+        "sill_height": float(window.center[2] - window.height / 2.0),
+        "center_xyz": [float(value) for value in window.center],
+        "corners_xyz": [[float(value) for value in corner] for corner in window.corners()],
+        "outward_normal": [float(value) for value in window.outward_normal],
+        "wall_segment_xy": window.wall_segment_xy().tolist(),
     }
 
 

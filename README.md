@@ -18,6 +18,7 @@ The current app is designed around editable wall windows on a rectangular room. 
 - models a rectangular room with one or more wall windows
 - projects direct sunlight from each window onto the floor
 - renders a top-down room snapshot for a selected moment
+- renders an interactive, orbitable 3D room with live window and sunlight geometry
 - estimates daily direct-sun-hours exposure across the floor
 - estimates yearly and seasonal floor exposure using representative-day sampling
 - imports one rectangular room and nearby windows from an IFC file
@@ -91,6 +92,7 @@ The app currently includes:
 - day-of-year and time-of-day scrubbers
 - a `Now` button for the selected timezone
 - a `Current Moment` room snapshot
+- a lazy-loaded `3D room` view with orbit, zoom, pan, camera reset, and wall visibility controls
 - a `Direct Sun Hours Today` floor map with legend, stats, and in-chart tooltip
 - a `Yearly / Seasonal` floor map with `Year`, `Winter`, `Spring`, `Summer`, and `Fall`
 - an advanced IFC room/window import workflow
@@ -146,6 +148,8 @@ sunlight_house_project/
 ├── outputs/
 ├── static/
 │   ├── app.js
+│   ├── room3d.bundle.js
+│   ├── src/room3d.js
 │   └── styles.css
 ├── templates/
 │   └── index.html
@@ -181,7 +185,7 @@ python3 -m unittest discover -s tests
 ```
 
 Critical UI interactions use Playwright so dragging, resizing, tabs, window selection,
-and the laptop layout are exercised in a real browser:
+the interactive 3D room, WebGL fallback, and the laptop layout are exercised in a real browser:
 
 ```bash
 npm install
