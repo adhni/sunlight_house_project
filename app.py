@@ -17,6 +17,7 @@ _MAX_WINDOW_NAME_LEN = 120
 _MAX_WINDOWS_JSON_BYTES = 100_000
 _MAX_ROOM_DIM = 500.0  # metres -- sanity cap to prevent extreme compute
 _MAX_IFC_UPLOAD_BYTES = 25 * 1024 * 1024
+_MAX_YEAR_STEP_HOURS = 12
 
 from sunlight_house.analysis import (
     analyze_day,
@@ -330,7 +331,7 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
         raise ValueError(f"Window facing must be one of: {valid_list}.")
 
     day_step_minutes = parse_positive_int(form_values["day_step_minutes"], "Daily step", max_val=60)
-    year_step_hours = parse_positive_int(form_values["year_step_hours"], "Yearly step", max_val=24)
+    year_step_hours = parse_positive_int(form_values["year_step_hours"], "Yearly step", max_val=_MAX_YEAR_STEP_HOURS)
 
     year = selected_date.year
     config = SimulationConfig(
@@ -571,7 +572,10 @@ def build_safe_form_values(form_values: dict[str, str], defaults: dict[str, str]
         form_values.get("day_step_minutes", defaults["day_step_minutes"]), defaults["day_step_minutes"], 1, 60
     )
     safe["year_step_hours"] = safe_bounded_int_string(
-        form_values.get("year_step_hours", defaults["year_step_hours"]), defaults["year_step_hours"], 1, 24
+        form_values.get("year_step_hours", defaults["year_step_hours"]),
+        defaults["year_step_hours"],
+        1,
+        _MAX_YEAR_STEP_HOURS,
     )
 
     safe_room = Room(

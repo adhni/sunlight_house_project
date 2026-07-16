@@ -347,6 +347,11 @@ class InputValidationAPITests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("Yearly step", response.get_json()["error"])
 
+    def test_snapshot_rejects_year_step_that_can_skip_daylight(self) -> None:
+        response = self.client.get("/api/snapshot", query_string={"year_step_hours": "13"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Yearly step", response.get_json()["error"])
+
     def test_index_falls_back_on_out_of_range_latitude(self) -> None:
         response = self.client.get(
             "/",

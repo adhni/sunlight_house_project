@@ -103,7 +103,7 @@ Daily exposure uses the selected day with the configured day step.
 Yearly and seasonal exposure are estimated rather than fully simulated. The current long-range method:
 
 - chooses `8` representative days per month
-- samples each representative day at the configured yearly step
+- samples each representative day at the configured yearly step (1–12 hours; larger values can skip daylight)
 - keeps only daylight hours where solar elevation is above the horizon
 - weights each representative day by how many calendar days it stands in for
 - renders long-range results on a coarser floor grid than the daily map
