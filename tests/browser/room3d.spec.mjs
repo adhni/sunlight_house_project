@@ -32,9 +32,27 @@ test("lazy-loads the current room and sunlight in WebGL", async ({ page }) => {
   await open3dRoom(page);
 
   await expect(viewer).toHaveAttribute("data-window-count", "2");
+  await expect(viewer).toHaveAttribute("data-opening-count", "2");
+  await expect(viewer).toHaveAttribute("data-front-facing", "NE");
+  await expect(viewer).toHaveAttribute("data-selected-window", "main_window");
+  await expect(viewer).toHaveAttribute("data-wall-panel-count", /[1-9]\d*/);
   await expect(viewer).toHaveAttribute("data-room-size", "4,5,3");
   await expect(viewer).toHaveAttribute("data-rendering", "true");
-  await expect(page.locator("#room3d-status")).toContainText("2 windows");
+  await expect(page.locator("#room3d-status")).toContainText("2 window openings");
+  await expect(page.locator(".room3d-compass-key-north")).toHaveText("N · true north");
+  await expect(page.locator(".room3d-compass-key-front")).toHaveText("Front · NE");
+});
+
+test("selects and highlights a named window from the 3D view", async ({ page }) => {
+  const viewer = await open3dRoom(page);
+  const sideWindowLabel = page.locator('.room3d-window-label[data-window-name="side_window"]');
+  await expect(sideWindowLabel).toBeVisible();
+  await sideWindowLabel.click();
+
+  await expect(viewer).toHaveAttribute("data-selected-window", "side_window");
+  await expect(sideWindowLabel).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#window-editor-title")).toHaveText("Window 2");
+  await expect(page.locator("#selected-window-wall")).toHaveValue("east");
 });
 
 test("orbits, resets, and toggles walls", async ({ page }) => {
@@ -52,6 +70,19 @@ test("orbits, resets, and toggles walls", async ({ page }) => {
   await expect(page.locator("#room3d-toggle-walls")).toHaveAttribute("aria-pressed", "false");
   await expect(viewer).toHaveAttribute("data-walls-visible", "false");
   await expect(viewer.locator("canvas")).toBeVisible();
+});
+
+test("automatically hides camera-facing walls and updates after orbit", async ({ page }) => {
+  const viewer = await open3dRoom(page);
+  const initialHiddenWalls = await viewer.getAttribute("data-auto-hidden-walls");
+  expect(initialHiddenWalls).not.toBe("");
+
+  const canvas = viewer.locator("canvas");
+  await canvas.focus();
+  for (let index = 0; index < 14; index += 1) {
+    await canvas.press("ArrowRight");
+  }
+  await expect.poll(() => viewer.getAttribute("data-auto-hidden-walls")).not.toBe(initialHiddenWalls);
 });
 
 test("supports keyboard orbit, pan, and zoom", async ({ page }) => {
