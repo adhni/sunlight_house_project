@@ -2008,13 +2008,15 @@
       <svg viewBox="${viewBox}" role="img" aria-label="Top-down room snapshot">
         ${defs}
         <rect x="0" y="0" width="${width}" height="${depth}" fill="#fffdf8" stroke="#1f2732" stroke-width="0.06"></rect>
+        <g pointer-events="none" aria-hidden="true">
+          ${rayLines}
+          <g filter="url(#patchShadow)">${patchPolygons}</g>
+          ${noPatch}
+          ${dimensionGuides}
+          ${sideLabels}
+          ${sourceLegend}
+        </g>
         ${windowElements}
-        ${rayLines}
-        <g filter="url(#patchShadow)">${patchPolygons}</g>
-        ${noPatch}
-        ${dimensionGuides}
-        ${sideLabels}
-        ${sourceLegend}
       </svg>
     `;
   }

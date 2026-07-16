@@ -31,9 +31,9 @@ body.is-dragging-window {
 }
 
 .page-shell {
-  width: min(1360px, calc(100% - 72px));
+  width: min(1088px, calc(100% - 48px));
   margin: 0 auto;
-  padding: 30px 0 52px;
+  padding: 24px 0 44px;
 }
 
 .hero {
@@ -44,7 +44,7 @@ body.is-dragging-window {
 
 .hero-compact h1 {
   margin: 0;
-  font-size: clamp(2.6rem, 5vw, 4.4rem);
+  font-size: clamp(2.6rem, 4.5vw, 3.6rem);
   line-height: 0.95;
   letter-spacing: -0.05em;
 }
@@ -112,8 +112,8 @@ summary {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(380px, 0.8fr);
-  gap: 20px;
+  grid-template-columns: minmax(0, 3fr) minmax(420px, 2fr);
+  gap: 16px;
   align-items: start;
 }
 
@@ -128,7 +128,37 @@ summary {
 
 .controls-card {
   display: grid;
-  gap: 12px;
+  gap: 8px;
+  padding: 16px;
+}
+
+.controls-card .control-group {
+  gap: 6px;
+  padding-top: 10px;
+}
+
+.controls-card .chip-row {
+  gap: 6px;
+}
+
+.controls-card .chip-button {
+  padding: 7px 11px;
+  font-size: 0.9rem;
+}
+
+.controls-card input,
+.controls-card select {
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
+.controls-card .explore-slider-group {
+  gap: 4px;
+}
+
+.controls-card .outdoor-conditions-card {
+  gap: 5px;
+  padding: 8px 10px;
 }
 
 .controls-note {
@@ -1070,7 +1100,7 @@ input[type="range"] {
 }
 
 .room-snapshot-large {
-  min-height: 620px;
+  min-height: 500px;
 }
 
 .room-snapshot svg {
@@ -1225,7 +1255,7 @@ input[type="range"] {
 
 @media (max-width: 1180px) {
   .page-shell {
-    width: min(100% - 40px, 1360px);
+    width: min(100% - 40px, 1088px);
   }
 
   .workspace-grid {
