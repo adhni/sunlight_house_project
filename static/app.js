@@ -78,6 +78,10 @@
   const ifcFileInput = document.getElementById("ifc-file-input");
   const ifcImportButton = document.getElementById("ifc-import-button");
   const ifcImportStatus = document.getElementById("ifc-import-status");
+  const room3dContainer = document.getElementById("room3d-container");
+  const room3dStatus = document.getElementById("room3d-status");
+  const room3dResetButton = document.getElementById("room3d-reset-camera");
+  const room3dWallsButton = document.getElementById("room3d-toggle-walls");
 
   const mapElement = document.getElementById("location-map");
   let map = null;
@@ -110,6 +114,8 @@
   let suppressWindowBuilderSync = false;
   let activeWindowIndex = 0;
   let windowRows = [];
+  let room3dViewer = null;
+  let room3dViewerPromise = null;
 
   function isLeapYear(year) {
     return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
@@ -913,6 +919,65 @@
 
   function setPendingState(isPending) {
     roomWorkspace.classList.toggle("loading-state", isPending);
+  }
+
+  function setRoom3dStatus(message) {
+    if (room3dStatus) {
+      room3dStatus.textContent = message;
+    }
+  }
+
+  async function ensureRoom3dViewer() {
+    if (!room3dContainer) {
+      return null;
+    }
+    if (room3dViewer) {
+      return room3dViewer;
+    }
+    if (!room3dViewerPromise) {
+      room3dContainer.dataset.viewerState = "loading";
+      room3dContainer.replaceChildren();
+      const loadingMessage = document.createElement("div");
+      loadingMessage.className = "room3d-loading";
+      loadingMessage.textContent = "Building the 3D room…";
+      room3dContainer.append(loadingMessage);
+      setRoom3dStatus("Loading interactive 3D room…");
+
+      room3dViewerPromise = import("/static/room3d.bundle.js")
+        .then(({ createRoom3DViewer }) => {
+          room3dViewer = createRoom3DViewer({
+            container: room3dContainer,
+            statusElement: room3dStatus,
+            resetButton: room3dResetButton,
+            wallsButton: room3dWallsButton,
+          });
+          room3dViewer.update(currentPayload);
+          return room3dViewer;
+        })
+        .catch((error) => {
+          console.error("3D viewer failed to load", error);
+          room3dContainer.dataset.viewerState = "fallback";
+          room3dContainer.replaceChildren();
+          const fallbackMessage = document.createElement("div");
+          fallbackMessage.className = "room3d-fallback";
+          fallbackMessage.textContent = "3D is unavailable in this browser. The 2D views still work normally.";
+          room3dContainer.append(fallbackMessage);
+          setRoom3dStatus("3D is unavailable; use the Current or Sunlight map views.");
+          return null;
+        });
+    }
+    return room3dViewerPromise;
+  }
+
+  async function setRoom3dActive(active) {
+    if (!active) {
+      room3dViewer?.setActive(false);
+      return;
+    }
+    const viewer = await ensureRoom3dViewer();
+    if (viewer && activeResultTab === "room-3d") {
+      viewer.setActive(true);
+    }
   }
 
   function parseFiniteNumber(value) {
@@ -2069,6 +2134,7 @@
 
   function updateSnapshotDom(payload) {
     currentPayload = payload;
+    room3dViewer?.update(payload);
     const snapshot = payload.snapshot;
     const daily = payload.daily;
     const timeZone = payload.location.timezone_name;
@@ -2421,6 +2487,7 @@
         panel.classList.toggle("is-active", isActive);
         panel.setAttribute("aria-hidden", String(!isActive));
       });
+      setRoom3dActive(selectedTab === "room-3d");
       if (selectedTab === "long-range") {
         fetchLongRangeExposure();
       }
@@ -2670,4 +2737,5 @@
   updateSnapshotDom(initialData);
   updateTimeScrubberReference(timezoneInput.value);
   setUpdateStatus(defaultUpdateMessage, "idle");
+  window.addEventListener("beforeunload", () => room3dViewer?.destroy(), { once: true });
 })();

@@ -1090,6 +1090,69 @@ input[type="range"] {
   display: block;
 }
 
+.room3d-header,
+.room3d-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 14px;
+}
+
+.room3d-header {
+  margin-top: 18px;
+}
+
+.room3d-header h3 {
+  margin: 2px 0 0;
+  font-size: 1.08rem;
+}
+
+.room3d-actions {
+  justify-content: flex-end;
+}
+
+.room3d-container {
+  position: relative;
+  min-height: 500px;
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: radial-gradient(circle at 50% 30%, rgba(255, 255, 255, 0.96), rgba(235, 224, 207, 0.9));
+  touch-action: none;
+}
+
+.room3d-container canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 500px;
+  cursor: grab;
+}
+
+.room3d-container canvas:active {
+  cursor: grabbing;
+}
+
+.room3d-loading,
+.room3d-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.room3d-footer {
+  margin-top: 10px;
+}
+
+.room3d-footer p {
+  margin: 0;
+}
+
 .room-snapshot {
   display: grid;
   place-items: center;
@@ -1309,6 +1372,20 @@ input[type="range"] {
     display: grid;
     grid-template-columns: 1fr;
     align-items: start;
+  }
+
+  .room3d-header,
+  .room3d-footer {
+    display: grid;
+  }
+
+  .room3d-actions {
+    justify-content: flex-start;
+  }
+
+  .room3d-container,
+  .room3d-container canvas {
+    min-height: 360px;
   }
 
   .current-moment-details summary {

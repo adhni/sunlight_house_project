@@ -2,9 +2,14 @@
   "name": "sunlight-house-project",
   "private": true,
   "scripts": {
-    "test:browser": "playwright test"
+    "build:3d": "esbuild static/src/room3d.js --bundle --format=esm --minify --outfile=static/room3d.bundle.js",
+    "test:browser": "npm run build:3d && playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "1.61.1"
+    "@playwright/test": "1.61.1",
+    "esbuild": "0.28.1"
+  },
+  "dependencies": {
+    "three": "0.185.1"
   }
 }
