@@ -37,17 +37,33 @@ test("lazy-loads the current room and sunlight in WebGL", async ({ page }) => {
   await expect(viewer).toHaveAttribute("data-door-wall", "south");
   await expect(viewer).toHaveAttribute("data-internal-wall-count", "1");
   await expect(viewer).toHaveAttribute("data-eave-count", "4");
+  await expect(viewer).toHaveAttribute("data-external-obstruction-count", "0");
+  await expect(viewer).toHaveAttribute("data-external-obstruction-preset", "none");
+  await expect(viewer).toHaveAttribute("data-sunlight-blocker-count", "5");
   await expect(viewer).toHaveAttribute("data-furniture-count", "2");
   await expect(viewer).toHaveAttribute("data-furniture-preset", "living");
-  await expect(viewer).toHaveAttribute("data-scene-visual-only", "true");
+  await expect(viewer).toHaveAttribute("data-scene-visual-only", "false");
   await expect(viewer).toHaveAttribute("data-front-facing", "NE");
+  await expect(viewer).toHaveAttribute("data-axis-convention", "east-positive-x north-negative-z");
   await expect(viewer).toHaveAttribute("data-selected-window", "main_window");
   await expect(viewer).toHaveAttribute("data-wall-panel-count", /[1-9]\d*/);
   await expect(viewer).toHaveAttribute("data-room-size", "4,5,3");
   await expect(viewer).toHaveAttribute("data-rendering", "true");
-  await expect(page.locator("#room3d-status")).toContainText("visual details do not affect sunlight yet");
+  await expect(page.locator("#room3d-status")).toContainText("furniture remains scale-only");
   await expect(page.locator(".room3d-compass-key-north")).toHaveText("N · true north");
   await expect(page.locator(".room3d-compass-key-front")).toHaveText("Front · NE");
+
+  const room = (await viewer.getAttribute("data-room-size")).split(",").map(Number);
+  const appWindows = JSON.parse(await viewer.getAttribute("data-window-geometry"));
+  const threeWindows = JSON.parse(await viewer.getAttribute("data-window-geometry-three"));
+  threeWindows.forEach((windowGeometry, index) => {
+    expect(windowGeometry.name).toBe(appWindows[index].name);
+    expect(windowGeometry.x).toBeCloseTo(appWindows[index].center[0] - room[0] / 2, 3);
+    expect(windowGeometry.z).toBeCloseTo(room[1] / 2 - appWindows[index].center[1], 3);
+  });
+  const cameraPosition = (await viewer.getAttribute("data-camera-position")).split(",").map(Number);
+  expect(cameraPosition[0]).toBeLessThan(0);
+  expect(cameraPosition[2]).toBeGreaterThan(0);
 });
 
 test("updates visual architecture without resetting the camera", async ({ page }) => {
@@ -71,6 +87,25 @@ test("updates visual architecture without resetting the camera", async ({ page }
   await page.locator("#room3d-toggle-roof").click();
   await expect(page.locator("#room3d-toggle-roof")).toHaveAttribute("aria-pressed", "true");
   await expect(viewer).toHaveAttribute("data-roof-visible", "true");
+});
+
+test("adds an exterior blocker through the full sunlight refresh path", async ({ page }) => {
+  const viewer = await open3dRoom(page);
+  const requests = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/api/")) requests.push(path);
+  });
+
+  await page.locator(".scene-details > summary").click();
+  await page.locator('select[name="scene_external_obstruction"]').selectOption("building");
+  await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
+
+  await expect(viewer).toHaveAttribute("data-external-obstruction-count", "1");
+  await expect(viewer).toHaveAttribute("data-external-obstruction-preset", "building");
+  await expect(viewer).toHaveAttribute("data-sunlight-blocker-count", "6");
+  expect(requests.filter((path) => path === "/api/snapshot")).toHaveLength(1);
+  expect(requests.filter((path) => path === "/api/scene-details")).toHaveLength(0);
 });
 
 test("uses the lightweight scene endpoint while the year estimate is active", async ({ page }) => {

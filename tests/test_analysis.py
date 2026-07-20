@@ -1,8 +1,9 @@
 import unittest
+from dataclasses import replace
 
 from sunlight_house.analysis import _long_range_cache, _long_range_cache_key, long_range_exposure_grids, representative_days_for_month
 from sunlight_house.config import Location, SimulationConfig, default_melbourne_scenario, main_window
-from sunlight_house.geometry import Room
+from sunlight_house.geometry import ObstructionBox, Room
 
 
 class RepresentativeDayTests(unittest.TestCase):
@@ -72,6 +73,22 @@ class LongRangeCacheTests(unittest.TestCase):
             window_facing_label=config_a.window_facing_label,
         )
         self.assertNotEqual(_long_range_cache_key(config_a), _long_range_cache_key(config_b))
+
+    def test_cache_key_includes_sunlight_obstructions(self) -> None:
+        config = default_melbourne_scenario()
+        blocked = replace(
+            config,
+            obstructions=(
+                ObstructionBox(
+                    name="outside-building",
+                    minimum=[0.0, config.room.depth + 1.0, 0.0],
+                    maximum=[config.room.width, config.room.depth + 1.4, config.room.height * 1.4],
+                    scope="exterior",
+                ),
+            ),
+        )
+
+        self.assertNotEqual(_long_range_cache_key(config), _long_range_cache_key(blocked))
 
     def test_different_config_produces_cache_miss(self) -> None:
         config_a = default_melbourne_scenario()

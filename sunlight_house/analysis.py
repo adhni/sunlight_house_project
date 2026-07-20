@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 
 from .config import SimulationConfig
-from .geometry import SunlightPatch, intersects_window, patches_for_windows
+from .geometry import SunlightPatch, patches_for_windows, window_entry_intensity
 from .solar import SunPosition, generate_day_positions, generate_year_hourly_positions, get_sun_position, sun_vector
 
 
@@ -116,7 +116,7 @@ def window_intensity_series(
     for _, position in positions:
         vector = room_sun_vector(config, position)
         for window in config.windows:
-            series[window.name].append(intersects_window(vector, window.outward_normal))
+            series[window.name].append(window_entry_intensity(window, vector, config.obstructions))
     return series
 
 
@@ -131,7 +131,7 @@ def patches_for_plot(
         if dt.minute % sample_minutes != 0:
             continue
         vector = room_sun_vector(config, position)
-        patches = patches_for_windows(config.room, config.windows, vector)
+        patches = patches_for_windows(config.room, config.windows, vector, config.obstructions)
         if patches:
             patches_over_time.append((dt, patches))
     return patches_over_time
@@ -258,7 +258,7 @@ def patches_for_positions(
     patches_over_time: list[tuple[datetime, list[SunlightPatch]]] = []
     for dt, position in positions:
         vector = room_sun_vector(config, position)
-        patches = patches_for_windows(config.room, config.windows, vector)
+        patches = patches_for_windows(config.room, config.windows, vector, config.obstructions)
         if patches:
             patches_over_time.append((dt, patches))
     return patches_over_time
@@ -369,6 +369,15 @@ def _long_range_cache_key(config: SimulationConfig) -> tuple:
         )
         for w in config.windows
     )
+    obstruction_tuples = tuple(
+        (
+            obstruction.name,
+            tuple(float(value) for value in obstruction.minimum),
+            tuple(float(value) for value in obstruction.maximum),
+            obstruction.scope,
+        )
+        for obstruction in config.obstructions
+    )
     return (
         config.location.latitude,
         config.location.longitude,
@@ -377,6 +386,7 @@ def _long_range_cache_key(config: SimulationConfig) -> tuple:
         config.room.depth,
         config.room.height,
         window_tuples,
+        obstruction_tuples,
         config.window_facing_label,
         config.year,
         config.year_step_hours,
@@ -512,9 +522,10 @@ def analyze_snapshot(config: SimulationConfig, moment: datetime) -> SnapshotAnal
     vector = sun_vector(position.elevation_deg, position.azimuth_deg)
     room_vector = room_sun_vector(config, position)
     window_intensities = {
-        window.name: intersects_window(room_vector, window.outward_normal) for window in config.windows
+        window.name: window_entry_intensity(window, room_vector, config.obstructions)
+        for window in config.windows
     }
-    patches = patches_for_windows(config.room, config.windows, room_vector)
+    patches = patches_for_windows(config.room, config.windows, room_vector, config.obstructions)
     return SnapshotAnalysis(
         moment=moment,
         position=position,

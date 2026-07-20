@@ -18,6 +18,7 @@ const COLORS = {
   furniture: 0x56747f,
   furnitureAccent: 0xc86a3a,
   furnitureWood: 0x9a744f,
+  externalObstruction: 0x8f857c,
 };
 
 const FACING_DEGREES = {
@@ -62,11 +63,11 @@ function replaceGroupContents(group) {
 
 function appPointToThree(point, room) {
   // App coordinates: X=width, Y=depth, Z=height.
-  // Three.js coordinates: X=width, Y=height, Z=depth.
+  // Three.js coordinates: east=+X, up=+Y, north=-Z.
   return new THREE.Vector3(
     Number(point[0]) - room.width / 2,
     Number(point[2]),
-    Number(point[1]) - room.depth / 2,
+    room.depth / 2 - Number(point[1]),
   );
 }
 
@@ -75,15 +76,15 @@ function wallDefinition(name, room, thickness) {
     north: {
       name,
       length: room.width,
-      normal: new THREE.Vector3(0, 0, 1),
-      position: new THREE.Vector3(0, 0, room.depth / 2),
+      normal: new THREE.Vector3(0, 0, -1),
+      position: new THREE.Vector3(0, 0, -room.depth / 2),
       spanAxis: "x",
     },
     south: {
       name,
       length: room.width,
-      normal: new THREE.Vector3(0, 0, -1),
-      position: new THREE.Vector3(0, 0, -room.depth / 2),
+      normal: new THREE.Vector3(0, 0, 1),
+      position: new THREE.Vector3(0, 0, room.depth / 2),
       spanAxis: "x",
     },
     east: {
@@ -163,7 +164,7 @@ function makeWallPanel(definition, spanStart, spanEnd, bottom, top) {
   const centeredSpan = (spanStart + spanEnd) / 2 - definition.length / 2;
   panel.position.copy(definition.position);
   panel.position.y = (bottom + top) / 2;
-  panel.position[definition.spanAxis] = centeredSpan;
+  panel.position[definition.spanAxis] = definition.spanAxis === "z" ? -centeredSpan : centeredSpan;
   panel.userData = { kind: "wall-panel", wall: definition.name };
   panel.renderOrder = 1;
   return panel;
@@ -267,7 +268,7 @@ function makePatch(patch, room) {
   const points = patch.polygon_xy.map((point) => new THREE.Vector3(
     Number(point[0]) - room.width / 2,
     0.025,
-    Number(point[1]) - room.depth / 2,
+    room.depth / 2 - Number(point[1]),
   ));
   const shape = new THREE.Shape();
   points.forEach((point, index) => {
@@ -302,11 +303,11 @@ function makePatch(patch, room) {
 }
 
 function makeBeam(windowData, patch, room) {
-  const source = appPointToThree(windowData.center_xyz, room);
+  const source = appPointToThree(patch.source_center_xyz || windowData.center_xyz, room);
   const floorPoints = patch.polygon_xy.map((point) => new THREE.Vector3(
     Number(point[0]) - room.width / 2,
     0.04,
-    Number(point[1]) - room.depth / 2,
+    room.depth / 2 - Number(point[1]),
   ));
   const vertices = [];
   floorPoints.forEach((point, index) => {
@@ -376,9 +377,9 @@ function makeDoor(doorData, room, thickness) {
   const side = doorData.width * 0.31;
   if (isFrontBack) {
     knob.position.x += side;
-    knob.position.z += doorData.wall === "north" ? -thickness * 0.42 : thickness * 0.42;
+    knob.position.z += doorData.wall === "north" ? thickness * 0.42 : -thickness * 0.42;
   } else {
-    knob.position.z += side;
+    knob.position.z -= side;
     knob.position.x += doorData.wall === "east" ? -thickness * 0.42 : thickness * 0.42;
   }
   const group = new THREE.Group();
@@ -413,6 +414,34 @@ function makeInternalWall(wallData, room) {
   return group;
 }
 
+function makeExternalObstruction(obstructionData, room) {
+  const [width, depth, height] = obstructionData.size_xyz.map(Number);
+  const geometry = new THREE.BoxGeometry(width, height, depth);
+  const mesh = new THREE.Mesh(
+    geometry,
+    new THREE.MeshStandardMaterial({
+      color: COLORS.externalObstruction,
+      transparent: true,
+      opacity: 0.3,
+      roughness: 0.96,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  );
+  mesh.position.copy(appPointToThree(obstructionData.center_xyz, room));
+  mesh.renderOrder = 1;
+  mesh.userData = { kind: "external-obstruction", preset: obstructionData.preset };
+  const outline = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({ color: COLORS.wallEdge, transparent: true, opacity: 0.8 }),
+  );
+  outline.position.copy(mesh.position);
+  const group = new THREE.Group();
+  group.add(mesh, outline);
+  group.userData = { kind: "external-obstruction", preset: obstructionData.preset };
+  return group;
+}
+
 function makeRoofDetails(roofData, room) {
   const roofGroup = new THREE.Group();
   const eaveGroup = new THREE.Group();
@@ -443,8 +472,8 @@ function makeRoofDetails(roofData, room) {
   if (roofData.eaves_enabled) {
     const eaveMaterial = () => new THREE.MeshStandardMaterial({ color: COLORS.roof, roughness: 0.88 });
     const eaves = [
-      { size: [room.width + depth * 2, thickness, depth], position: [0, room.height, room.depth / 2 + depth / 2] },
       { size: [room.width + depth * 2, thickness, depth], position: [0, room.height, -room.depth / 2 - depth / 2] },
+      { size: [room.width + depth * 2, thickness, depth], position: [0, room.height, room.depth / 2 + depth / 2] },
       { size: [depth, thickness, room.depth], position: [room.width / 2 + depth / 2, room.height, 0] },
       { size: [depth, thickness, room.depth], position: [-room.width / 2 - depth / 2, room.height, 0] },
     ];
@@ -547,8 +576,8 @@ function makeFurniture(furnitureData, room) {
   const preset = furnitureData?.preset || "none";
   const scale = Math.max(Math.min(room.width / 4, room.depth / 5, room.height / 3, 1), 0.08);
   const addItem = (item, x, z, rotation = 0) => {
-    item.position.set(x, 0, z);
-    item.rotation.y = rotation;
+    item.position.set(x, 0, -z);
+    item.rotation.y = -rotation;
     group.add(item);
   };
   if (preset === "living") {
@@ -574,7 +603,7 @@ function makeFurniture(furnitureData, room) {
 
 function compassVector(worldAzimuth, frontFacing) {
   const relative = THREE.MathUtils.degToRad((worldAzimuth - frontFacing + 360) % 360);
-  return new THREE.Vector3(Math.sin(relative), 0, Math.cos(relative)).normalize();
+  return new THREE.Vector3(Math.sin(relative), 0, -Math.cos(relative)).normalize();
 }
 
 function makeOrientation(room, facingLabel) {
@@ -583,7 +612,7 @@ function makeOrientation(room, facingLabel) {
   const origin = new THREE.Vector3(-room.width / 2 + 0.45, 0.065, -room.depth / 2 + 0.45);
   const length = Math.min(Math.max(Math.min(room.width, room.depth) * 0.2, 0.55), 1.1);
   const northDirection = compassVector(0, frontFacing);
-  const frontDirection = new THREE.Vector3(0, 0, 1);
+  const frontDirection = new THREE.Vector3(0, 0, -1);
   const north = new THREE.ArrowHelper(northDirection, origin, length, COLORS.north, 0.18, 0.1);
   const front = new THREE.ArrowHelper(frontDirection, origin, length * 0.82, COLORS.front, 0.16, 0.09);
   north.userData = { kind: "orientation-arrow", label: "N" };
@@ -672,6 +701,7 @@ class Room3DViewer {
     this.windowGroup = new THREE.Group();
     this.doorGroup = new THREE.Group();
     this.internalWallGroup = new THREE.Group();
+    this.externalObstructionGroup = new THREE.Group();
     this.furnitureGroup = new THREE.Group();
     this.eaveGroup = new THREE.Group();
     this.roofGroup = new THREE.Group();
@@ -683,6 +713,7 @@ class Room3DViewer {
       this.windowGroup,
       this.doorGroup,
       this.internalWallGroup,
+      this.externalObstructionGroup,
       this.furnitureGroup,
       this.eaveGroup,
       this.roofGroup,
@@ -692,7 +723,7 @@ class Room3DViewer {
     this.scene.add(this.contentGroup);
     this.scene.add(new THREE.HemisphereLight(0xfffbf2, 0x64727a, 2.5));
     const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
-    keyLight.position.set(5, 9, 7);
+    keyLight.position.set(5, 9, -7);
     this.scene.add(keyLight);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -747,6 +778,7 @@ class Room3DViewer {
     replaceGroupContents(this.windowGroup);
     replaceGroupContents(this.doorGroup);
     replaceGroupContents(this.internalWallGroup);
+    replaceGroupContents(this.externalObstructionGroup);
     replaceGroupContents(this.furnitureGroup);
     replaceGroupContents(this.eaveGroup);
     replaceGroupContents(this.roofGroup);
@@ -774,6 +806,9 @@ class Room3DViewer {
     if (doorData) this.doorGroup.add(makeDoor(doorData, room, thickness));
     if (sceneDetails.internal_wall?.enabled) {
       this.internalWallGroup.add(makeInternalWall(sceneDetails.internal_wall, room));
+    }
+    if (sceneDetails.external_obstruction?.enabled) {
+      this.externalObstructionGroup.add(makeExternalObstruction(sceneDetails.external_obstruction, room));
     }
     const roofDetails = makeRoofDetails(sceneDetails.roof || {
       enabled: false,
@@ -817,12 +852,18 @@ class Room3DViewer {
       (count, wall) => count + wall.children.filter((child) => child.userData.kind === "wall-panel").length,
       0,
     );
+    const sunlightBlockerCount = (sceneDetails.internal_wall?.enabled ? 1 : 0)
+      + roofDetails.eaveCount
+      + (sceneDetails.external_obstruction?.enabled ? 1 : 0);
     this.container.dataset.windowCount = String(payload.windows.length);
     this.container.dataset.openingCount = String(payload.windows.length + (doorData ? 1 : 0));
     this.container.dataset.wallPanelCount = String(wallPanelCount);
     this.container.dataset.doorCount = doorData ? "1" : "0";
     this.container.dataset.doorWall = doorData?.wall || "";
     this.container.dataset.internalWallCount = sceneDetails.internal_wall?.enabled ? "1" : "0";
+    this.container.dataset.externalObstructionCount = sceneDetails.external_obstruction?.enabled ? "1" : "0";
+    this.container.dataset.externalObstructionPreset = sceneDetails.external_obstruction?.preset || "none";
+    this.container.dataset.sunlightBlockerCount = String(sunlightBlockerCount);
     this.container.dataset.eaveCount = String(roofDetails.eaveCount);
     this.container.dataset.furnitureCount = String(furniture.itemCount);
     this.container.dataset.furniturePreset = furniture.preset;
@@ -840,8 +881,17 @@ class Room3DViewer {
       height: windowData.height,
       center: windowData.center_xyz,
     })));
+    this.container.dataset.axisConvention = "east-positive-x north-negative-z";
+    this.container.dataset.windowGeometryThree = JSON.stringify(payload.windows.map((windowData) => {
+      const center = this.windowVisuals.get(windowData.name).center;
+      return {
+        name: windowData.name,
+        x: Number(center.x.toFixed(3)),
+        z: Number(center.z.toFixed(3)),
+      };
+    }));
     this.setStatus(
-      `${payload.windows.length} window opening${payload.windows.length === 1 ? "" : "s"} · ${furniture.itemCount} scale item${furniture.itemCount === 1 ? "" : "s"} · visual details do not affect sunlight yet.`,
+      `${payload.windows.length} window opening${payload.windows.length === 1 ? "" : "s"} · ${sunlightBlockerCount} sunlight blocker${sunlightBlockerCount === 1 ? "" : "s"} · furniture remains scale-only.`,
     );
     this.updateDebugState();
   }
@@ -965,7 +1015,7 @@ class Room3DViewer {
     this.controls.update();
     this.controls.target.set(0, room.height * 0.42, 0);
     // Start opposite the default north/east windows so their real wall openings are visible.
-    this.camera.position.set(-scale * 1.18, scale * 0.92, -scale * 1.28);
+    this.camera.position.set(-scale * 1.18, scale * 0.92, scale * 1.28);
     this.controls.update();
     this.controls.saveState();
     this.controls.enableDamping = dampingWasEnabled;

@@ -50,6 +50,8 @@ class AppTests(unittest.TestCase):
         self.assertEqual(values["scene_partition_enabled"], "1")
         self.assertEqual(values["scene_eaves_enabled"], "1")
         self.assertEqual(values["scene_furniture_preset"], "living")
+        self.assertEqual(values["scene_external_obstruction"], "none")
+        self.assertEqual(values["scene_external_wall"], "north")
 
     def test_snapshot_api_returns_expected_shape(self) -> None:
         response = self.client.get("/api/snapshot")
@@ -77,11 +79,15 @@ class AppTests(unittest.TestCase):
         self.assertEqual(first_window["center_xyz"], [3.0, 5.0, 1.1])
         self.assertEqual(len(first_window["corners_xyz"]), 4)
         self.assertEqual(first_window["outward_normal"], [0.0, 1.0, 0.0])
-        self.assertTrue(payload["scene"]["visual_only"])
+        self.assertFalse(payload["scene"]["visual_only"])
         self.assertTrue(payload["scene"]["door"]["enabled"])
         self.assertEqual(payload["scene"]["door"]["wall"], "south")
         self.assertTrue(payload["scene"]["internal_wall"]["enabled"])
+        self.assertTrue(payload["scene"]["internal_wall"]["affects_sunlight"])
+        self.assertFalse(payload["scene"]["external_obstruction"]["enabled"])
         self.assertEqual(payload["scene"]["furniture"]["preset"], "living")
+        self.assertFalse(payload["scene"]["furniture"]["affects_sunlight"])
+        self.assertIn("source_center_xyz", payload["snapshot"]["patches"][0])
 
     def test_scene_details_scale_to_the_current_room(self) -> None:
         values = default_form_values()
@@ -89,12 +95,45 @@ class AppTests(unittest.TestCase):
 
         scene = build_scene_details(values, config.room)
 
-        self.assertEqual(scene["version"], 1)
+        self.assertEqual(scene["version"], 2)
+        self.assertEqual(scene["room_bounds"], {"width": 8.0, "depth": 6.0, "height": 3.0})
         self.assertAlmostEqual(scene["door"]["span_center"], 1.76)
         self.assertLessEqual(scene["door"]["width"], 0.9)
         self.assertAlmostEqual(scene["internal_wall"]["start_xy"][0], 4.48)
         self.assertAlmostEqual(scene["internal_wall"]["start_xy"][1], 3.48)
         self.assertEqual(scene["furniture"]["preset"], "living")
+
+    def test_scene_obstructions_change_sunlight_without_furniture_participation(self) -> None:
+        clear_scene = {
+            "scene_partition_enabled": "0",
+            "scene_eaves_enabled": "0",
+            "scene_external_obstruction": "none",
+        }
+        clear_payload = self.client.get("/api/snapshot", query_string=clear_scene).get_json()
+        blocked_payload = self.client.get(
+            "/api/snapshot",
+            query_string=clear_scene
+            | {
+                "scene_external_obstruction": "building",
+                "scene_external_wall": "north",
+                "scene_furniture_preset": "bedroom",
+            },
+        ).get_json()
+
+        self.assertLess(
+            blocked_payload["daily"]["exposure_grid"]["peak_hours"],
+            clear_payload["daily"]["exposure_grid"]["peak_hours"],
+        )
+        self.assertTrue(blocked_payload["scene"]["external_obstruction"]["enabled"])
+        self.assertEqual(blocked_payload["scene"]["external_obstruction"]["preset"], "building")
+        self.assertEqual(blocked_payload["scene"]["furniture"]["preset"], "bedroom")
+
+    def test_default_config_builds_partition_and_eave_blockers(self) -> None:
+        config, _moment = build_config_and_moment(default_form_values())
+
+        self.assertEqual(len(config.obstructions), 5)
+        self.assertEqual(config.obstructions[0].name, "internal-divider")
+        self.assertEqual({box.scope for box in config.obstructions}, {"interior", "exterior"})
 
     def test_scene_details_api_skips_sunlight_analysis(self) -> None:
         with (
@@ -121,6 +160,15 @@ class AppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("door wall", response.get_json()["error"])
+
+    def test_snapshot_api_rejects_invalid_external_obstruction(self) -> None:
+        response = self.client.get(
+            "/api/snapshot",
+            query_string={"scene_external_obstruction": "tree", "scene_external_wall": "ceiling"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Outside obstruction", response.get_json()["error"])
 
     def test_day_animation_api_returns_cached_lightweight_frames(self) -> None:
         query = {"selected_date": "2025-02-13", "selected_time": "13:07"}

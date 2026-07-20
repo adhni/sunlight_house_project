@@ -113,6 +113,31 @@ class SunlightPatch:
     polygon_xy: np.ndarray
     intensity: float
     window_name: str
+    source_center_xyz: np.ndarray | None = None
+
+
+@dataclass(frozen=True)
+class ObstructionBox:
+    """Axis-aligned sunlight blocker in room coordinates."""
+
+    name: str
+    minimum: np.ndarray
+    maximum: np.ndarray
+    scope: str = "interior"
+
+    def __post_init__(self) -> None:
+        minimum = np.asarray(self.minimum, dtype=float)
+        maximum = np.asarray(self.maximum, dtype=float)
+        if minimum.shape != (3,) or maximum.shape != (3,):
+            raise ValueError("Obstruction bounds must contain three coordinates.")
+        if not np.all(np.isfinite(minimum)) or not np.all(np.isfinite(maximum)):
+            raise ValueError("Obstruction bounds must be finite.")
+        if np.any(maximum <= minimum):
+            raise ValueError("Obstruction maximum bounds must exceed minimum bounds.")
+        if self.scope not in {"interior", "exterior"}:
+            raise ValueError("Obstruction scope must be interior or exterior.")
+        object.__setattr__(self, "minimum", minimum)
+        object.__setattr__(self, "maximum", maximum)
 
 
 def intersects_window(sun_direction: np.ndarray, window_normal: np.ndarray) -> float:
@@ -139,6 +164,34 @@ def _project_point_to_floor(point: np.ndarray, ray_dir: np.ndarray) -> np.ndarra
     if t < 0:
         return None
     return point + t * ray_dir
+
+
+def _ray_hits_box(
+    origin: np.ndarray,
+    direction: np.ndarray,
+    box: ObstructionBox,
+    *,
+    max_distance: float | None = None,
+) -> bool:
+    """Return whether a forward ray intersects an axis-aligned box."""
+    origin = np.asarray(origin, dtype=float)
+    direction = np.asarray(direction, dtype=float)
+    t_min = 0.0
+    t_max = float("inf") if max_distance is None else max_distance
+
+    for axis in range(3):
+        if abs(direction[axis]) <= 1e-12:
+            if origin[axis] < box.minimum[axis] or origin[axis] > box.maximum[axis]:
+                return False
+            continue
+        first = (box.minimum[axis] - origin[axis]) / direction[axis]
+        second = (box.maximum[axis] - origin[axis]) / direction[axis]
+        near, far = sorted((first, second))
+        t_min = max(t_min, near)
+        t_max = min(t_max, far)
+        if t_max < t_min:
+            return False
+    return t_max >= max(t_min, 0.0)
 
 
 def _interpolate_segment_point(start: np.ndarray, end: np.ndarray, *, axis: int, value: float) -> np.ndarray:
@@ -222,18 +275,18 @@ def _clip_polygon_to_room(room: Room, polygon_xy: np.ndarray) -> np.ndarray:
     return _dedupe_polygon_points(clipped)
 
 
-def project_to_floor(room: Room, window: Window, sun_direction: np.ndarray) -> SunlightPatch | None:
-    """Project incoming sunlight through a window onto the floor plane."""
-    room.validate_window(window)
-    intensity = intersects_window(sun_direction, window.outward_normal)
-    if intensity <= 0:
-        return None
-
+def _project_window_corners_to_floor(
+    room: Room,
+    window: Window,
+    corners: list[np.ndarray],
+    sun_direction: np.ndarray,
+    intensity: float,
+) -> SunlightPatch | None:
     incoming = -np.asarray(sun_direction, dtype=float)
     ray_dir = incoming / np.linalg.norm(incoming)
 
     projected: list[np.ndarray] = []
-    for corner in window.corners():
+    for corner in corners:
         hit = _project_point_to_floor(corner, ray_dir)
         if hit is None:
             return None
@@ -244,17 +297,158 @@ def project_to_floor(room: Room, window: Window, sun_direction: np.ndarray) -> S
         return None
     if _polygon_area(poly) <= 1e-6:
         return None
-    return SunlightPatch(polygon_xy=poly, intensity=intensity, window_name=window.name)
+    source_center = np.mean(np.vstack(corners), axis=0)
+    return SunlightPatch(
+        polygon_xy=poly,
+        intensity=intensity,
+        window_name=window.name,
+        source_center_xyz=source_center,
+    )
+
+
+def project_to_floor(room: Room, window: Window, sun_direction: np.ndarray) -> SunlightPatch | None:
+    """Project incoming sunlight through a window onto the floor plane."""
+    room.validate_window(window)
+    intensity = intersects_window(sun_direction, window.outward_normal)
+    if intensity <= 0:
+        return None
+    return _project_window_corners_to_floor(room, window, window.corners(), sun_direction, intensity)
+
+
+def _window_sample_point(window: Window, column: int, row: int, *, columns: int, rows: int) -> np.ndarray:
+    u, v = window.local_axes()
+    u_offset = -window.width / 2.0 + (column + 0.5) * window.width / columns
+    v_offset = -window.height / 2.0 + (row + 0.5) * window.height / rows
+    return window.center + u_offset * u + v_offset * v
+
+
+def _visible_window_rectangles(
+    window: Window,
+    sun_direction: np.ndarray,
+    obstructions: tuple[ObstructionBox, ...],
+    *,
+    columns: int = 6,
+    rows: int = 6,
+) -> tuple[list[list[np.ndarray]], float]:
+    """Approximate unblocked window regions as merged rectangular sample runs."""
+    sun_direction = np.asarray(sun_direction, dtype=float)
+    sun_direction = sun_direction / np.linalg.norm(sun_direction)
+    incoming = -sun_direction
+    exterior = tuple(box for box in obstructions if box.scope == "exterior")
+    interior = tuple(box for box in obstructions if box.scope == "interior")
+    floor_visible = np.zeros((rows, columns), dtype=bool)
+    entry_visible_count = 0
+    epsilon = 1e-7
+
+    for row in range(rows):
+        for column in range(columns):
+            sample = _window_sample_point(window, column, row, columns=columns, rows=rows)
+            entry_visible = not any(
+                _ray_hits_box(sample + epsilon * sun_direction, sun_direction, box)
+                for box in exterior
+            )
+            if not entry_visible:
+                continue
+            entry_visible_count += 1
+            floor_distance = sample[2] / sun_direction[2]
+            floor_visible[row, column] = not any(
+                _ray_hits_box(
+                    sample + epsilon * incoming,
+                    incoming,
+                    box,
+                    max_distance=max(floor_distance - epsilon, 0.0),
+                )
+                for box in interior
+            )
+
+    entry_fraction = entry_visible_count / float(rows * columns)
+    if not np.any(floor_visible):
+        return [], entry_fraction
+
+    if np.all(floor_visible):
+        return [window.corners()], entry_fraction
+
+    runs_by_row: list[set[tuple[int, int]]] = []
+    for row in range(rows):
+        runs: set[tuple[int, int]] = set()
+        start: int | None = None
+        for column in range(columns + 1):
+            visible = column < columns and bool(floor_visible[row, column])
+            if visible and start is None:
+                start = column
+            elif not visible and start is not None:
+                runs.add((start, column))
+                start = None
+        runs_by_row.append(runs)
+
+    rectangles: list[tuple[int, int, int, int]] = []
+    active: dict[tuple[int, int], int] = {}
+    for row, runs in enumerate(runs_by_row):
+        for run, start_row in list(active.items()):
+            if run not in runs:
+                rectangles.append((run[0], run[1], start_row, row))
+                del active[run]
+        for run in runs:
+            active.setdefault(run, row)
+    for run, start_row in active.items():
+        rectangles.append((run[0], run[1], start_row, rows))
+
+    u, v = window.local_axes()
+    corner_sets: list[list[np.ndarray]] = []
+    for start_column, end_column, start_row, end_row in rectangles:
+        u_start = -window.width / 2.0 + start_column * window.width / columns
+        u_end = -window.width / 2.0 + end_column * window.width / columns
+        v_start = -window.height / 2.0 + start_row * window.height / rows
+        v_end = -window.height / 2.0 + end_row * window.height / rows
+        corner_sets.append([
+            window.center + u_start * u + v_start * v,
+            window.center + u_end * u + v_start * v,
+            window.center + u_end * u + v_end * v,
+            window.center + u_start * u + v_end * v,
+        ])
+    return corner_sets, entry_fraction
+
+
+def window_entry_intensity(
+    window: Window,
+    sun_direction: np.ndarray,
+    obstructions: Iterable[ObstructionBox] = (),
+) -> float:
+    incidence = intersects_window(sun_direction, window.outward_normal)
+    if incidence <= 0:
+        return 0.0
+    obstruction_tuple = tuple(obstructions)
+    if not obstruction_tuple:
+        return incidence
+    _rectangles, entry_fraction = _visible_window_rectangles(window, sun_direction, obstruction_tuple)
+    return incidence * entry_fraction
 
 
 def estimate_patch_centroid(patch: SunlightPatch) -> np.ndarray:
     return patch.polygon_xy.mean(axis=0)
 
 
-def patches_for_windows(room: Room, windows: Iterable[Window], sun_direction: np.ndarray) -> list[SunlightPatch]:
+def patches_for_windows(
+    room: Room,
+    windows: Iterable[Window],
+    sun_direction: np.ndarray,
+    obstructions: Iterable[ObstructionBox] = (),
+) -> list[SunlightPatch]:
     patches: list[SunlightPatch] = []
+    obstruction_tuple = tuple(obstructions)
     for window in windows:
-        patch = project_to_floor(room, window, sun_direction)
-        if patch is not None:
-            patches.append(patch)
+        room.validate_window(window)
+        intensity = intersects_window(sun_direction, window.outward_normal)
+        if intensity <= 0:
+            continue
+        if not obstruction_tuple:
+            patch = project_to_floor(room, window, sun_direction)
+            if patch is not None:
+                patches.append(patch)
+            continue
+        rectangles, _entry_fraction = _visible_window_rectangles(window, sun_direction, obstruction_tuple)
+        for corners in rectangles:
+            patch = _project_window_corners_to_floor(room, window, corners, sun_direction, intensity)
+            if patch is not None:
+                patches.append(patch)
     return patches

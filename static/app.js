@@ -706,11 +706,13 @@
     };
   }
 
-  function currentQueryString({ includeSceneDetails = true } = {}) {
+  function currentQueryString({ includeVisualSceneDetails = true } = {}) {
     syncWindowsJsonFromEditor();
     const params = new URLSearchParams(new FormData(form));
-    if (!includeSceneDetails) {
-      sceneDetailInputs.forEach((input) => params.delete(input.name));
+    if (!includeVisualSceneDetails) {
+      sceneDetailInputs.forEach((input) => {
+        if (!input.hasAttribute("data-sunlight-effect")) params.delete(input.name);
+      });
     }
     return params.toString();
   }
@@ -1048,8 +1050,6 @@
       "location_name",
       "scene_door_enabled",
       "scene_door_wall",
-      "scene_partition_enabled",
-      "scene_eaves_enabled",
       "scene_furniture_preset",
     ].forEach((key) => params.delete(key));
     return params.toString();
@@ -2650,7 +2650,7 @@
   }
 
   async function fetchLongRangeExposure(force = false) {
-    const query = currentQueryString({ includeSceneDetails: false });
+    const query = currentQueryString({ includeVisualSceneDetails: false });
     if (!force && longRangePayload && longRangeQuery === query) {
       updateLongRangeDom();
       return;
@@ -2873,7 +2873,11 @@
 
   sceneDetailInputs.forEach((input) => {
     input.addEventListener("change", () => {
-      refreshSceneDetails();
+      if (input.hasAttribute("data-sunlight-effect")) {
+        scheduleRefresh("Updating sunlight obstructions...");
+      } else {
+        refreshSceneDetails();
+      }
     });
   });
 

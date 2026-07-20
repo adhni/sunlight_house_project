@@ -25,6 +25,7 @@ _DAY_ANIMATION_CACHE_MAX = 24
 _SCENE_TOGGLE_VALUES = {"0", "1"}
 _SCENE_DOOR_WALLS = {"north", "south", "east", "west"}
 _SCENE_FURNITURE_PRESETS = {"none", "living", "dining", "bedroom"}
+_SCENE_EXTERNAL_PRESETS = {"none", "fence", "building"}
 _day_animation_cache: OrderedDict[tuple, dict[str, object]] = OrderedDict()
 _day_animation_cache_lock = Lock()
 
@@ -46,7 +47,7 @@ from sunlight_house.config import (
     main_window,
     window_on_wall,
 )
-from sunlight_house.geometry import Room, Window
+from sunlight_house.geometry import ObstructionBox, Room, Window
 from sunlight_house.ifc_import import IfcImportError, import_ifc_room
 from sunlight_house.insights import summarize_direct_sun
 
@@ -86,6 +87,8 @@ def create_app() -> Flask:
                 "scene_partition_enabled",
                 "scene_eaves_enabled",
                 "scene_furniture_preset",
+                "scene_external_obstruction",
+                "scene_external_wall",
             ):
                 form_values[hidden_key] = safe_values[hidden_key]
             config, selected_moment = build_config_and_moment(safe_values)
@@ -140,7 +143,7 @@ def create_app() -> Flask:
 
     @app.get("/api/scene-details")
     def api_scene_details():
-        """Return visual-only 3D details without running sunlight analysis."""
+        """Return scene geometry without running sunlight analysis."""
         defaults = default_form_values()
         raw_values = defaults | {key: value for key, value in request.args.items() if value != ""}
 
@@ -277,6 +280,8 @@ def default_form_values() -> dict[str, str]:
         "scene_partition_enabled": "1",
         "scene_eaves_enabled": "1",
         "scene_furniture_preset": "living",
+        "scene_external_obstruction": "none",
+        "scene_external_wall": "north",
         "day_step_minutes": str(scenario.day_step_minutes),
         "year_step_hours": str(scenario.year_step_hours),
     }
@@ -399,6 +404,7 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
     year_step_hours = parse_positive_int(form_values["year_step_hours"], "Yearly step", max_val=_MAX_YEAR_STEP_HOURS)
 
     year = selected_date.year
+    scene_details = build_scene_details(form_values, room)
     config = SimulationConfig(
         location=Location(
             name=location_name,
@@ -412,6 +418,7 @@ def build_config_and_moment(form_values: dict[str, str]) -> tuple[SimulationConf
         day_step_minutes=day_step_minutes,
         year_step_hours=year_step_hours,
         window_facing_label=facing_label,
+        obstructions=build_sunlight_obstructions(scene_details),
     )
 
     moment = datetime.combine(selected_date, selected_time, tzinfo=timezone)
@@ -510,6 +517,9 @@ def snapshot_payload(
                     "window_name": patch.window_name,
                     "intensity": patch.intensity,
                     "polygon_xy": patch.polygon_xy.tolist(),
+                    "source_center_xyz": (
+                        patch.source_center_xyz.tolist() if patch.source_center_xyz is not None else None
+                    ),
                 }
                 for patch in snapshot.patches
             ],
@@ -581,6 +591,15 @@ def _day_animation_cache_key(config: SimulationConfig, target_date: date) -> tup
         )
         for window in config.windows
     )
+    obstructions = tuple(
+        (
+            obstruction.name,
+            tuple(float(value) for value in obstruction.minimum),
+            tuple(float(value) for value in obstruction.maximum),
+            obstruction.scope,
+        )
+        for obstruction in config.obstructions
+    )
     return (
         target_date.isoformat(),
         float(config.location.latitude),
@@ -590,6 +609,7 @@ def _day_animation_cache_key(config: SimulationConfig, target_date: date) -> tup
         float(config.room.depth),
         float(config.room.height),
         windows,
+        obstructions,
         config.window_facing_label,
         _ANIMATION_STEP_MINUTES,
     )
@@ -618,6 +638,9 @@ def _animation_snapshot_payload(config: SimulationConfig, moment: datetime) -> d
                     "window_name": patch.window_name,
                     "intensity": patch.intensity,
                     "polygon_xy": patch.polygon_xy.tolist(),
+                    "source_center_xyz": (
+                        patch.source_center_xyz.tolist() if patch.source_center_xyz is not None else None
+                    ),
                 }
                 for patch in snapshot.patches
             ],
@@ -723,7 +746,7 @@ def normalize_form_values(form_values: dict[str, str], config: SimulationConfig)
 
 
 def build_scene_details(form_values: dict[str, str], room: Room) -> dict[str, object]:
-    """Build lightweight visual-only scene details sized to the current room."""
+    """Build architectural scene details sized to the current room."""
 
     def scene_toggle(key: str, label: str) -> bool:
         value = str(form_values.get(key, "")).strip()
@@ -737,6 +760,12 @@ def build_scene_details(form_values: dict[str, str], room: Room) -> dict[str, ob
     furniture_preset = str(form_values.get("scene_furniture_preset", "")).strip().lower()
     if furniture_preset not in _SCENE_FURNITURE_PRESETS:
         raise ValueError("3D furniture preset must be none, living, dining, or bedroom.")
+    external_preset = str(form_values.get("scene_external_obstruction", "")).strip().lower()
+    if external_preset not in _SCENE_EXTERNAL_PRESETS:
+        raise ValueError("Outside obstruction must be none, fence, or building.")
+    external_wall = str(form_values.get("scene_external_wall", "")).strip().lower()
+    if external_wall not in _SCENE_DOOR_WALLS:
+        raise ValueError("Outside obstruction wall must be north, south, east, or west.")
 
     wall_length = room.width if door_wall in {"north", "south"} else room.depth
     door_width = min(0.9, wall_length * 0.28)
@@ -754,9 +783,34 @@ def build_scene_details(form_values: dict[str, str], room: Room) -> dict[str, ob
     eave_depth = min(0.5, max(min(room.width, room.depth) * 0.11, 0.04))
     partition_start = [room.width * 0.56, room.depth * 0.58]
     partition_end = [room.width * 0.94, room.depth * 0.58]
+    external_wall_length = room.width if external_wall in {"north", "south"} else room.depth
+    if external_preset == "fence":
+        external_width = external_wall_length * 0.7
+        external_height = min(1.8, room.height * 0.62)
+        external_distance = max(0.7, min(room.width, room.depth) * 0.18)
+        external_thickness = min(0.16, max(min(room.width, room.depth) * 0.025, 0.06))
+    else:
+        external_width = external_wall_length * 0.9
+        external_height = room.height * 1.35
+        external_distance = max(1.2, min(room.width, room.depth) * 0.3)
+        external_thickness = min(0.5, max(min(room.width, room.depth) * 0.08, 0.18))
+    external_center_span = external_wall_length * 0.5
+    if external_wall == "north":
+        external_center = [external_center_span, room.depth + external_distance, external_height / 2.0]
+        external_size = [external_width, external_thickness, external_height]
+    elif external_wall == "south":
+        external_center = [external_center_span, -external_distance, external_height / 2.0]
+        external_size = [external_width, external_thickness, external_height]
+    elif external_wall == "east":
+        external_center = [room.width + external_distance, external_center_span, external_height / 2.0]
+        external_size = [external_thickness, external_width, external_height]
+    else:
+        external_center = [-external_distance, external_center_span, external_height / 2.0]
+        external_size = [external_thickness, external_width, external_height]
     return {
-        "version": 1,
-        "visual_only": True,
+        "version": 2,
+        "visual_only": False,
+        "room_bounds": {"width": room.width, "depth": room.depth, "height": room.height},
         "door": {
             "enabled": scene_toggle("scene_door_enabled", "3D door"),
             "wall": door_wall,
@@ -768,6 +822,7 @@ def build_scene_details(form_values: dict[str, str], room: Room) -> dict[str, ob
         },
         "internal_wall": {
             "enabled": scene_toggle("scene_partition_enabled", "3D internal wall"),
+            "affects_sunlight": True,
             "start_xy": partition_start,
             "end_xy": partition_end,
             "height": min(2.4, room.height * 0.86),
@@ -776,11 +831,91 @@ def build_scene_details(form_values: dict[str, str], room: Room) -> dict[str, ob
         "roof": {
             "enabled": True,
             "eaves_enabled": scene_toggle("scene_eaves_enabled", "3D eaves"),
+            "eaves_affect_sunlight": True,
             "eave_depth": eave_depth,
             "thickness": min(0.12, max(room.height * 0.035, 0.03)),
         },
-        "furniture": {"preset": furniture_preset},
+        "external_obstruction": {
+            "enabled": external_preset != "none",
+            "affects_sunlight": True,
+            "preset": external_preset,
+            "wall": external_wall,
+            "center_xyz": external_center,
+            "size_xyz": external_size,
+        },
+        "furniture": {"preset": furniture_preset, "affects_sunlight": False},
     }
+
+
+def build_sunlight_obstructions(scene_details: dict[str, object]) -> tuple[ObstructionBox, ...]:
+    """Convert sunlight-affecting scene details into ray-testable boxes."""
+    boxes: list[ObstructionBox] = []
+    internal_wall = scene_details["internal_wall"]
+    if internal_wall["enabled"]:
+        start_x, start_y = internal_wall["start_xy"]
+        end_x, end_y = internal_wall["end_xy"]
+        half_thickness = internal_wall["thickness"] / 2.0
+        boxes.append(
+            ObstructionBox(
+                name="internal-divider",
+                minimum=[min(start_x, end_x) - half_thickness, min(start_y, end_y) - half_thickness, 0.0],
+                maximum=[
+                    max(start_x, end_x) + half_thickness,
+                    max(start_y, end_y) + half_thickness,
+                    internal_wall["height"],
+                ],
+                scope="interior",
+            )
+        )
+
+    roof = scene_details["roof"]
+    if roof["eaves_enabled"]:
+        room = scene_details["room_bounds"]
+        width, depth, height = room["width"], room["depth"], room["height"]
+        eave_depth = roof["eave_depth"]
+        half_thickness = roof["thickness"] / 2.0
+        boxes.extend(
+            [
+                ObstructionBox(
+                    name="north-eave",
+                    minimum=[-eave_depth, depth, height - half_thickness],
+                    maximum=[width + eave_depth, depth + eave_depth, height + half_thickness],
+                    scope="exterior",
+                ),
+                ObstructionBox(
+                    name="south-eave",
+                    minimum=[-eave_depth, -eave_depth, height - half_thickness],
+                    maximum=[width + eave_depth, 0.0, height + half_thickness],
+                    scope="exterior",
+                ),
+                ObstructionBox(
+                    name="east-eave",
+                    minimum=[width, 0.0, height - half_thickness],
+                    maximum=[width + eave_depth, depth, height + half_thickness],
+                    scope="exterior",
+                ),
+                ObstructionBox(
+                    name="west-eave",
+                    minimum=[-eave_depth, 0.0, height - half_thickness],
+                    maximum=[0.0, depth, height + half_thickness],
+                    scope="exterior",
+                ),
+            ]
+        )
+
+    external = scene_details["external_obstruction"]
+    if external["enabled"]:
+        center = external["center_xyz"]
+        size = external["size_xyz"]
+        boxes.append(
+            ObstructionBox(
+                name=f"outside-{external['preset']}",
+                minimum=[center[index] - size[index] / 2.0 for index in range(3)],
+                maximum=[center[index] + size[index] / 2.0 for index in range(3)],
+                scope="exterior",
+            )
+        )
+    return tuple(boxes)
 
 
 def build_safe_form_values(form_values: dict[str, str], defaults: dict[str, str]) -> dict[str, str]:
@@ -836,6 +971,16 @@ def build_safe_form_values(form_values: dict[str, str], defaults: dict[str, str]
     furniture = str(form_values.get("scene_furniture_preset", defaults["scene_furniture_preset"])).strip().lower()
     safe["scene_furniture_preset"] = (
         furniture if furniture in _SCENE_FURNITURE_PRESETS else defaults["scene_furniture_preset"]
+    )
+    external_preset = str(
+        form_values.get("scene_external_obstruction", defaults["scene_external_obstruction"])
+    ).strip().lower()
+    safe["scene_external_obstruction"] = (
+        external_preset if external_preset in _SCENE_EXTERNAL_PRESETS else defaults["scene_external_obstruction"]
+    )
+    external_wall = str(form_values.get("scene_external_wall", defaults["scene_external_wall"])).strip().lower()
+    safe["scene_external_wall"] = (
+        external_wall if external_wall in _SCENE_DOOR_WALLS else defaults["scene_external_wall"]
     )
 
     window_facing = form_values.get("window_facing", defaults["window_facing"]).strip().upper()
