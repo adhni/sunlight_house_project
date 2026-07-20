@@ -80,7 +80,7 @@
   const ifcImportStatus = document.getElementById("ifc-import-status");
   const room3dContainer = document.getElementById("room3d-container");
   const room3dStatus = document.getElementById("room3d-status");
-  const room3dResetButton = document.getElementById("room3d-reset-camera");
+  const room3dCameraButtons = document.querySelectorAll("[data-room3d-camera-preset]");
   const room3dWallsButton = document.getElementById("room3d-toggle-walls");
   const room3dRoofButton = document.getElementById("room3d-toggle-roof");
   const sceneDetailInputs = document.querySelectorAll("[data-scene-detail]");
@@ -981,7 +981,7 @@
           room3dViewer = createRoom3DViewer({
             container: room3dContainer,
             statusElement: room3dStatus,
-            resetButton: room3dResetButton,
+            cameraButtons: room3dCameraButtons,
             wallsButton: room3dWallsButton,
             roofButton: room3dRoofButton,
             onWindowSelect: selectWindowFrom3d,

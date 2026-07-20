@@ -146,8 +146,10 @@
                   <p class="section-kicker">Interactive view</p>
                   <h3>Sunlight inside the room</h3>
                 </div>
-                <div class="chip-row room3d-actions">
-                  <button id="room3d-reset-camera" type="button" class="chip-button chip-button-soft">Reset view</button>
+                <div class="chip-row room3d-actions" role="group" aria-label="3D view controls">
+                  <button id="room3d-reset-camera" type="button" class="chip-button chip-button-soft is-active" data-room3d-camera-preset="perspective" aria-pressed="true">Perspective</button>
+                  <button type="button" class="chip-button chip-button-soft" data-room3d-camera-preset="top" aria-pressed="false">Top</button>
+                  <button type="button" class="chip-button chip-button-soft" data-room3d-camera-preset="front" aria-pressed="false">Front</button>
                   <button id="room3d-toggle-walls" type="button" class="chip-button chip-button-soft" aria-pressed="true">Walls auto</button>
                   <button id="room3d-toggle-roof" type="button" class="chip-button chip-button-soft" aria-pressed="false">Show roof</button>
                 </div>
@@ -184,7 +186,7 @@
               ></div>
               <div class="room3d-footer">
                 <p id="room3d-status" class="angle-caption" role="status">Open this tab to load the 3D room.</p>
-                <p id="room3d-keyboard-help" class="angle-caption">Click a window to select it · drag to orbit · scroll to zoom. Keyboard: arrows orbit · Shift + arrows pan · +/− zoom.</p>
+                <p id="room3d-keyboard-help" class="angle-caption">Choose Perspective, Top, or Front · click a window to select it · drag to orbit · scroll to zoom. Keyboard: arrows orbit · Shift + arrows pan · +/− zoom.</p>
               </div>
             </div>
 

@@ -202,17 +202,59 @@ test("orbits, resets, and toggles walls", async ({ page }) => {
   const viewer = await open3dRoom(page);
   const canvas = viewer.locator("canvas");
   const initialCamera = await viewer.getAttribute("data-camera-position");
+  await expect(viewer).toHaveAttribute("data-camera-preset", "perspective");
+  await expect(page.locator('[data-room3d-camera-preset="perspective"]')).toHaveAttribute("aria-pressed", "true");
 
   await dragCanvas(page, canvas, 130, -45);
   await expect.poll(() => viewer.getAttribute("data-camera-position")).not.toBe(initialCamera);
+  await expect(viewer).toHaveAttribute("data-camera-preset", "custom");
 
   await page.locator("#room3d-reset-camera").click();
   await expect.poll(() => viewer.getAttribute("data-camera-position")).toBe(initialCamera);
+  await expect(viewer).toHaveAttribute("data-camera-preset", "perspective");
 
   await page.locator("#room3d-toggle-walls").click();
   await expect(page.locator("#room3d-toggle-walls")).toHaveAttribute("aria-pressed", "false");
   await expect(viewer).toHaveAttribute("data-walls-visible", "false");
   await expect(viewer.locator("canvas")).toBeVisible();
+});
+
+test("offers top and front camera presets aligned with the 2D plan", async ({ page }) => {
+  const viewer = await open3dRoom(page);
+  const topButton = page.locator('[data-room3d-camera-preset="top"]');
+  const frontButton = page.locator('[data-room3d-camera-preset="front"]');
+
+  await topButton.click();
+  await expect(viewer).toHaveAttribute("data-camera-preset", "top");
+  await expect(topButton).toHaveAttribute("aria-pressed", "true");
+  const topPosition = (await viewer.getAttribute("data-camera-position")).split(",").map(Number);
+  const topTarget = (await viewer.getAttribute("data-camera-target")).split(",").map(Number);
+  expect(topPosition[0]).toBeCloseTo(0, 3);
+  expect(topPosition[1]).toBeGreaterThan(topTarget[1]);
+  expect(topPosition[2]).toBeGreaterThan(topTarget[2]);
+  expect(Math.abs(topPosition[2] - topTarget[2])).toBeLessThan((topPosition[1] - topTarget[1]) * 0.002);
+  await expect(viewer).toHaveAttribute("data-axis-convention", "east-positive-x north-negative-z");
+
+  await frontButton.click();
+  await expect(viewer).toHaveAttribute("data-camera-preset", "front");
+  await expect(frontButton).toHaveAttribute("aria-pressed", "true");
+  const frontPosition = (await viewer.getAttribute("data-camera-position")).split(",").map(Number);
+  const frontTarget = (await viewer.getAttribute("data-camera-target")).split(",").map(Number);
+  expect(frontPosition[0]).toBeCloseTo(0, 3);
+  expect(frontPosition[1]).toBeCloseTo(frontTarget[1], 3);
+  expect(frontPosition[2]).toBeLessThan(frontTarget[2]);
+  await expect(viewer).toHaveAttribute("data-camera-up", "0.000,1.000,0.000");
+  await expect.poll(async () => (await viewer.getAttribute("data-visible-walls")).split(","))
+    .toContain("north");
+  await expect.poll(async () => (await viewer.getAttribute("data-auto-hidden-walls")).split(","))
+    .not.toContain("north");
+
+  const canvas = viewer.locator("canvas");
+  await canvas.focus();
+  await canvas.press("ArrowRight");
+  await expect(viewer).toHaveAttribute("data-camera-preset", "custom");
+  await expect.poll(async () => (await viewer.getAttribute("data-auto-hidden-walls")).split(","))
+    .toContain("north");
 });
 
 test("automatically hides camera-facing walls and updates after orbit", async ({ page }) => {

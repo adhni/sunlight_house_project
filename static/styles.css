@@ -1111,6 +1111,10 @@ input[type="range"] {
   justify-content: flex-end;
 }
 
+.room3d-actions .chip-button {
+  white-space: nowrap;
+}
+
 .scene-details-body {
   display: grid;
   gap: 14px;
