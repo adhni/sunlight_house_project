@@ -73,6 +73,34 @@ test("updates visual architecture without resetting the camera", async ({ page }
   await expect(viewer).toHaveAttribute("data-roof-visible", "true");
 });
 
+test("uses the lightweight scene endpoint while the year estimate is active", async ({ page }) => {
+  const requests = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/api/")) requests.push(path);
+  });
+
+  await page.locator('[data-result-tab="long-range"]').click();
+  await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
+  expect(requests.filter((path) => path === "/api/long-range-exposure")).toHaveLength(1);
+
+  await page.locator(".scene-details > summary").click();
+  await page.locator('select[name="scene_furniture_preset"]').selectOption("dining");
+  await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
+
+  expect(requests.filter((path) => path === "/api/scene-details")).toHaveLength(1);
+  expect(requests.filter((path) => path === "/api/snapshot")).toHaveLength(0);
+  expect(requests.filter((path) => path === "/api/long-range-exposure")).toHaveLength(1);
+
+  await page.locator('[data-period-view="winter"]').click();
+  await expect(page.locator('[data-period-view="winter"]')).toHaveClass(/is-active/);
+  expect(requests.filter((path) => path === "/api/long-range-exposure")).toHaveLength(1);
+
+  const viewer = await open3dRoom(page);
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "dining");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "5");
+});
+
 test("selects and highlights a named window from the 3D view", async ({ page }) => {
   const viewer = await open3dRoom(page);
   await expect(page.locator("#room3d-play")).toBeEnabled();

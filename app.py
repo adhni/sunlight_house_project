@@ -138,6 +138,20 @@ def create_app() -> Flask:
             )
         )
 
+    @app.get("/api/scene-details")
+    def api_scene_details():
+        """Return visual-only 3D details without running sunlight analysis."""
+        defaults = default_form_values()
+        raw_values = defaults | {key: value for key, value in request.args.items() if value != ""}
+
+        try:
+            config, _selected_moment = build_config_and_moment(raw_values)
+            scene_details = build_scene_details(raw_values, config.room)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        return jsonify({"scene": scene_details})
+
     @app.get("/api/day-animation")
     def api_day_animation():
         defaults = default_form_values()

@@ -96,6 +96,23 @@ class AppTests(unittest.TestCase):
         self.assertAlmostEqual(scene["internal_wall"]["start_xy"][1], 3.48)
         self.assertEqual(scene["furniture"]["preset"], "living")
 
+    def test_scene_details_api_skips_sunlight_analysis(self) -> None:
+        with (
+            patch("app.analyze_snapshot", side_effect=AssertionError("snapshot analysis should not run")),
+            patch("app.analyze_day", side_effect=AssertionError("daily analysis should not run")),
+            patch("app.long_range_exposure_grids", side_effect=AssertionError("yearly analysis should not run")),
+        ):
+            response = self.client.get(
+                "/api/scene-details",
+                query_string={"scene_furniture_preset": "dining", "scene_door_enabled": "0"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(set(payload), {"scene"})
+        self.assertEqual(payload["scene"]["furniture"]["preset"], "dining")
+        self.assertFalse(payload["scene"]["door"]["enabled"])
+
     def test_snapshot_api_rejects_invalid_scene_details(self) -> None:
         response = self.client.get(
             "/api/snapshot",

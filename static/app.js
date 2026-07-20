@@ -96,6 +96,8 @@
   let marker = null;
   let latestRequestId = 0;
   let activeSnapshotController = null;
+  let latestSceneRequestId = 0;
+  let activeSceneController = null;
   let latestLongRangeRequestId = 0;
   let activeLongRangeController = null;
   let activeResultTab = "current";
@@ -704,9 +706,13 @@
     };
   }
 
-  function currentQueryString() {
+  function currentQueryString({ includeSceneDetails = true } = {}) {
     syncWindowsJsonFromEditor();
-    return new URLSearchParams(new FormData(form)).toString();
+    const params = new URLSearchParams(new FormData(form));
+    if (!includeSceneDetails) {
+      sceneDetailInputs.forEach((input) => params.delete(input.name));
+    }
+    return params.toString();
   }
 
   function selectedYear() {
@@ -2568,6 +2574,7 @@
   async function refreshSnapshot() {
     latestRequestId += 1;
     const requestId = latestRequestId;
+    const sceneRequestId = latestSceneRequestId;
     if (activeSnapshotController) {
       activeSnapshotController.abort();
     }
@@ -2584,6 +2591,9 @@
         throw new Error(payload.error || "Snapshot request failed.");
       }
       if (requestId === latestRequestId) {
+        if (sceneRequestId !== latestSceneRequestId && currentPayload?.scene) {
+          payload.scene = currentPayload.scene;
+        }
         updateSnapshotDom(payload);
         if (activeResultTab === "long-range") {
           await fetchLongRangeExposure(true);
@@ -2604,8 +2614,43 @@
     }
   }
 
-  async function fetchLongRangeExposure(force = false) {
+  async function refreshSceneDetails() {
+    if (!isReadyToRefresh()) {
+      setUpdateStatus("Finish the current field to update.", "draft");
+      return;
+    }
+    pauseRoom3dAnimation();
     const query = currentQueryString();
+    latestSceneRequestId += 1;
+    const requestId = latestSceneRequestId;
+    activeSceneController?.abort();
+    activeSceneController = new AbortController();
+    setUpdateStatus("Updating 3D details...", "pending");
+    try {
+      const response = await fetch(`/api/scene-details?${query}`, {
+        signal: activeSceneController.signal,
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "3D details request failed.");
+      }
+      if (requestId === latestSceneRequestId) {
+        currentPayload = { ...currentPayload, scene: payload.scene };
+        room3dViewer?.update(currentPayload);
+        room3dViewer?.setSelectedWindow(windowRows[activeWindowIndex]?.name);
+        setUpdateStatus(defaultUpdateMessage, "idle");
+      }
+    } catch (error) {
+      if (error.name === "AbortError") {
+        return;
+      }
+      console.error(error);
+      setUpdateStatus("Could not update 3D details.", "error");
+    }
+  }
+
+  async function fetchLongRangeExposure(force = false) {
+    const query = currentQueryString({ includeSceneDetails: false });
     if (!force && longRangePayload && longRangeQuery === query) {
       updateLongRangeDom();
       return;
@@ -2828,7 +2873,7 @@
 
   sceneDetailInputs.forEach((input) => {
     input.addEventListener("change", () => {
-      scheduleRefresh("Updating 3D details...");
+      refreshSceneDetails();
     });
   });
 
@@ -3055,6 +3100,7 @@
   window.addEventListener("beforeunload", () => {
     pauseRoom3dAnimation();
     dayAnimationController?.abort();
+    activeSceneController?.abort();
     room3dViewer?.destroy();
   }, { once: true });
 })();
