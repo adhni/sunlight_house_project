@@ -11,6 +11,13 @@ const COLORS = {
   sunlightEdge: 0xd85824,
   north: 0x2b627a,
   front: 0xd36c32,
+  door: 0x9c6846,
+  doorEdge: 0x4d3428,
+  internalWall: 0xd8cbbb,
+  roof: 0xb9afa3,
+  furniture: 0x56747f,
+  furnitureAccent: 0xc86a3a,
+  furnitureWood: 0x9a744f,
 };
 
 const FACING_DEGREES = {
@@ -343,6 +350,228 @@ function makeBeam(windowData, patch, room) {
   return group;
 }
 
+function makeDoor(doorData, room, thickness) {
+  const center = appPointToThree(doorData.center_xyz, room);
+  const isFrontBack = doorData.wall === "north" || doorData.wall === "south";
+  const geometry = isFrontBack
+    ? new THREE.BoxGeometry(doorData.width, doorData.height, thickness * 0.72)
+    : new THREE.BoxGeometry(thickness * 0.72, doorData.height, doorData.width);
+  const slab = new THREE.Mesh(
+    geometry,
+    new THREE.MeshStandardMaterial({ color: COLORS.door, roughness: 0.78, metalness: 0.02 }),
+  );
+  slab.position.copy(center);
+  slab.userData = { kind: "door", wall: doorData.wall };
+  const frame = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({ color: COLORS.doorEdge, transparent: true, opacity: 0.9 }),
+  );
+  frame.position.copy(center);
+
+  const knob = new THREE.Mesh(
+    new THREE.SphereGeometry(Math.max(doorData.width * 0.025, 0.018), 12, 8),
+    new THREE.MeshStandardMaterial({ color: 0xd8b56b, roughness: 0.35, metalness: 0.62 }),
+  );
+  knob.position.copy(center);
+  const side = doorData.width * 0.31;
+  if (isFrontBack) {
+    knob.position.x += side;
+    knob.position.z += doorData.wall === "north" ? -thickness * 0.42 : thickness * 0.42;
+  } else {
+    knob.position.z += side;
+    knob.position.x += doorData.wall === "east" ? -thickness * 0.42 : thickness * 0.42;
+  }
+  const group = new THREE.Group();
+  group.add(slab, frame, knob);
+  group.userData = { kind: "door", wall: doorData.wall };
+  return group;
+}
+
+function makeInternalWall(wallData, room) {
+  const start = appPointToThree([wallData.start_xy[0], wallData.start_xy[1], 0], room);
+  const end = appPointToThree([wallData.end_xy[0], wallData.end_xy[1], 0], room);
+  const delta = end.clone().sub(start);
+  const length = Math.hypot(delta.x, delta.z);
+  const geometry = new THREE.BoxGeometry(length, wallData.height, wallData.thickness);
+  const mesh = new THREE.Mesh(
+    geometry,
+    new THREE.MeshStandardMaterial({ color: COLORS.internalWall, roughness: 0.92 }),
+  );
+  mesh.position.copy(start.clone().add(end).multiplyScalar(0.5));
+  mesh.position.y = wallData.height / 2;
+  mesh.rotation.y = -Math.atan2(delta.z, delta.x);
+  mesh.userData = { kind: "internal-wall" };
+  const outline = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({ color: COLORS.wallEdge, transparent: true, opacity: 0.62 }),
+  );
+  outline.position.copy(mesh.position);
+  outline.rotation.copy(mesh.rotation);
+  const group = new THREE.Group();
+  group.add(mesh, outline);
+  group.userData = { kind: "internal-wall" };
+  return group;
+}
+
+function makeRoofDetails(roofData, room) {
+  const roofGroup = new THREE.Group();
+  const eaveGroup = new THREE.Group();
+  const depth = roofData.eave_depth;
+  const thickness = roofData.thickness;
+  const roofGeometry = new THREE.BoxGeometry(room.width + depth * 2, thickness, room.depth + depth * 2);
+  const roof = new THREE.Mesh(
+    roofGeometry,
+    new THREE.MeshStandardMaterial({
+      color: COLORS.roof,
+      transparent: true,
+      opacity: 0.42,
+      roughness: 0.86,
+      depthWrite: false,
+    }),
+  );
+  roof.position.y = room.height + thickness / 2;
+  roof.renderOrder = 6;
+  roof.userData = { kind: "roof" };
+  const outline = new THREE.LineSegments(
+    new THREE.EdgesGeometry(roofGeometry),
+    new THREE.LineBasicMaterial({ color: COLORS.wallEdge, transparent: true, opacity: 0.72 }),
+  );
+  outline.position.copy(roof.position);
+  outline.renderOrder = 7;
+  roofGroup.add(roof, outline);
+
+  if (roofData.eaves_enabled) {
+    const eaveMaterial = () => new THREE.MeshStandardMaterial({ color: COLORS.roof, roughness: 0.88 });
+    const eaves = [
+      { size: [room.width + depth * 2, thickness, depth], position: [0, room.height, room.depth / 2 + depth / 2] },
+      { size: [room.width + depth * 2, thickness, depth], position: [0, room.height, -room.depth / 2 - depth / 2] },
+      { size: [depth, thickness, room.depth], position: [room.width / 2 + depth / 2, room.height, 0] },
+      { size: [depth, thickness, room.depth], position: [-room.width / 2 - depth / 2, room.height, 0] },
+    ];
+    eaves.forEach(({ size, position }) => {
+      const eave = new THREE.Mesh(new THREE.BoxGeometry(...size), eaveMaterial());
+      eave.position.set(...position);
+      eave.userData = { kind: "eave" };
+      eaveGroup.add(eave);
+    });
+  }
+  return { roofGroup, eaveGroup, eaveCount: eaveGroup.children.length };
+}
+
+function furnitureBox(width, height, depth, color, x, y, z) {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(width, height, depth),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.78, metalness: 0.02 }),
+  );
+  mesh.position.set(x, y, z);
+  return mesh;
+}
+
+function makeTable(scale, color = COLORS.furnitureWood) {
+  const group = new THREE.Group();
+  const width = 1.15 * scale;
+  const depth = 0.68 * scale;
+  const topHeight = 0.72 * scale;
+  const topThickness = 0.09 * scale;
+  group.add(furnitureBox(width, topThickness, depth, color, 0, topHeight, 0));
+  const legHeight = topHeight - topThickness / 2;
+  const legSize = 0.08 * scale;
+  [-1, 1].forEach((xSign) => {
+    [-1, 1].forEach((zSign) => {
+      group.add(furnitureBox(
+        legSize,
+        legHeight,
+        legSize,
+        color,
+        xSign * (width / 2 - legSize),
+        legHeight / 2,
+        zSign * (depth / 2 - legSize),
+      ));
+    });
+  });
+  group.userData = { kind: "furniture", type: "table" };
+  return group;
+}
+
+function makeChair(scale) {
+  const group = new THREE.Group();
+  const width = 0.42 * scale;
+  const depth = 0.42 * scale;
+  const seatHeight = 0.43 * scale;
+  group.add(furnitureBox(width, 0.08 * scale, depth, COLORS.furniture, 0, seatHeight, 0));
+  group.add(furnitureBox(width, 0.52 * scale, 0.08 * scale, COLORS.furniture, 0, 0.68 * scale, depth / 2));
+  [-1, 1].forEach((xSign) => {
+    [-1, 1].forEach((zSign) => {
+      group.add(furnitureBox(
+        0.055 * scale,
+        seatHeight,
+        0.055 * scale,
+        COLORS.furnitureWood,
+        xSign * width * 0.38,
+        seatHeight / 2,
+        zSign * depth * 0.38,
+      ));
+    });
+  });
+  group.userData = { kind: "furniture", type: "chair" };
+  return group;
+}
+
+function makeSofa(scale) {
+  const group = new THREE.Group();
+  const width = 1.72 * scale;
+  const depth = 0.72 * scale;
+  group.add(furnitureBox(width, 0.28 * scale, depth, COLORS.furniture, 0, 0.25 * scale, 0));
+  group.add(furnitureBox(width, 0.66 * scale, 0.16 * scale, COLORS.furniture, 0, 0.55 * scale, depth * 0.39));
+  [-1, 1].forEach((sign) => {
+    group.add(furnitureBox(0.16 * scale, 0.46 * scale, depth, COLORS.furnitureAccent, sign * width * 0.46, 0.34 * scale, 0));
+  });
+  group.userData = { kind: "furniture", type: "sofa" };
+  return group;
+}
+
+function makeBed(scale) {
+  const group = new THREE.Group();
+  const width = 1.45 * scale;
+  const depth = 2.0 * scale;
+  group.add(furnitureBox(width, 0.34 * scale, depth, 0xe6ded0, 0, 0.28 * scale, 0));
+  group.add(furnitureBox(width, 0.78 * scale, 0.12 * scale, COLORS.furnitureWood, 0, 0.47 * scale, depth * 0.47));
+  group.add(furnitureBox(width * 0.42, 0.12 * scale, 0.42 * scale, 0xf7f0e6, -width * 0.24, 0.5 * scale, depth * 0.3));
+  group.add(furnitureBox(width * 0.42, 0.12 * scale, 0.42 * scale, 0xf7f0e6, width * 0.24, 0.5 * scale, depth * 0.3));
+  group.userData = { kind: "furniture", type: "bed" };
+  return group;
+}
+
+function makeFurniture(furnitureData, room) {
+  const group = new THREE.Group();
+  const preset = furnitureData?.preset || "none";
+  const scale = Math.max(Math.min(room.width / 4, room.depth / 5, room.height / 3, 1), 0.08);
+  const addItem = (item, x, z, rotation = 0) => {
+    item.position.set(x, 0, z);
+    item.rotation.y = rotation;
+    group.add(item);
+  };
+  if (preset === "living") {
+    addItem(makeSofa(scale), -room.width * 0.08, -room.depth * 0.2, 0);
+    const coffeeTable = makeTable(scale * 0.72);
+    coffeeTable.scale.y = 0.62;
+    addItem(coffeeTable, -room.width * 0.08, room.depth * 0.04, 0);
+  } else if (preset === "dining") {
+    addItem(makeTable(scale), 0, -room.depth * 0.02, 0);
+    [
+      [-0.82, 0, -Math.PI / 2],
+      [0.82, 0, Math.PI / 2],
+      [0, -0.68, 0],
+      [0, 0.68, Math.PI],
+    ].forEach(([x, z, rotation]) => addItem(makeChair(scale), x * scale, z * scale - room.depth * 0.02, rotation));
+  } else if (preset === "bedroom") {
+    addItem(makeBed(scale), -room.width * 0.08, -room.depth * 0.02, 0);
+    addItem(makeTable(scale * 0.48), room.width * 0.25, room.depth * 0.16, 0);
+  }
+  group.userData = { kind: "furniture-preset", preset };
+  return { group, itemCount: group.children.length, preset };
+}
+
 function compassVector(worldAzimuth, frontFacing) {
   const relative = THREE.MathUtils.degToRad((worldAzimuth - frontFacing + 360) % 360);
   return new THREE.Vector3(Math.sin(relative), 0, Math.cos(relative)).normalize();
@@ -371,7 +600,7 @@ function displayWindowName(name) {
 }
 
 class Room3DViewer {
-  constructor({ container, statusElement, resetButton, wallsButton, onWindowSelect, onUnavailable }) {
+  constructor({ container, statusElement, resetButton, wallsButton, roofButton, onWindowSelect, onUnavailable }) {
     if (window.__SUNLIGHT_FORCE_WEBGL_FAILURE__) {
       throw new Error("WebGL was disabled for this session.");
     }
@@ -379,6 +608,7 @@ class Room3DViewer {
     this.statusElement = statusElement;
     this.resetButton = resetButton;
     this.wallsButton = wallsButton;
+    this.roofButton = roofButton;
     this.onWindowSelect = onWindowSelect;
     this.onUnavailable = onUnavailable;
     this.payload = null;
@@ -386,6 +616,7 @@ class Room3DViewer {
     this.destroyed = false;
     this.hasFramedScene = false;
     this.wallsVisible = true;
+    this.roofVisible = false;
     this.selectedWindowName = null;
     this.windowVisuals = new Map();
     this.labelElements = new Map();
@@ -439,12 +670,22 @@ class Room3DViewer {
     this.floorGroup = new THREE.Group();
     this.wallGroup = new THREE.Group();
     this.windowGroup = new THREE.Group();
+    this.doorGroup = new THREE.Group();
+    this.internalWallGroup = new THREE.Group();
+    this.furnitureGroup = new THREE.Group();
+    this.eaveGroup = new THREE.Group();
+    this.roofGroup = new THREE.Group();
     this.sunlightGroup = new THREE.Group();
     this.orientationGroup = new THREE.Group();
     this.contentGroup.add(
       this.floorGroup,
       this.wallGroup,
       this.windowGroup,
+      this.doorGroup,
+      this.internalWallGroup,
+      this.furnitureGroup,
+      this.eaveGroup,
+      this.roofGroup,
       this.sunlightGroup,
       this.orientationGroup,
     );
@@ -460,8 +701,10 @@ class Room3DViewer {
     document.addEventListener("visibilitychange", this.onVisibilityChange);
     this.onReset = () => this.frameScene();
     this.onToggleWalls = () => this.toggleWalls();
+    this.onToggleRoof = () => this.toggleRoof();
     resetButton?.addEventListener("click", this.onReset);
     wallsButton?.addEventListener("click", this.onToggleWalls);
+    roofButton?.addEventListener("click", this.onToggleRoof);
 
     this.container.dataset.viewerState = "ready";
     this.setStatus("3D room ready.");
@@ -502,6 +745,11 @@ class Room3DViewer {
     replaceGroupContents(this.floorGroup);
     replaceGroupContents(this.wallGroup);
     replaceGroupContents(this.windowGroup);
+    replaceGroupContents(this.doorGroup);
+    replaceGroupContents(this.internalWallGroup);
+    replaceGroupContents(this.furnitureGroup);
+    replaceGroupContents(this.eaveGroup);
+    replaceGroupContents(this.roofGroup);
     replaceGroupContents(this.sunlightGroup);
     replaceGroupContents(this.orientationGroup);
     this.clearLabels();
@@ -515,10 +763,29 @@ class Room3DViewer {
     this.floorGroup.add(floor);
 
     const thickness = Math.max(Math.min(room.width, room.depth) * 0.022, 0.045);
+    const sceneDetails = payload.scene || {};
+    const doorData = sceneDetails.door?.enabled ? sceneDetails.door : null;
     ["north", "south", "east", "west"].forEach((wallName) => {
-      const wallWindows = payload.windows.filter((windowData) => windowData.wall === wallName);
-      this.wallGroup.add(makeWallWithOpenings(wallName, wallWindows, room, thickness));
+      const wallOpenings = payload.windows.filter((windowData) => windowData.wall === wallName);
+      if (doorData?.wall === wallName) wallOpenings.push(doorData);
+      this.wallGroup.add(makeWallWithOpenings(wallName, wallOpenings, room, thickness));
     });
+
+    if (doorData) this.doorGroup.add(makeDoor(doorData, room, thickness));
+    if (sceneDetails.internal_wall?.enabled) {
+      this.internalWallGroup.add(makeInternalWall(sceneDetails.internal_wall, room));
+    }
+    const roofDetails = makeRoofDetails(sceneDetails.roof || {
+      enabled: false,
+      eaves_enabled: false,
+      eave_depth: 0,
+      thickness: 0.04,
+    }, room);
+    if (sceneDetails.roof?.enabled) this.roofGroup.add(roofDetails.roofGroup);
+    this.eaveGroup.add(roofDetails.eaveGroup);
+    this.roofGroup.visible = this.roofVisible;
+    const furniture = makeFurniture(sceneDetails.furniture, room);
+    this.furnitureGroup.add(furniture.group);
 
     payload.windows.forEach((windowData) => {
       const visual = makeWindow(windowData, room);
@@ -551,8 +818,16 @@ class Room3DViewer {
       0,
     );
     this.container.dataset.windowCount = String(payload.windows.length);
-    this.container.dataset.openingCount = String(payload.windows.length);
+    this.container.dataset.openingCount = String(payload.windows.length + (doorData ? 1 : 0));
     this.container.dataset.wallPanelCount = String(wallPanelCount);
+    this.container.dataset.doorCount = doorData ? "1" : "0";
+    this.container.dataset.doorWall = doorData?.wall || "";
+    this.container.dataset.internalWallCount = sceneDetails.internal_wall?.enabled ? "1" : "0";
+    this.container.dataset.eaveCount = String(roofDetails.eaveCount);
+    this.container.dataset.furnitureCount = String(furniture.itemCount);
+    this.container.dataset.furniturePreset = furniture.preset;
+    this.container.dataset.roofVisible = String(this.roofVisible);
+    this.container.dataset.sceneVisualOnly = String(Boolean(sceneDetails.visual_only));
     this.container.dataset.patchCount = String(payload.snapshot.patches.length);
     this.container.dataset.selectedMoment = payload.selected_moment;
     this.container.dataset.roomSize = `${room.width},${room.depth},${room.height}`;
@@ -566,7 +841,7 @@ class Room3DViewer {
       center: windowData.center_xyz,
     })));
     this.setStatus(
-      `${payload.windows.length} window opening${payload.windows.length === 1 ? "" : "s"} · ${payload.snapshot.patches.length} floor patch${payload.snapshot.patches.length === 1 ? "" : "es"} · front ${payload.window_facing_label}.`,
+      `${payload.windows.length} window opening${payload.windows.length === 1 ? "" : "s"} · ${furniture.itemCount} scale item${furniture.itemCount === 1 ? "" : "s"} · visual details do not affect sunlight yet.`,
     );
     this.updateDebugState();
   }
@@ -710,6 +985,17 @@ class Room3DViewer {
     this.updateCameraAwareWalls();
   }
 
+  toggleRoof() {
+    if (this.destroyed) return;
+    this.roofVisible = !this.roofVisible;
+    this.roofGroup.visible = this.roofVisible;
+    if (this.roofButton) {
+      this.roofButton.setAttribute("aria-pressed", String(this.roofVisible));
+      this.roofButton.textContent = this.roofVisible ? "Hide roof" : "Show roof";
+    }
+    this.container.dataset.roofVisible = String(this.roofVisible);
+  }
+
   updateCameraAwareWalls() {
     if (this.destroyed || !this.payload) return;
     const viewDirection = this.camera.position.clone().sub(this.controls.target).normalize();
@@ -800,6 +1086,7 @@ class Room3DViewer {
     document.removeEventListener("visibilitychange", this.onVisibilityChange);
     this.resetButton?.removeEventListener("click", this.onReset);
     this.wallsButton?.removeEventListener("click", this.onToggleWalls);
+    this.roofButton?.removeEventListener("click", this.onToggleRoof);
     this.controls.removeEventListener("change", this.onControlsChange);
     this.renderer.domElement.removeEventListener("webglcontextlost", this.onContextLost);
     this.renderer.domElement.removeEventListener("keydown", this.onKeyDown);

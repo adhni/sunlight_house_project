@@ -22,6 +22,9 @@ _MAX_IFC_UPLOAD_BYTES = 25 * 1024 * 1024
 _MAX_YEAR_STEP_HOURS = 12
 _ANIMATION_STEP_MINUTES = 10
 _DAY_ANIMATION_CACHE_MAX = 24
+_SCENE_TOGGLE_VALUES = {"0", "1"}
+_SCENE_DOOR_WALLS = {"north", "south", "east", "west"}
+_SCENE_FURNITURE_PRESETS = {"none", "living", "dining", "bedroom"}
 _day_animation_cache: OrderedDict[tuple, dict[str, object]] = OrderedDict()
 _day_animation_cache_lock = Lock()
 
@@ -68,14 +71,25 @@ def create_app() -> Flask:
         try:
             config, selected_moment = build_config_and_moment(raw_values)
             form_values = normalize_form_values(raw_values, config)
+            scene_details = build_scene_details(form_values, config.room)
             window_override_active = has_window_override(form_values)
         except ValueError as exc:
             error = f"{exc} Keeping your current inputs below; the preview uses the nearest valid values."
             form_values = dict(raw_values)
             safe_values = build_safe_form_values(raw_values, defaults)
-            for hidden_key in ("windows_json", "day_step_minutes", "year_step_hours"):
+            for hidden_key in (
+                "windows_json",
+                "day_step_minutes",
+                "year_step_hours",
+                "scene_door_enabled",
+                "scene_door_wall",
+                "scene_partition_enabled",
+                "scene_eaves_enabled",
+                "scene_furniture_preset",
+            ):
                 form_values[hidden_key] = safe_values[hidden_key]
             config, selected_moment = build_config_and_moment(safe_values)
+            scene_details = build_scene_details(safe_values, config.room)
             window_override_active = has_window_override(safe_values)
 
         snapshot = analyze_snapshot(config, selected_moment)
@@ -98,6 +112,7 @@ def create_app() -> Flask:
                 config,
                 selected_moment,
                 window_override_active=window_override_active,
+                scene_details=scene_details,
             ),
             location_presets=location_presets_payload(),
             compass_options=[label for label, _ in COMPASS_OPTIONS],
@@ -110,6 +125,7 @@ def create_app() -> Flask:
 
         try:
             config, selected_moment = build_config_and_moment(raw_values)
+            scene_details = build_scene_details(raw_values, config.room)
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
@@ -118,8 +134,23 @@ def create_app() -> Flask:
                 config,
                 selected_moment,
                 window_override_active=has_window_override(raw_values),
+                scene_details=scene_details,
             )
         )
+
+    @app.get("/api/scene-details")
+    def api_scene_details():
+        """Return visual-only 3D details without running sunlight analysis."""
+        defaults = default_form_values()
+        raw_values = defaults | {key: value for key, value in request.args.items() if value != ""}
+
+        try:
+            config, _selected_moment = build_config_and_moment(raw_values)
+            scene_details = build_scene_details(raw_values, config.room)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        return jsonify({"scene": scene_details})
 
     @app.get("/api/day-animation")
     def api_day_animation():
@@ -241,6 +272,11 @@ def default_form_values() -> dict[str, str]:
         "window_width": f"{window.width}",
         "window_height": f"{window.height}",
         "windows_json": default_demo_windows_json(),
+        "scene_door_enabled": "1",
+        "scene_door_wall": "south",
+        "scene_partition_enabled": "1",
+        "scene_eaves_enabled": "1",
+        "scene_furniture_preset": "living",
         "day_step_minutes": str(scenario.day_step_minutes),
         "year_step_hours": str(scenario.year_step_hours),
     }
@@ -432,6 +468,7 @@ def snapshot_payload(
     selected_moment: datetime,
     *,
     window_override_active: bool = False,
+    scene_details: dict[str, object] | None = None,
 ) -> dict[str, object]:
     snapshot = analyze_snapshot(config, selected_moment)
     daily = analyze_day(config, selected_moment.date(), selected_moment.strftime("%B %d"))
@@ -499,6 +536,7 @@ def snapshot_payload(
         },
         "is_multi_window": len(config.windows) > 1,
         "window_override_active": window_override_active,
+        "scene": scene_details or build_scene_details(default_form_values(), config.room),
         "summary": summary,
         "window_facing_label": config.window_facing_label,
     }
@@ -684,6 +722,67 @@ def normalize_form_values(form_values: dict[str, str], config: SimulationConfig)
     return normalized
 
 
+def build_scene_details(form_values: dict[str, str], room: Room) -> dict[str, object]:
+    """Build lightweight visual-only scene details sized to the current room."""
+
+    def scene_toggle(key: str, label: str) -> bool:
+        value = str(form_values.get(key, "")).strip()
+        if value not in _SCENE_TOGGLE_VALUES:
+            raise ValueError(f"{label} must be on or off.")
+        return value == "1"
+
+    door_wall = str(form_values.get("scene_door_wall", "")).strip().lower()
+    if door_wall not in _SCENE_DOOR_WALLS:
+        raise ValueError("3D door wall must be north, south, east, or west.")
+    furniture_preset = str(form_values.get("scene_furniture_preset", "")).strip().lower()
+    if furniture_preset not in _SCENE_FURNITURE_PRESETS:
+        raise ValueError("3D furniture preset must be none, living, dining, or bedroom.")
+
+    wall_length = room.width if door_wall in {"north", "south"} else room.depth
+    door_width = min(0.9, wall_length * 0.28)
+    door_height = min(2.1, room.height * 0.78)
+    door_span_center = wall_length * 0.22
+    if door_wall == "north":
+        door_center = [door_span_center, room.depth, door_height / 2.0]
+    elif door_wall == "south":
+        door_center = [door_span_center, 0.0, door_height / 2.0]
+    elif door_wall == "east":
+        door_center = [room.width, door_span_center, door_height / 2.0]
+    else:
+        door_center = [0.0, door_span_center, door_height / 2.0]
+
+    eave_depth = min(0.5, max(min(room.width, room.depth) * 0.11, 0.04))
+    partition_start = [room.width * 0.56, room.depth * 0.58]
+    partition_end = [room.width * 0.94, room.depth * 0.58]
+    return {
+        "version": 1,
+        "visual_only": True,
+        "door": {
+            "enabled": scene_toggle("scene_door_enabled", "3D door"),
+            "wall": door_wall,
+            "span_center": door_span_center,
+            "sill_height": 0.0,
+            "width": door_width,
+            "height": door_height,
+            "center_xyz": door_center,
+        },
+        "internal_wall": {
+            "enabled": scene_toggle("scene_partition_enabled", "3D internal wall"),
+            "start_xy": partition_start,
+            "end_xy": partition_end,
+            "height": min(2.4, room.height * 0.86),
+            "thickness": min(0.1, max(min(room.width, room.depth) * 0.02, 0.025)),
+        },
+        "roof": {
+            "enabled": True,
+            "eaves_enabled": scene_toggle("scene_eaves_enabled", "3D eaves"),
+            "eave_depth": eave_depth,
+            "thickness": min(0.12, max(room.height * 0.035, 0.03)),
+        },
+        "furniture": {"preset": furniture_preset},
+    }
+
+
 def build_safe_form_values(form_values: dict[str, str], defaults: dict[str, str]) -> dict[str, str]:
     safe = dict(defaults)
     location_preset = form_values.get("location_preset", defaults["location_preset"]).strip()
@@ -728,6 +827,16 @@ def build_safe_form_values(form_values: dict[str, str], defaults: dict[str, str]
     )
     raw_windows_json = form_values.get("windows_json", defaults["windows_json"])
     safe["windows_json"] = safe_windows_json_string(raw_windows_json, defaults["windows_json"], safe_room)
+
+    for key in ("scene_door_enabled", "scene_partition_enabled", "scene_eaves_enabled"):
+        candidate = str(form_values.get(key, defaults[key])).strip()
+        safe[key] = candidate if candidate in _SCENE_TOGGLE_VALUES else defaults[key]
+    door_wall = str(form_values.get("scene_door_wall", defaults["scene_door_wall"])).strip().lower()
+    safe["scene_door_wall"] = door_wall if door_wall in _SCENE_DOOR_WALLS else defaults["scene_door_wall"]
+    furniture = str(form_values.get("scene_furniture_preset", defaults["scene_furniture_preset"])).strip().lower()
+    safe["scene_furniture_preset"] = (
+        furniture if furniture in _SCENE_FURNITURE_PRESETS else defaults["scene_furniture_preset"]
+    )
 
     window_facing = form_values.get("window_facing", defaults["window_facing"]).strip().upper()
     valid_facings = {label for label, _ in COMPASS_OPTIONS}

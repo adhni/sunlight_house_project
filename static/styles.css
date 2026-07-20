@@ -1111,6 +1111,15 @@ input[type="range"] {
   justify-content: flex-end;
 }
 
+.scene-details-body {
+  display: grid;
+  gap: 14px;
+}
+
+.scene-details-body .field-help {
+  margin: 0;
+}
+
 .room3d-animation-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
