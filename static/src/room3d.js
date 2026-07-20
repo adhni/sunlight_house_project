@@ -18,6 +18,7 @@ const COLORS = {
   furniture: 0x56747f,
   furnitureAccent: 0xc86a3a,
   furnitureWood: 0x9a744f,
+  externalObstruction: 0x8f857c,
 };
 
 const FACING_DEGREES = {
@@ -302,7 +303,7 @@ function makePatch(patch, room) {
 }
 
 function makeBeam(windowData, patch, room) {
-  const source = appPointToThree(windowData.center_xyz, room);
+  const source = appPointToThree(patch.source_center_xyz || windowData.center_xyz, room);
   const floorPoints = patch.polygon_xy.map((point) => new THREE.Vector3(
     Number(point[0]) - room.width / 2,
     0.04,
@@ -410,6 +411,34 @@ function makeInternalWall(wallData, room) {
   const group = new THREE.Group();
   group.add(mesh, outline);
   group.userData = { kind: "internal-wall" };
+  return group;
+}
+
+function makeExternalObstruction(obstructionData, room) {
+  const [width, depth, height] = obstructionData.size_xyz.map(Number);
+  const geometry = new THREE.BoxGeometry(width, height, depth);
+  const mesh = new THREE.Mesh(
+    geometry,
+    new THREE.MeshStandardMaterial({
+      color: COLORS.externalObstruction,
+      transparent: true,
+      opacity: 0.3,
+      roughness: 0.96,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  );
+  mesh.position.copy(appPointToThree(obstructionData.center_xyz, room));
+  mesh.renderOrder = 1;
+  mesh.userData = { kind: "external-obstruction", preset: obstructionData.preset };
+  const outline = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({ color: COLORS.wallEdge, transparent: true, opacity: 0.8 }),
+  );
+  outline.position.copy(mesh.position);
+  const group = new THREE.Group();
+  group.add(mesh, outline);
+  group.userData = { kind: "external-obstruction", preset: obstructionData.preset };
   return group;
 }
 
@@ -672,6 +701,7 @@ class Room3DViewer {
     this.windowGroup = new THREE.Group();
     this.doorGroup = new THREE.Group();
     this.internalWallGroup = new THREE.Group();
+    this.externalObstructionGroup = new THREE.Group();
     this.furnitureGroup = new THREE.Group();
     this.eaveGroup = new THREE.Group();
     this.roofGroup = new THREE.Group();
@@ -683,6 +713,7 @@ class Room3DViewer {
       this.windowGroup,
       this.doorGroup,
       this.internalWallGroup,
+      this.externalObstructionGroup,
       this.furnitureGroup,
       this.eaveGroup,
       this.roofGroup,
@@ -747,6 +778,7 @@ class Room3DViewer {
     replaceGroupContents(this.windowGroup);
     replaceGroupContents(this.doorGroup);
     replaceGroupContents(this.internalWallGroup);
+    replaceGroupContents(this.externalObstructionGroup);
     replaceGroupContents(this.furnitureGroup);
     replaceGroupContents(this.eaveGroup);
     replaceGroupContents(this.roofGroup);
@@ -774,6 +806,9 @@ class Room3DViewer {
     if (doorData) this.doorGroup.add(makeDoor(doorData, room, thickness));
     if (sceneDetails.internal_wall?.enabled) {
       this.internalWallGroup.add(makeInternalWall(sceneDetails.internal_wall, room));
+    }
+    if (sceneDetails.external_obstruction?.enabled) {
+      this.externalObstructionGroup.add(makeExternalObstruction(sceneDetails.external_obstruction, room));
     }
     const roofDetails = makeRoofDetails(sceneDetails.roof || {
       enabled: false,
@@ -817,12 +852,18 @@ class Room3DViewer {
       (count, wall) => count + wall.children.filter((child) => child.userData.kind === "wall-panel").length,
       0,
     );
+    const sunlightBlockerCount = (sceneDetails.internal_wall?.enabled ? 1 : 0)
+      + roofDetails.eaveCount
+      + (sceneDetails.external_obstruction?.enabled ? 1 : 0);
     this.container.dataset.windowCount = String(payload.windows.length);
     this.container.dataset.openingCount = String(payload.windows.length + (doorData ? 1 : 0));
     this.container.dataset.wallPanelCount = String(wallPanelCount);
     this.container.dataset.doorCount = doorData ? "1" : "0";
     this.container.dataset.doorWall = doorData?.wall || "";
     this.container.dataset.internalWallCount = sceneDetails.internal_wall?.enabled ? "1" : "0";
+    this.container.dataset.externalObstructionCount = sceneDetails.external_obstruction?.enabled ? "1" : "0";
+    this.container.dataset.externalObstructionPreset = sceneDetails.external_obstruction?.preset || "none";
+    this.container.dataset.sunlightBlockerCount = String(sunlightBlockerCount);
     this.container.dataset.eaveCount = String(roofDetails.eaveCount);
     this.container.dataset.furnitureCount = String(furniture.itemCount);
     this.container.dataset.furniturePreset = furniture.preset;
@@ -841,7 +882,7 @@ class Room3DViewer {
       center: windowData.center_xyz,
     })));
     this.setStatus(
-      `${payload.windows.length} window opening${payload.windows.length === 1 ? "" : "s"} · ${furniture.itemCount} scale item${furniture.itemCount === 1 ? "" : "s"} · visual details do not affect sunlight yet.`,
+      `${payload.windows.length} window opening${payload.windows.length === 1 ? "" : "s"} · ${sunlightBlockerCount} sunlight blocker${sunlightBlockerCount === 1 ? "" : "s"} · furniture remains scale-only.`,
     );
     this.updateDebugState();
   }

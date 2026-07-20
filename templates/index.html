@@ -344,7 +344,7 @@
                   <strong id="summary-sunlit-fraction">{{ (initial_snapshot_payload.daily.exposure_grid.sunlit_fraction * 100)|round|int }}%</strong>
                 </article>
               </div>
-              <p class="summary-assumptions">Direct sun only · no furniture, blinds, or external obstructions.</p>
+              <p class="summary-assumptions">Direct sun only · furniture and blinds are excluded from shading.</p>
             </section>
           </article>
 
@@ -511,7 +511,7 @@
                   <strong>Architecture &amp; Furniture</strong>
                 </summary>
                 <div class="geometry-details-body scene-details-body">
-                  <p class="field-help">These details add scale and context to the 3D view. They do not change sunlight totals yet.</p>
+                  <p class="field-help">Eaves, the divider and outside obstructions shade the simulation. Doors and furniture remain visual scale references.</p>
                   <div class="field-row field-row-2">
                     <label>
                       <span>Exterior door</span>
@@ -533,14 +533,14 @@
                   <div class="field-row field-row-3">
                     <label>
                       <span>Internal divider</span>
-                      <select name="scene_partition_enabled" data-scene-detail>
+                      <select name="scene_partition_enabled" data-scene-detail data-sunlight-effect>
                         <option value="1" {% if form_values.scene_partition_enabled == '1' %}selected{% endif %}>Show</option>
                         <option value="0" {% if form_values.scene_partition_enabled == '0' %}selected{% endif %}>Hide</option>
                       </select>
                     </label>
                     <label>
                       <span>Roof eaves</span>
-                      <select name="scene_eaves_enabled" data-scene-detail>
+                      <select name="scene_eaves_enabled" data-scene-detail data-sunlight-effect>
                         <option value="1" {% if form_values.scene_eaves_enabled == '1' %}selected{% endif %}>Show</option>
                         <option value="0" {% if form_values.scene_eaves_enabled == '0' %}selected{% endif %}>Hide</option>
                       </select>
@@ -552,6 +552,25 @@
                         <option value="living" {% if form_values.scene_furniture_preset == 'living' %}selected{% endif %}>Living room</option>
                         <option value="dining" {% if form_values.scene_furniture_preset == 'dining' %}selected{% endif %}>Dining</option>
                         <option value="bedroom" {% if form_values.scene_furniture_preset == 'bedroom' %}selected{% endif %}>Bedroom</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="field-row field-row-2">
+                    <label>
+                      <span>Outside obstruction</span>
+                      <select name="scene_external_obstruction" data-scene-detail data-sunlight-effect>
+                        <option value="none" {% if form_values.scene_external_obstruction == 'none' %}selected{% endif %}>None</option>
+                        <option value="fence" {% if form_values.scene_external_obstruction == 'fence' %}selected{% endif %}>Low fence</option>
+                        <option value="building" {% if form_values.scene_external_obstruction == 'building' %}selected{% endif %}>Nearby building</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Obstruction side</span>
+                      <select name="scene_external_wall" data-scene-detail data-sunlight-effect>
+                        <option value="north" {% if form_values.scene_external_wall == 'north' %}selected{% endif %}>Front wall</option>
+                        <option value="east" {% if form_values.scene_external_wall == 'east' %}selected{% endif %}>Right wall</option>
+                        <option value="south" {% if form_values.scene_external_wall == 'south' %}selected{% endif %}>Back wall</option>
+                        <option value="west" {% if form_values.scene_external_wall == 'west' %}selected{% endif %}>Left wall</option>
                       </select>
                     </label>
                   </div>

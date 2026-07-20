@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .geometry import Room, Window
+from .geometry import ObstructionBox, Room, Window
 
 
 COMPASS_OPTIONS: tuple[tuple[str, float], ...] = (
@@ -60,6 +60,7 @@ class SimulationConfig:
     day_step_minutes: int = 10
     year_step_hours: int = 1
     window_facing_label: str = "N"
+    obstructions: tuple[ObstructionBox, ...] = ()
 
     @property
     def window_facing_deg(self) -> float:

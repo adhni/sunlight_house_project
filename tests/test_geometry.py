@@ -5,7 +5,7 @@ import numpy as np
 
 from sunlight_house.analysis import room_sun_vector
 from sunlight_house.config import Location, Room, SimulationConfig, main_window, window_on_wall
-from sunlight_house.geometry import project_to_floor
+from sunlight_house.geometry import ObstructionBox, patches_for_windows, project_to_floor, window_entry_intensity
 from sunlight_house.solar import get_sun_position
 
 
@@ -42,6 +42,66 @@ class FloorProjectionTests(unittest.TestCase):
         self.assertTrue(np.all(patch.polygon_xy[:, 1] >= -1e-9))
         self.assertTrue(np.all(patch.polygon_xy[:, 1] <= room.depth + 1e-9))
 
+
+class ObstructionProjectionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.room = Room(width=4.0, depth=5.0, height=3.0)
+        self.window = main_window(
+            room=self.room,
+            span_center=2.0,
+            center_height=1.5,
+            width=2.0,
+            height=2.0,
+        )
+        self.sun_direction = np.array([0.0, 1.0, 1.0]) / np.sqrt(2.0)
+
+    def test_exterior_box_can_fully_shade_window_entry(self) -> None:
+        building = ObstructionBox(
+            name="building",
+            minimum=[0.0, 5.4, 0.0],
+            maximum=[4.0, 5.8, 4.0],
+            scope="exterior",
+        )
+
+        intensity = window_entry_intensity(self.window, self.sun_direction, (building,))
+        patches = patches_for_windows(self.room, (self.window,), self.sun_direction, (building,))
+
+        self.assertEqual(intensity, 0.0)
+        self.assertEqual(patches, [])
+
+    def test_internal_wall_blocks_floor_without_blocking_window_entry(self) -> None:
+        divider = ObstructionBox(
+            name="divider",
+            minimum=[0.0, 4.65, 0.0],
+            maximum=[4.0, 4.75, 2.8],
+            scope="interior",
+        )
+
+        intensity = window_entry_intensity(self.window, self.sun_direction, (divider,))
+        patches = patches_for_windows(self.room, (self.window,), self.sun_direction, (divider,))
+
+        self.assertGreater(intensity, 0.0)
+        self.assertEqual(patches, [])
+
+    def test_partial_exterior_shade_keeps_source_centres_on_window(self) -> None:
+        half_building = ObstructionBox(
+            name="half-building",
+            minimum=[0.0, 5.4, 0.0],
+            maximum=[2.0, 5.8, 4.0],
+            scope="exterior",
+        )
+
+        intensity = window_entry_intensity(self.window, self.sun_direction, (half_building,))
+        patches = patches_for_windows(self.room, (self.window,), self.sun_direction, (half_building,))
+
+        self.assertGreater(intensity, 0.0)
+        self.assertLess(intensity, 1.0 / np.sqrt(2.0))
+        self.assertTrue(patches)
+        self.assertTrue(all(patch.source_center_xyz is not None for patch in patches))
+        self.assertTrue(all(np.isclose(patch.source_center_xyz[1], self.room.depth) for patch in patches))
+
+
+class SideWindowProjectionTests(unittest.TestCase):
     def test_side_window_clip_keeps_polygon_inside_room(self) -> None:
         room = Room(width=4.0, depth=5.0, height=3.0)
         window = window_on_wall(

@@ -10,7 +10,7 @@ from .config import (
     wall_normal,
     window_on_wall,
 )
-from .geometry import Room, Window, intersects_window, project_to_floor
+from .geometry import ObstructionBox, Room, Window, intersects_window, project_to_floor, window_entry_intensity
 from .solar import SunPosition, generate_day_positions, generate_year_hourly_positions, generate_year_positions, get_sun_position, sun_vector
 
 __all__ = [
@@ -18,6 +18,7 @@ __all__ = [
     "LOCATION_PRESETS",
     "COMPASS_OPTIONS",
     "Room",
+    "ObstructionBox",
     "SimulationConfig",
     "Window",
     "SunPosition",
@@ -34,4 +35,5 @@ __all__ = [
     "sun_vector",
     "intersects_window",
     "project_to_floor",
+    "window_entry_intensity",
 ]
