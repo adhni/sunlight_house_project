@@ -1094,13 +1094,19 @@ class Room3DViewer {
     if (this.destroyed || !this.payload) return;
     const viewDirection = this.camera.position.clone().sub(this.controls.target).normalize();
     const hidden = [];
+    const visible = [];
     this.wallGroup.children.forEach((wall) => {
       const cameraFacesWall = viewDirection.dot(wall.userData.normal) > 0.2;
-      wall.visible = this.wallsVisible && !cameraFacesWall;
-      if (this.wallsVisible && cameraFacesWall) hidden.push(wall.userData.wall);
+      const frontPresetKeepsWall = this.activeCameraPreset === "front" && wall.userData.wall === "north";
+      const shouldAutoHide = cameraFacesWall && !frontPresetKeepsWall;
+      wall.visible = this.wallsVisible && !shouldAutoHide;
+      if (this.wallsVisible && shouldAutoHide) hidden.push(wall.userData.wall);
+      if (wall.visible) visible.push(wall.userData.wall);
     });
     hidden.sort();
+    visible.sort();
     this.container.dataset.autoHiddenWalls = hidden.join(",");
+    this.container.dataset.visibleWalls = visible.join(",");
   }
 
   updateDebugState() {

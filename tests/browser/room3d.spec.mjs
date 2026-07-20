@@ -244,6 +244,17 @@ test("offers top and front camera presets aligned with the 2D plan", async ({ pa
   expect(frontPosition[1]).toBeCloseTo(frontTarget[1], 3);
   expect(frontPosition[2]).toBeLessThan(frontTarget[2]);
   await expect(viewer).toHaveAttribute("data-camera-up", "0.000,1.000,0.000");
+  await expect.poll(async () => (await viewer.getAttribute("data-visible-walls")).split(","))
+    .toContain("north");
+  await expect.poll(async () => (await viewer.getAttribute("data-auto-hidden-walls")).split(","))
+    .not.toContain("north");
+
+  const canvas = viewer.locator("canvas");
+  await canvas.focus();
+  await canvas.press("ArrowRight");
+  await expect(viewer).toHaveAttribute("data-camera-preset", "custom");
+  await expect.poll(async () => (await viewer.getAttribute("data-auto-hidden-walls")).split(","))
+    .toContain("north");
 });
 
 test("automatically hides camera-facing walls and updates after orbit", async ({ page }) => {
