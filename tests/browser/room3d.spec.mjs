@@ -44,6 +44,7 @@ test("lazy-loads the current room and sunlight in WebGL", async ({ page }) => {
   await expect(viewer).toHaveAttribute("data-furniture-preset", "living");
   await expect(viewer).toHaveAttribute("data-scene-visual-only", "false");
   await expect(viewer).toHaveAttribute("data-front-facing", "NE");
+  await expect(viewer).toHaveAttribute("data-axis-convention", "east-positive-x north-negative-z");
   await expect(viewer).toHaveAttribute("data-selected-window", "main_window");
   await expect(viewer).toHaveAttribute("data-wall-panel-count", /[1-9]\d*/);
   await expect(viewer).toHaveAttribute("data-room-size", "4,5,3");
@@ -51,6 +52,18 @@ test("lazy-loads the current room and sunlight in WebGL", async ({ page }) => {
   await expect(page.locator("#room3d-status")).toContainText("furniture remains scale-only");
   await expect(page.locator(".room3d-compass-key-north")).toHaveText("N · true north");
   await expect(page.locator(".room3d-compass-key-front")).toHaveText("Front · NE");
+
+  const room = (await viewer.getAttribute("data-room-size")).split(",").map(Number);
+  const appWindows = JSON.parse(await viewer.getAttribute("data-window-geometry"));
+  const threeWindows = JSON.parse(await viewer.getAttribute("data-window-geometry-three"));
+  threeWindows.forEach((windowGeometry, index) => {
+    expect(windowGeometry.name).toBe(appWindows[index].name);
+    expect(windowGeometry.x).toBeCloseTo(appWindows[index].center[0] - room[0] / 2, 3);
+    expect(windowGeometry.z).toBeCloseTo(room[1] / 2 - appWindows[index].center[1], 3);
+  });
+  const cameraPosition = (await viewer.getAttribute("data-camera-position")).split(",").map(Number);
+  expect(cameraPosition[0]).toBeLessThan(0);
+  expect(cameraPosition[2]).toBeGreaterThan(0);
 });
 
 test("updates visual architecture without resetting the camera", async ({ page }) => {
