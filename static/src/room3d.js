@@ -629,13 +629,13 @@ function displayWindowName(name) {
 }
 
 class Room3DViewer {
-  constructor({ container, statusElement, resetButton, wallsButton, roofButton, onWindowSelect, onUnavailable }) {
+  constructor({ container, statusElement, cameraButtons, wallsButton, roofButton, onWindowSelect, onUnavailable }) {
     if (window.__SUNLIGHT_FORCE_WEBGL_FAILURE__) {
       throw new Error("WebGL was disabled for this session.");
     }
     this.container = container;
     this.statusElement = statusElement;
-    this.resetButton = resetButton;
+    this.cameraButtons = Array.from(cameraButtons || []);
     this.wallsButton = wallsButton;
     this.roofButton = roofButton;
     this.onWindowSelect = onWindowSelect;
@@ -651,6 +651,7 @@ class Room3DViewer {
     this.labelElements = new Map();
     this.sceneBuildCount = 0;
     this.sunlightUpdateCount = 0;
+    this.activeCameraPreset = "perspective";
     this.raycaster = new THREE.Raycaster();
     this.pointerStart = null;
 
@@ -672,10 +673,19 @@ class Room3DViewer {
     this.onPointerDown = (event) => {
       this.pointerStart = { x: event.clientX, y: event.clientY };
     };
+    this.onPointerMove = (event) => {
+      if (!this.pointerStart || event.buttons === 0) return;
+      if (Math.hypot(event.clientX - this.pointerStart.x, event.clientY - this.pointerStart.y) > 6) {
+        this.setActiveCameraPreset("custom");
+      }
+    };
+    this.onWheel = () => this.setActiveCameraPreset("custom");
     this.onCanvasClick = (event) => this.handleCanvasClick(event);
     this.renderer.domElement.addEventListener("webglcontextlost", this.onContextLost);
     this.renderer.domElement.addEventListener("keydown", this.onKeyDown);
     this.renderer.domElement.addEventListener("pointerdown", this.onPointerDown);
+    this.renderer.domElement.addEventListener("pointermove", this.onPointerMove);
+    this.renderer.domElement.addEventListener("wheel", this.onWheel, { passive: true });
     this.renderer.domElement.addEventListener("click", this.onCanvasClick);
 
     this.labelLayer = document.createElement("div");
@@ -686,8 +696,8 @@ class Room3DViewer {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
-    this.controls.minPolarAngle = 0.12;
-    this.controls.maxPolarAngle = Math.PI / 2.02;
+    this.controls.minPolarAngle = 0.0001;
+    this.controls.maxPolarAngle = Math.PI / 2;
     this.onControlsChange = () => {
       this.updateDebugState();
       this.updateCameraAwareWalls();
@@ -730,10 +740,10 @@ class Room3DViewer {
     this.resizeObserver.observe(container);
     this.onVisibilityChange = () => this.applyAnimationState();
     document.addEventListener("visibilitychange", this.onVisibilityChange);
-    this.onReset = () => this.frameScene();
+    this.onCameraPreset = (event) => this.setCameraPreset(event.currentTarget.dataset.room3dCameraPreset);
     this.onToggleWalls = () => this.toggleWalls();
     this.onToggleRoof = () => this.toggleRoof();
-    resetButton?.addEventListener("click", this.onReset);
+    this.cameraButtons.forEach((button) => button.addEventListener("click", this.onCameraPreset));
     wallsButton?.addEventListener("click", this.onToggleWalls);
     roofButton?.addEventListener("click", this.onToggleRoof);
 
@@ -993,8 +1003,10 @@ class Room3DViewer {
   }
 
   handleCanvasClick(event) {
-    if (!this.pointerStart) return;
-    if (Math.hypot(event.clientX - this.pointerStart.x, event.clientY - this.pointerStart.y) > 6) return;
+    const pointerStart = this.pointerStart;
+    this.pointerStart = null;
+    if (!pointerStart) return;
+    if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 6) return;
     const rect = this.renderer.domElement.getBoundingClientRect();
     const pointer = new THREE.Vector2(
       ((event.clientX - rect.left) / rect.width) * 2 - 1,
@@ -1006,22 +1018,54 @@ class Room3DViewer {
     if (hit) this.selectWindow(hit.object.userData.windowName, true);
   }
 
-  frameScene() {
+  setActiveCameraPreset(preset) {
+    this.activeCameraPreset = preset;
+    this.container.dataset.cameraPreset = preset;
+    this.cameraButtons.forEach((button) => {
+      const isActive = button.dataset.room3dCameraPreset === preset;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+  }
+
+  setCameraPreset(preset) {
     if (this.destroyed || !this.payload) return;
     const room = this.payload.room;
     const scale = Math.max(room.width, room.depth, room.height, 1);
     const dampingWasEnabled = this.controls.enableDamping;
     this.controls.enableDamping = false;
+    // Flush and clear any pending orbit/pan momentum before placing an exact preset.
     this.controls.update();
-    this.controls.target.set(0, room.height * 0.42, 0);
-    // Start opposite the default north/east windows so their real wall openings are visible.
-    this.camera.position.set(-scale * 1.18, scale * 0.92, scale * 1.28);
+    this.camera.up.set(0, 1, 0);
+    if (preset === "top") {
+      const distance = scale * 2.2;
+      this.controls.target.set(0, room.height * 0.2, 0);
+      // A tiny southern offset keeps OrbitControls stable while screen-up remains north (-Z).
+      this.camera.position.set(0, this.controls.target.y + distance, distance * 0.0005);
+    } else if (preset === "front") {
+      const halfFovTangent = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+      const verticalDistance = room.height / (2 * halfFovTangent);
+      const horizontalDistance = room.width / (2 * halfFovTangent * Math.max(this.camera.aspect, 0.1));
+      const distance = Math.max(verticalDistance, horizontalDistance) * 1.18;
+      this.controls.target.set(0, room.height / 2, -room.depth / 2);
+      this.camera.position.set(0, room.height / 2, -room.depth / 2 - distance);
+    } else {
+      preset = "perspective";
+      this.controls.target.set(0, room.height * 0.42, 0);
+      // Start opposite the default north/east windows so their real wall openings are visible.
+      this.camera.position.set(-scale * 1.18, scale * 0.92, scale * 1.28);
+    }
+    this.camera.lookAt(this.controls.target);
     this.controls.update();
-    this.controls.saveState();
     this.controls.enableDamping = dampingWasEnabled;
+    this.setActiveCameraPreset(preset);
     this.updateCameraAwareWalls();
     this.updateLabels();
     this.updateDebugState();
+  }
+
+  frameScene() {
+    this.setCameraPreset("perspective");
   }
 
   toggleWalls() {
@@ -1062,6 +1106,7 @@ class Room3DViewer {
   updateDebugState() {
     this.container.dataset.cameraPosition = this.camera.position.toArray().map((value) => value.toFixed(3)).join(",");
     this.container.dataset.cameraTarget = this.controls.target.toArray().map((value) => value.toFixed(3)).join(",");
+    this.container.dataset.cameraUp = this.camera.up.toArray().map((value) => value.toFixed(3)).join(",");
   }
 
   handleKeyDown(event) {
@@ -1070,6 +1115,7 @@ class Room3DViewer {
     const isZoom = ["+", "=", "-", "_"].includes(event.key);
     if (!isArrow && !isZoom) return;
     event.preventDefault();
+    this.setActiveCameraPreset("custom");
 
     const offset = this.camera.position.clone().sub(this.controls.target);
     const distance = Math.max(offset.length(), 0.1);
@@ -1134,13 +1180,15 @@ class Room3DViewer {
     this.container.dataset.rendering = "false";
     this.resizeObserver.disconnect();
     document.removeEventListener("visibilitychange", this.onVisibilityChange);
-    this.resetButton?.removeEventListener("click", this.onReset);
+    this.cameraButtons.forEach((button) => button.removeEventListener("click", this.onCameraPreset));
     this.wallsButton?.removeEventListener("click", this.onToggleWalls);
     this.roofButton?.removeEventListener("click", this.onToggleRoof);
     this.controls.removeEventListener("change", this.onControlsChange);
     this.renderer.domElement.removeEventListener("webglcontextlost", this.onContextLost);
     this.renderer.domElement.removeEventListener("keydown", this.onKeyDown);
     this.renderer.domElement.removeEventListener("pointerdown", this.onPointerDown);
+    this.renderer.domElement.removeEventListener("pointermove", this.onPointerMove);
+    this.renderer.domElement.removeEventListener("wheel", this.onWheel);
     this.renderer.domElement.removeEventListener("click", this.onCanvasClick);
     this.clearLabels();
     disposeObject(this.contentGroup);
