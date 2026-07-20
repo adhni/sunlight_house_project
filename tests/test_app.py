@@ -8,6 +8,7 @@ from unittest.mock import patch
 from app import (
     app,
     build_config_and_moment,
+    build_scene_details,
     build_safe_form_values,
     default_form_values,
     parse_bounded_float,
@@ -44,6 +45,11 @@ class AppTests(unittest.TestCase):
         self.assertEqual(values["window_width"], "1.5")
         self.assertEqual(values["window_height"], "2.0")
         self.assertEqual(len(json.loads(values["windows_json"])), 2)
+        self.assertEqual(values["scene_door_enabled"], "1")
+        self.assertEqual(values["scene_door_wall"], "south")
+        self.assertEqual(values["scene_partition_enabled"], "1")
+        self.assertEqual(values["scene_eaves_enabled"], "1")
+        self.assertEqual(values["scene_furniture_preset"], "living")
 
     def test_snapshot_api_returns_expected_shape(self) -> None:
         response = self.client.get("/api/snapshot")
@@ -57,6 +63,7 @@ class AppTests(unittest.TestCase):
         self.assertIn("room", payload)
         self.assertIn("summary", payload)
         self.assertIn("windows", payload)
+        self.assertIn("scene", payload)
         self.assertIn("headline", payload["summary"])
         self.assertIn("supporting_text", payload["summary"])
         self.assertTrue(payload["is_multi_window"])
@@ -70,6 +77,33 @@ class AppTests(unittest.TestCase):
         self.assertEqual(first_window["center_xyz"], [3.0, 5.0, 1.1])
         self.assertEqual(len(first_window["corners_xyz"]), 4)
         self.assertEqual(first_window["outward_normal"], [0.0, 1.0, 0.0])
+        self.assertTrue(payload["scene"]["visual_only"])
+        self.assertTrue(payload["scene"]["door"]["enabled"])
+        self.assertEqual(payload["scene"]["door"]["wall"], "south")
+        self.assertTrue(payload["scene"]["internal_wall"]["enabled"])
+        self.assertEqual(payload["scene"]["furniture"]["preset"], "living")
+
+    def test_scene_details_scale_to_the_current_room(self) -> None:
+        values = default_form_values()
+        config, _moment = build_config_and_moment(values | {"room_width": "8", "room_depth": "6"})
+
+        scene = build_scene_details(values, config.room)
+
+        self.assertEqual(scene["version"], 1)
+        self.assertAlmostEqual(scene["door"]["span_center"], 1.76)
+        self.assertLessEqual(scene["door"]["width"], 0.9)
+        self.assertAlmostEqual(scene["internal_wall"]["start_xy"][0], 4.48)
+        self.assertAlmostEqual(scene["internal_wall"]["start_xy"][1], 3.48)
+        self.assertEqual(scene["furniture"]["preset"], "living")
+
+    def test_snapshot_api_rejects_invalid_scene_details(self) -> None:
+        response = self.client.get(
+            "/api/snapshot",
+            query_string={"scene_door_wall": "ceiling", "scene_furniture_preset": "office"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("door wall", response.get_json()["error"])
 
     def test_day_animation_api_returns_cached_lightweight_frames(self) -> None:
         query = {"selected_date": "2025-02-13", "selected_time": "13:07"}

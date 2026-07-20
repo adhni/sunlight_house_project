@@ -82,6 +82,8 @@
   const room3dStatus = document.getElementById("room3d-status");
   const room3dResetButton = document.getElementById("room3d-reset-camera");
   const room3dWallsButton = document.getElementById("room3d-toggle-walls");
+  const room3dRoofButton = document.getElementById("room3d-toggle-roof");
+  const sceneDetailInputs = document.querySelectorAll("[data-scene-detail]");
   const room3dAnimationControls = document.getElementById("room3d-animation-controls");
   const room3dPlayButton = document.getElementById("room3d-play");
   const room3dTimeSlider = document.getElementById("room3d-time-slider");
@@ -973,6 +975,7 @@
             statusElement: room3dStatus,
             resetButton: room3dResetButton,
             wallsButton: room3dWallsButton,
+            roofButton: room3dRoofButton,
             onWindowSelect: selectWindowFrom3d,
             onUnavailable: pauseRoom3dAnimation,
           });
@@ -1037,6 +1040,11 @@
       "window_width",
       "window_height",
       "location_name",
+      "scene_door_enabled",
+      "scene_door_wall",
+      "scene_partition_enabled",
+      "scene_eaves_enabled",
+      "scene_furniture_preset",
     ].forEach((key) => params.delete(key));
     return params.toString();
   }
@@ -2815,6 +2823,12 @@
       const payload = await ensureDayAnimation();
       const preset = payload?.presets?.[button.dataset.room3dTimePreset];
       if (preset) applyDayAnimationFrame(preset.index);
+    });
+  });
+
+  sceneDetailInputs.forEach((input) => {
+    input.addEventListener("change", () => {
+      scheduleRefresh("Updating 3D details...");
     });
   });
 

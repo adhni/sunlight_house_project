@@ -32,15 +32,45 @@ test("lazy-loads the current room and sunlight in WebGL", async ({ page }) => {
   await open3dRoom(page);
 
   await expect(viewer).toHaveAttribute("data-window-count", "2");
-  await expect(viewer).toHaveAttribute("data-opening-count", "2");
+  await expect(viewer).toHaveAttribute("data-opening-count", "3");
+  await expect(viewer).toHaveAttribute("data-door-count", "1");
+  await expect(viewer).toHaveAttribute("data-door-wall", "south");
+  await expect(viewer).toHaveAttribute("data-internal-wall-count", "1");
+  await expect(viewer).toHaveAttribute("data-eave-count", "4");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "2");
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "living");
+  await expect(viewer).toHaveAttribute("data-scene-visual-only", "true");
   await expect(viewer).toHaveAttribute("data-front-facing", "NE");
   await expect(viewer).toHaveAttribute("data-selected-window", "main_window");
   await expect(viewer).toHaveAttribute("data-wall-panel-count", /[1-9]\d*/);
   await expect(viewer).toHaveAttribute("data-room-size", "4,5,3");
   await expect(viewer).toHaveAttribute("data-rendering", "true");
-  await expect(page.locator("#room3d-status")).toContainText("2 window openings");
+  await expect(page.locator("#room3d-status")).toContainText("visual details do not affect sunlight yet");
   await expect(page.locator(".room3d-compass-key-north")).toHaveText("N · true north");
   await expect(page.locator(".room3d-compass-key-front")).toHaveText("Front · NE");
+});
+
+test("updates visual architecture without resetting the camera", async ({ page }) => {
+  const viewer = await open3dRoom(page);
+  const defaultCamera = await viewer.getAttribute("data-camera-position");
+  await dragCanvas(page, viewer.locator("canvas"), 85, -20);
+  await expect.poll(() => viewer.getAttribute("data-camera-position")).not.toBe(defaultCamera);
+
+  await page.locator(".scene-details > summary").click();
+  await page.locator('select[name="scene_furniture_preset"]').selectOption("dining");
+  await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "dining");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "5");
+  await expect(viewer).not.toHaveAttribute("data-camera-position", defaultCamera);
+
+  await page.locator('select[name="scene_door_enabled"]').selectOption("0");
+  await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
+  await expect(viewer).toHaveAttribute("data-door-count", "0");
+  await expect(viewer).toHaveAttribute("data-opening-count", "2");
+
+  await page.locator("#room3d-toggle-roof").click();
+  await expect(page.locator("#room3d-toggle-roof")).toHaveAttribute("aria-pressed", "true");
+  await expect(viewer).toHaveAttribute("data-roof-visible", "true");
 });
 
 test("selects and highlights a named window from the 3D view", async ({ page }) => {

@@ -93,6 +93,7 @@ The app currently includes:
 - a `Now` button for the selected timezone
 - a `Current Moment` room snapshot
 - a lazy-loaded `3D room` view with real window openings, named window selection, compass/front indicators, camera-aware walls, orbit, zoom, pan, and camera reset
+- optional visual-only 3D details: an exterior door, internal divider, cutaway roof/eaves, and living, dining, or bedroom scale furniture
 - cached 3D day playback with a time scrubber plus morning, solar-noon, and evening presets
 - a `Direct Sun Hours Today` floor map with legend, stats, and in-chart tooltip
 - a `Yearly / Seasonal` floor map with `Year`, `Winter`, `Spring`, `Summer`, and `Fall`
@@ -210,7 +211,8 @@ Render uses:
 - The web app exposes compact controls for multiple axis-aligned wall windows.
 - IFC import uses bounding boxes and assumes the imported room is rectangular and
   axis-aligned. Verify the imported room bearing and windows before relying on the result.
-- The model does not include blinds, overhangs, furniture, diffuse sky light, reflections, or external obstructions.
+- Doors, internal walls, eaves, and furniture currently provide 3D context only; they do not yet change the sunlight calculations.
+- The model does not include blinds, diffuse sky light, reflections, or external obstructions.
 - Floor patches are generated from projected window corners and clipped into room bounds, so edge behavior is still a simplification.
 - Outdoor conditions are historical 2025 reference data for Melbourne, Jakarta, and Boston;
   they are contextual samples rather than a live forecast.

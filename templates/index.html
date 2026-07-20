@@ -149,6 +149,7 @@
                 <div class="chip-row room3d-actions">
                   <button id="room3d-reset-camera" type="button" class="chip-button chip-button-soft">Reset view</button>
                   <button id="room3d-toggle-walls" type="button" class="chip-button chip-button-soft" aria-pressed="true">Walls auto</button>
+                  <button id="room3d-toggle-roof" type="button" class="chip-button chip-button-soft" aria-pressed="false">Show roof</button>
                 </div>
               </div>
               <div id="room3d-animation-controls" class="room3d-animation-controls" data-state="idle">
@@ -501,6 +502,59 @@
                       </label>
                     </div>
                   </section>
+                </div>
+              </details>
+
+              <details class="subtle-details control-group scene-details">
+                <summary>
+                  <span class="section-kicker">3D Details</span>
+                  <strong>Architecture &amp; Furniture</strong>
+                </summary>
+                <div class="geometry-details-body scene-details-body">
+                  <p class="field-help">These details add scale and context to the 3D view. They do not change sunlight totals yet.</p>
+                  <div class="field-row field-row-2">
+                    <label>
+                      <span>Exterior door</span>
+                      <select name="scene_door_enabled" data-scene-detail>
+                        <option value="1" {% if form_values.scene_door_enabled == '1' %}selected{% endif %}>Show</option>
+                        <option value="0" {% if form_values.scene_door_enabled == '0' %}selected{% endif %}>Hide</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Door wall</span>
+                      <select name="scene_door_wall" data-scene-detail>
+                        <option value="north" {% if form_values.scene_door_wall == 'north' %}selected{% endif %}>Front wall</option>
+                        <option value="east" {% if form_values.scene_door_wall == 'east' %}selected{% endif %}>Right wall</option>
+                        <option value="south" {% if form_values.scene_door_wall == 'south' %}selected{% endif %}>Back wall</option>
+                        <option value="west" {% if form_values.scene_door_wall == 'west' %}selected{% endif %}>Left wall</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="field-row field-row-3">
+                    <label>
+                      <span>Internal divider</span>
+                      <select name="scene_partition_enabled" data-scene-detail>
+                        <option value="1" {% if form_values.scene_partition_enabled == '1' %}selected{% endif %}>Show</option>
+                        <option value="0" {% if form_values.scene_partition_enabled == '0' %}selected{% endif %}>Hide</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Roof eaves</span>
+                      <select name="scene_eaves_enabled" data-scene-detail>
+                        <option value="1" {% if form_values.scene_eaves_enabled == '1' %}selected{% endif %}>Show</option>
+                        <option value="0" {% if form_values.scene_eaves_enabled == '0' %}selected{% endif %}>Hide</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Scale furniture</span>
+                      <select name="scene_furniture_preset" data-scene-detail>
+                        <option value="none" {% if form_values.scene_furniture_preset == 'none' %}selected{% endif %}>None</option>
+                        <option value="living" {% if form_values.scene_furniture_preset == 'living' %}selected{% endif %}>Living room</option>
+                        <option value="dining" {% if form_values.scene_furniture_preset == 'dining' %}selected{% endif %}>Dining</option>
+                        <option value="bedroom" {% if form_values.scene_furniture_preset == 'bedroom' %}selected{% endif %}>Bedroom</option>
+                      </select>
+                    </label>
+                  </div>
                 </div>
               </details>
 
