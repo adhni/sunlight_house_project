@@ -209,6 +209,36 @@ test("keeps a local furniture edit when an older scene response arrives", async 
   await expect(viewer).toHaveAttribute("data-furniture-count", "3");
 });
 
+test("preserves a concurrent door change when furniture changes", async ({ page }) => {
+  let releaseSceneResponse;
+  let markSceneRequestStarted;
+  const sceneResponseHeld = new Promise((resolve) => { releaseSceneResponse = resolve; });
+  const sceneRequestStarted = new Promise((resolve) => { markSceneRequestStarted = resolve; });
+  await page.route("**/api/scene-details?**", async (route) => {
+    markSceneRequestStarted();
+    const response = await route.fetch();
+    await sceneResponseHeld;
+    await route.fulfill({ response });
+  });
+
+  const viewer = await open3dRoom(page);
+  await page.locator(".scene-details > summary").click();
+  await page.locator('select[name="scene_door_enabled"]').selectOption("0");
+  await sceneRequestStarted;
+
+  await page.locator("#furniture-add-button").click();
+  await page.locator('[data-add-furniture="chair"]').click();
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+
+  releaseSceneResponse();
+  await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
+  await expect(viewer).toHaveAttribute("data-door-count", "0");
+  await expect(viewer).toHaveAttribute("data-opening-count", "2");
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+});
+
 test("preserves concurrent sunlight scene changes when furniture changes", async ({ page }) => {
   let releaseSnapshotResponse;
   let markSnapshotRequestStarted;

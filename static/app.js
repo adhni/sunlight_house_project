@@ -1089,10 +1089,15 @@
     }
   }
 
-  function invalidatePendingFurnitureSceneRequests() {
+  function markFurnitureRevision() {
     latestFurnitureRevision += 1;
-    activeSceneController?.abort();
-    activeSceneController = null;
+  }
+
+  function preserveNewerFurniture(scene, requestFurnitureRevision) {
+    if (requestFurnitureRevision === latestFurnitureRevision || !currentPayload?.scene?.furniture) {
+      return scene;
+    }
+    return { ...scene, furniture: currentPayload.scene.furniture };
   }
 
   function applyFurnitureItems(items, {
@@ -1101,7 +1106,7 @@
     reason = "edit",
     recordHistory = true,
   } = {}) {
-    invalidatePendingFurnitureSceneRequests();
+    markFurnitureRevision();
     const next = normalizedFurnitureItems(items);
     const previous = historySnapshot || cloneFurnitureItems();
     if (recordHistory && JSON.stringify(previous) !== JSON.stringify(next)) {
@@ -1129,7 +1134,6 @@
 
   function handleFurnitureChange(items, meta = {}) {
     if (meta.phase === "start") {
-      invalidatePendingFurnitureSceneRequests();
       furnitureDragSnapshot = cloneFurnitureItems();
       return;
     }
@@ -2838,9 +2842,7 @@
         if (sceneRequestId !== latestSceneRequestId && currentPayload?.scene) {
           payload.scene = currentPayload.scene;
         }
-        if (furnitureRevision !== latestFurnitureRevision && currentPayload?.scene?.furniture) {
-          payload.scene = { ...payload.scene, furniture: currentPayload.scene.furniture };
-        }
+        payload.scene = preserveNewerFurniture(payload.scene, furnitureRevision);
         updateSnapshotDom(payload);
         if (activeResultTab === "long-range") {
           await fetchLongRangeExposure(true);
@@ -2870,6 +2872,7 @@
     const query = currentQueryString();
     latestSceneRequestId += 1;
     const requestId = latestSceneRequestId;
+    const furnitureRevision = latestFurnitureRevision;
     activeSceneController?.abort();
     activeSceneController = new AbortController();
     setUpdateStatus("Updating 3D details...", "pending");
@@ -2882,8 +2885,9 @@
         throw new Error(payload.error || "3D details request failed.");
       }
       if (requestId === latestSceneRequestId) {
-        currentPayload = { ...currentPayload, scene: payload.scene };
-        syncFurnitureFromScene(payload.scene?.furniture);
+        const scene = preserveNewerFurniture(payload.scene, furnitureRevision);
+        currentPayload = { ...currentPayload, scene };
+        syncFurnitureFromScene(scene?.furniture);
         room3dViewer?.update(currentPayload);
         room3dViewer?.setSelectedFurniture(selectedFurnitureId, false);
         room3dViewer?.setSelectedWindow(windowRows[activeWindowIndex]?.name);
