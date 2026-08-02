@@ -163,6 +163,7 @@
   let furnitureItems = [];
   let selectedFurnitureId = null;
   let furnitureHistory = [];
+  let latestFurnitureRevision = 0;
   let furnitureDragSnapshot = null;
   let furnitureIdCounter = 0;
 
@@ -999,8 +1000,12 @@
   function clampFurnitureItem(item) {
     const room = currentPayload?.room || { width: 4, depth: 5 };
     const [baseWidth, baseDepth] = furnitureFootprints[item.type] || [0.5, 0.5];
-    const rotation = ((Number(item.rotation) || 0) % 360 + 360) % 360;
-    const scale = Math.min(Math.max(Number(item.scale) || 1, 0.5), 1.5);
+    const numericRotation = Number(item.rotation);
+    const numericScale = Number(item.scale);
+    const numericX = Number(item.x);
+    const numericY = Number(item.y);
+    const rotation = (((Number.isFinite(numericRotation) ? numericRotation : 0) % 360) + 360) % 360;
+    const scale = Math.min(Math.max(Number.isFinite(numericScale) ? numericScale : 1, 0.5), 1.5);
     const angle = rotation * Math.PI / 180;
     const width = (Math.abs(Math.cos(angle)) * baseWidth + Math.abs(Math.sin(angle)) * baseDepth) * scale;
     const depth = (Math.abs(Math.sin(angle)) * baseWidth + Math.abs(Math.cos(angle)) * baseDepth) * scale;
@@ -1009,8 +1014,8 @@
     return {
       id: String(item.id),
       type: item.type,
-      x: Number(Math.min(Math.max(Number(item.x) || room.width / 2, halfWidth), room.width - halfWidth).toFixed(4)),
-      y: Number(Math.min(Math.max(Number(item.y) || room.depth / 2, halfDepth), room.depth - halfDepth).toFixed(4)),
+      x: Number(Math.min(Math.max(Number.isFinite(numericX) ? numericX : room.width / 2, halfWidth), room.width - halfWidth).toFixed(4)),
+      y: Number(Math.min(Math.max(Number.isFinite(numericY) ? numericY : room.depth / 2, halfDepth), room.depth - halfDepth).toFixed(4)),
       rotation: Number(rotation.toFixed(3)),
       scale: Number(scale.toFixed(3)),
     };
@@ -1085,7 +1090,7 @@
   }
 
   function invalidatePendingFurnitureSceneRequests() {
-    latestSceneRequestId += 1;
+    latestFurnitureRevision += 1;
     activeSceneController?.abort();
     activeSceneController = null;
   }
@@ -2813,6 +2818,7 @@
     latestRequestId += 1;
     const requestId = latestRequestId;
     const sceneRequestId = latestSceneRequestId;
+    const furnitureRevision = latestFurnitureRevision;
     if (activeSnapshotController) {
       activeSnapshotController.abort();
     }
@@ -2831,6 +2837,9 @@
       if (requestId === latestRequestId) {
         if (sceneRequestId !== latestSceneRequestId && currentPayload?.scene) {
           payload.scene = currentPayload.scene;
+        }
+        if (furnitureRevision !== latestFurnitureRevision && currentPayload?.scene?.furniture) {
+          payload.scene = { ...payload.scene, furniture: currentPayload.scene.furniture };
         }
         updateSnapshotDom(payload);
         if (activeResultTab === "long-range") {

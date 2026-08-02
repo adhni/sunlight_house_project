@@ -580,8 +580,12 @@ function makeBed(scale) {
 
 function clampFurnitureItem(item, room) {
   const [baseWidth, baseDepth] = FURNITURE_FOOTPRINTS[item.type] || [0.5, 0.5];
-  const rotation = ((Number(item.rotation) || 0) % 360 + 360) % 360;
-  const scale = THREE.MathUtils.clamp(Number(item.scale) || 1, 0.5, 1.5);
+  const numericRotation = Number(item.rotation);
+  const numericScale = Number(item.scale);
+  const numericX = Number(item.x);
+  const numericY = Number(item.y);
+  const rotation = (((Number.isFinite(numericRotation) ? numericRotation : 0) % 360) + 360) % 360;
+  const scale = THREE.MathUtils.clamp(Number.isFinite(numericScale) ? numericScale : 1, 0.5, 1.5);
   const angle = THREE.MathUtils.degToRad(rotation);
   const width = (Math.abs(Math.cos(angle)) * baseWidth + Math.abs(Math.sin(angle)) * baseDepth) * scale;
   const depth = (Math.abs(Math.sin(angle)) * baseWidth + Math.abs(Math.cos(angle)) * baseDepth) * scale;
@@ -589,8 +593,8 @@ function clampFurnitureItem(item, room) {
   const halfDepth = Math.min(depth / 2, room.depth / 2);
   return {
     ...item,
-    x: THREE.MathUtils.clamp(Number(item.x) || room.width / 2, halfWidth, room.width - halfWidth),
-    y: THREE.MathUtils.clamp(Number(item.y) || room.depth / 2, halfDepth, room.depth - halfDepth),
+    x: THREE.MathUtils.clamp(Number.isFinite(numericX) ? numericX : room.width / 2, halfWidth, room.width - halfWidth),
+    y: THREE.MathUtils.clamp(Number.isFinite(numericY) ? numericY : room.depth / 2, halfDepth, room.depth - halfDepth),
     rotation,
     scale,
   };

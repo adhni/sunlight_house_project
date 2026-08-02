@@ -129,6 +129,11 @@ test("adds, edits, duplicates, deletes, undoes, and restores furniture", async (
   await expect(page.locator("#scene-furniture-preset")).toHaveValue("custom");
   await expect(viewer).toHaveAttribute("data-patch-count", patchCount);
 
+  await page.locator("#furniture-x-input").fill("0");
+  await page.locator("#furniture-x-input").press("Tab");
+  await expect.poll(async () => JSON.parse(await viewer.getAttribute("data-furniture-items"))
+    .find((item) => item.id === "chair-1")?.x).toBeCloseTo(0.21, 2);
+
   await page.locator('[data-room3d-camera-preset="top"]').click();
   const cameraBeforeDrag = await viewer.getAttribute("data-camera-position");
   const chairBeforeDrag = JSON.parse(await viewer.getAttribute("data-furniture-items"))
@@ -200,6 +205,36 @@ test("keeps a local furniture edit when an older scene response arrives", async 
 
   releaseSceneResponse();
   await page.waitForTimeout(300);
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+});
+
+test("preserves concurrent sunlight scene changes when furniture changes", async ({ page }) => {
+  let releaseSnapshotResponse;
+  let markSnapshotRequestStarted;
+  const snapshotResponseHeld = new Promise((resolve) => { releaseSnapshotResponse = resolve; });
+  const snapshotRequestStarted = new Promise((resolve) => { markSnapshotRequestStarted = resolve; });
+  await page.route("**/api/snapshot?**", async (route) => {
+    markSnapshotRequestStarted();
+    const response = await route.fetch();
+    await snapshotResponseHeld;
+    await route.fulfill({ response });
+  });
+
+  const viewer = await open3dRoom(page);
+  await page.locator(".scene-details > summary").click();
+  await page.locator('select[name="scene_external_obstruction"]').selectOption("building");
+  await snapshotRequestStarted;
+
+  await page.locator("#furniture-add-button").click();
+  await page.locator('[data-add-furniture="chair"]').click();
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+
+  releaseSnapshotResponse();
+  await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
+  await expect(viewer).toHaveAttribute("data-external-obstruction-preset", "building");
+  await expect(viewer).toHaveAttribute("data-external-obstruction-count", "1");
   await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
   await expect(viewer).toHaveAttribute("data-furniture-count", "3");
 });
