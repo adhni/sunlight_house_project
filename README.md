@@ -92,9 +92,10 @@ The app currently includes:
 - day-of-year and time-of-day scrubbers
 - a `Now` button for the selected timezone
 - a `Current Moment` room snapshot
-- a lazy-loaded `3D room` view with real window openings, named window selection, compass/front indicators, camera-aware walls, orbit, zoom, pan, and camera reset
+- a lazy-loaded `3D room` view with real window openings, friendly window selection, compass/front indicators, host-aware cutaway walls, optional scale context, orbit, zoom, pan, and camera reset
 - optional 3D details: an exterior door, sunlight-blocking internal divider and roof eaves, outside fence/building presets, and scale furniture
 - cached 3D day playback with a time scrubber plus morning, solar-noon, and evening presets
+- mobile-first 3D interaction with explicit touch activation, scroll-safe viewing, an in-view window edit action, and responsive model-first ordering
 - a `Direct Sun Hours Today` floor map with legend, stats, and in-chart tooltip
 - a `Yearly / Seasonal` floor map with `Year`, `Winter`, `Spring`, `Summer`, and `Fall`
 - an advanced IFC room/window import workflow
@@ -186,8 +187,8 @@ The model and API use Python's built-in `unittest` runner:
 python3 -m unittest discover -s tests
 ```
 
-Critical UI interactions use Playwright so dragging, resizing, tabs, window selection,
-the interactive 3D room, WebGL fallback, and the laptop layout are exercised in a real browser:
+Critical UI interactions use Playwright so dragging, resizing, semantic tabs, window selection,
+desktop and mobile 3D interaction, accessibility state, WebGL fallback, and the laptop layout are exercised in a real browser:
 
 ```bash
 npm install

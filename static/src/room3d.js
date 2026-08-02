@@ -6,7 +6,7 @@ const COLORS = {
   wall: 0xe7ddd0,
   wallEdge: 0x657378,
   window: 0x2b627a,
-  selectedWindow: 0xd36c32,
+  selectedWindowFrame: 0xd36c32,
   sunlight: 0xffbd55,
   sunlightEdge: 0xd85824,
   north: 0x2b627a,
@@ -242,7 +242,7 @@ function makeWindow(windowData, room) {
     emissive: 0x123442,
     emissiveIntensity: 0.12,
     transparent: true,
-    opacity: 0.5,
+    opacity: 0.36,
     roughness: 0.18,
     metalness: 0.12,
     side: THREE.DoubleSide,
@@ -628,8 +628,31 @@ function displayWindowName(name) {
   return String(name || "Window").replace(/_/g, " ");
 }
 
+function friendlyWindowName(index, count) {
+  return count === 1 ? "Window" : `Window ${index + 1}`;
+}
+
+function objectIsVisible(object, root) {
+  let current = object;
+  while (current) {
+    if (!current.visible) return false;
+    if (current === root) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
 class Room3DViewer {
-  constructor({ container, statusElement, cameraButtons, wallsButton, roofButton, onWindowSelect, onUnavailable }) {
+  constructor({
+    container,
+    statusElement,
+    cameraButtons,
+    wallsButton,
+    roofButton,
+    contextButton,
+    onWindowSelect,
+    onUnavailable,
+  }) {
     if (window.__SUNLIGHT_FORCE_WEBGL_FAILURE__) {
       throw new Error("WebGL was disabled for this session.");
     }
@@ -638,6 +661,7 @@ class Room3DViewer {
     this.cameraButtons = Array.from(cameraButtons || []);
     this.wallsButton = wallsButton;
     this.roofButton = roofButton;
+    this.contextButton = contextButton;
     this.onWindowSelect = onWindowSelect;
     this.onUnavailable = onUnavailable;
     this.payload = null;
@@ -646,6 +670,9 @@ class Room3DViewer {
     this.hasFramedScene = false;
     this.wallsVisible = true;
     this.roofVisible = false;
+    this.contextVisible = true;
+    this.inViewport = true;
+    this.isTouchDevice = Boolean(window.matchMedia?.("(any-pointer: coarse)").matches);
     this.selectedWindowName = null;
     this.windowVisuals = new Map();
     this.labelElements = new Map();
@@ -653,6 +680,7 @@ class Room3DViewer {
     this.sunlightUpdateCount = 0;
     this.activeCameraPreset = "perspective";
     this.raycaster = new THREE.Raycaster();
+    this.labelRaycaster = new THREE.Raycaster();
     this.pointerStart = null;
 
     this.scene = new THREE.Scene();
@@ -664,7 +692,7 @@ class Room3DViewer {
     this.renderer.shadowMap.enabled = false;
     this.renderer.domElement.tabIndex = 0;
     this.renderer.domElement.setAttribute("aria-label", "Orbitable 3D room model. Click a window to select it.");
-    this.renderer.domElement.setAttribute("aria-describedby", "room3d-keyboard-help");
+    this.renderer.domElement.setAttribute("aria-describedby", "room3d-interaction-hint room3d-keyboard-help");
     this.onContextLost = (event) => {
       event.preventDefault();
       this.showFallback("The 3D renderer stopped. The 2D views are still available.");
@@ -691,9 +719,19 @@ class Room3DViewer {
     this.labelLayer = document.createElement("div");
     this.labelLayer.className = "room3d-label-layer";
     this.labelLayer.setAttribute("aria-label", "3D room labels");
-    container.replaceChildren(this.renderer.domElement, this.labelLayer);
+    this.interactionLayer = document.createElement("div");
+    this.interactionLayer.className = "room3d-interaction-layer";
+    this.touchToggle = document.createElement("button");
+    this.touchToggle.type = "button";
+    this.touchToggle.className = "room3d-touch-toggle";
+    this.touchToggle.textContent = "Explore 3D";
+    this.touchToggle.setAttribute("aria-pressed", "false");
+    this.touchToggle.hidden = !this.isTouchDevice;
+    this.interactionLayer.append(this.touchToggle);
+    container.replaceChildren(this.renderer.domElement, this.labelLayer, this.interactionLayer);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enabled = !this.isTouchDevice;
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
     this.controls.minPolarAngle = 0.0001;
@@ -738,16 +776,26 @@ class Room3DViewer {
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
+    this.intersectionObserver = new IntersectionObserver((entries) => {
+      this.inViewport = entries.some((entry) => entry.isIntersecting);
+      this.applyAnimationState();
+    }, { threshold: 0.01 });
+    this.intersectionObserver.observe(container);
     this.onVisibilityChange = () => this.applyAnimationState();
     document.addEventListener("visibilitychange", this.onVisibilityChange);
     this.onCameraPreset = (event) => this.setCameraPreset(event.currentTarget.dataset.room3dCameraPreset);
     this.onToggleWalls = () => this.toggleWalls();
     this.onToggleRoof = () => this.toggleRoof();
+    this.onToggleContext = () => this.toggleContext();
+    this.onToggleTouchInteraction = () => this.setTouchInteraction(!this.container.classList.contains("is-touch-interacting"));
     this.cameraButtons.forEach((button) => button.addEventListener("click", this.onCameraPreset));
     wallsButton?.addEventListener("click", this.onToggleWalls);
     roofButton?.addEventListener("click", this.onToggleRoof);
+    contextButton?.addEventListener("click", this.onToggleContext);
+    this.touchToggle.addEventListener("click", this.onToggleTouchInteraction);
 
     this.container.dataset.viewerState = "ready";
+    this.container.dataset.touchInteraction = this.isTouchDevice ? "scroll" : "desktop";
     this.setStatus("3D room ready.");
     this.resize();
   }
@@ -832,11 +880,11 @@ class Room3DViewer {
     const furniture = makeFurniture(sceneDetails.furniture, room);
     this.furnitureGroup.add(furniture.group);
 
-    payload.windows.forEach((windowData) => {
+    payload.windows.forEach((windowData, index) => {
       const visual = makeWindow(windowData, room);
       this.windowGroup.add(visual.group);
       this.windowVisuals.set(windowData.name, { ...visual, windowData });
-      this.addWindowLabel(windowData, visual.center);
+      this.addWindowLabel(windowData, visual.center, index, payload.windows.length);
     });
 
     this.updateSunlightFrame(payload.snapshot, payload.selected_moment, { updateStatus: false });
@@ -856,6 +904,7 @@ class Room3DViewer {
     const selectedExists = payload.windows.some((windowData) => windowData.name === this.selectedWindowName);
     this.setSelectedWindow(selectedExists ? this.selectedWindowName : payload.windows[0]?.name);
     this.updateCameraAwareWalls();
+    this.applyContextVisibility();
     this.updateLabels();
 
     const wallPanelCount = this.wallGroup.children.reduce(
@@ -878,6 +927,7 @@ class Room3DViewer {
     this.container.dataset.furnitureCount = String(furniture.itemCount);
     this.container.dataset.furniturePreset = furniture.preset;
     this.container.dataset.roofVisible = String(this.roofVisible);
+    this.container.dataset.contextVisible = String(this.contextVisible);
     this.container.dataset.sceneVisualOnly = String(Boolean(sceneDetails.visual_only));
     this.container.dataset.patchCount = String(payload.snapshot.patches.length);
     this.container.dataset.selectedMoment = payload.selected_moment;
@@ -929,18 +979,22 @@ class Room3DViewer {
     }
   }
 
-  addWindowLabel(windowData, center) {
+  addWindowLabel(windowData, center, index, count) {
     const label = document.createElement("button");
+    const friendlyName = friendlyWindowName(index, count);
     label.type = "button";
     label.className = "room3d-window-label";
-    label.textContent = displayWindowName(windowData.name);
+    label.textContent = friendlyName;
     label.dataset.windowName = windowData.name;
-    label.setAttribute("aria-label", `Select ${displayWindowName(windowData.name)} in the room editor`);
+    label.setAttribute("aria-label", `Select ${friendlyName} in the room editor`);
     label.addEventListener("click", () => this.selectWindow(windowData.name, true));
     this.labelLayer.append(label);
     this.labelElements.set(`window:${windowData.name}`, {
       element: label,
       anchor: center.clone().add(new THREE.Vector3(0, windowData.height / 2 + 0.22, 0)),
+      occlusionAnchor: center.clone(),
+      wall: windowData.wall,
+      windowName: windowData.name,
     });
   }
 
@@ -969,13 +1023,96 @@ class Room3DViewer {
     if (this.destroyed || !this.payload) return;
     const width = Math.max(this.container.clientWidth, 1);
     const height = Math.max(this.container.clientHeight, 1);
-    this.labelElements.forEach(({ element, anchor }) => {
+    const candidates = [];
+    this.labelElements.forEach(({ element, anchor, occlusionAnchor, wall, windowName }) => {
+      const visual = this.windowVisuals.get(windowName);
+      const viewDirection = occlusionAnchor.clone().sub(this.camera.position).normalize();
+      const wallNormal = wallDefinition(wall, this.payload.room, 0).normal;
       const projected = anchor.clone().project(this.camera);
-      const visible = projected.z > -1 && projected.z < 1;
+      const facesCamera = this.activeCameraPreset === "top" || Math.abs(viewDirection.dot(wallNormal)) > 0.3;
+      const visible = Boolean(
+        visual
+        && objectIsVisible(visual.group, this.scene)
+        && facesCamera
+        && projected.z > -1
+        && projected.z < 1
+        && (this.activeCameraPreset === "top" || !this.isLabelOccluded(occlusionAnchor)),
+      );
       element.hidden = !visible;
       if (!visible) return;
-      element.style.transform = `translate(-50%, -50%) translate(${(projected.x * 0.5 + 0.5) * width}px, ${(-projected.y * 0.5 + 0.5) * height}px)`;
+      candidates.push({
+        element,
+        selected: windowName === this.selectedWindowName,
+        x: (projected.x * 0.5 + 0.5) * width,
+        y: (-projected.y * 0.5 + 0.5) * height,
+      });
     });
+
+    const placed = [];
+    const containerRect = this.container.getBoundingClientRect();
+    const compass = this.labelLayer.querySelector(".room3d-compass-legend")?.getBoundingClientRect();
+    if (compass) {
+      placed.push({
+        left: compass.left - containerRect.left,
+        right: compass.right - containerRect.left,
+        top: compass.top - containerRect.top,
+        bottom: compass.bottom - containerRect.top,
+      });
+    }
+    candidates.sort((left, right) => Number(right.selected) - Number(left.selected));
+    candidates.forEach(({ element, selected, x, y }) => {
+      const halfWidth = element.offsetWidth / 2;
+      const halfHeight = element.offsetHeight / 2;
+      const clampedX = THREE.MathUtils.clamp(x, halfWidth + 8, width - halfWidth - 8);
+      const offsets = [0, -30, 30, -60, 60];
+      let position = null;
+      for (const offset of offsets) {
+        const clampedY = THREE.MathUtils.clamp(y + offset, halfHeight + 8, height - halfHeight - 8);
+        const rect = {
+          left: clampedX - halfWidth - 4,
+          right: clampedX + halfWidth + 4,
+          top: clampedY - halfHeight - 4,
+          bottom: clampedY + halfHeight + 4,
+        };
+        const overlaps = placed.some((item) => (
+          rect.left < item.right
+          && rect.right > item.left
+          && rect.top < item.bottom
+          && rect.bottom > item.top
+        ));
+        if (!overlaps) {
+          position = { x: clampedX, y: clampedY, rect };
+          break;
+        }
+      }
+      if (!position && !selected) {
+        element.hidden = true;
+        return;
+      }
+      position ||= {
+        x: clampedX,
+        y: THREE.MathUtils.clamp(y, halfHeight + 8, height - halfHeight - 8),
+        rect: null,
+      };
+      element.style.transform = `translate(-50%, -50%) translate(${position.x}px, ${position.y}px)`;
+      if (position.rect) placed.push(position.rect);
+    });
+  }
+
+  isLabelOccluded(anchor) {
+    const direction = anchor.clone().sub(this.camera.position);
+    const distance = direction.length();
+    if (distance <= 0.001) return false;
+    this.labelRaycaster.set(this.camera.position, direction.normalize());
+    const occluders = [
+      ...this.wallGroup.children,
+      ...this.roofGroup.children,
+    ];
+    return this.labelRaycaster.intersectObjects(occluders, true).some((hit) => (
+      hit.object.isMesh
+      && objectIsVisible(hit.object, this.scene)
+      && hit.distance < distance - 0.08
+    ));
   }
 
   selectWindow(name, notify) {
@@ -989,17 +1126,18 @@ class Room3DViewer {
     this.selectedWindowName = name;
     this.windowVisuals.forEach((visual, windowName) => {
       const selected = windowName === name;
-      visual.glassMaterial.color.setHex(selected ? COLORS.selectedWindow : COLORS.window);
-      visual.glassMaterial.emissive.setHex(selected ? 0x61210e : 0x123442);
-      visual.glassMaterial.emissiveIntensity = selected ? 0.36 : 0.12;
-      visual.glassMaterial.opacity = selected ? 0.72 : 0.5;
-      visual.frameMaterial.color.setHex(selected ? 0xffd29d : 0xffffff);
+      visual.glassMaterial.color.setHex(COLORS.window);
+      visual.glassMaterial.emissive.setHex(selected ? 0x1a4c62 : 0x123442);
+      visual.glassMaterial.emissiveIntensity = selected ? 0.24 : 0.12;
+      visual.glassMaterial.opacity = selected ? 0.46 : 0.36;
+      visual.frameMaterial.color.setHex(selected ? COLORS.selectedWindowFrame : 0xffffff);
       visual.frameMaterial.opacity = selected ? 1 : 0.78;
       const label = this.labelElements.get(`window:${windowName}`)?.element;
       label?.classList.toggle("is-selected", selected);
       label?.setAttribute("aria-pressed", String(selected));
     });
     this.container.dataset.selectedWindow = name;
+    this.updateLabels();
   }
 
   handleCanvasClick(event) {
@@ -1014,7 +1152,7 @@ class Room3DViewer {
     );
     this.raycaster.setFromCamera(pointer, this.camera);
     const hit = this.raycaster.intersectObjects(this.windowGroup.children, true)
-      .find((entry) => entry.object.userData.windowName);
+      .find((entry) => entry.object.userData.windowName && objectIsVisible(entry.object, this.scene));
     if (hit) this.selectWindow(hit.object.userData.windowName, true);
   }
 
@@ -1088,6 +1226,36 @@ class Room3DViewer {
       this.roofButton.textContent = this.roofVisible ? "Hide roof" : "Show roof";
     }
     this.container.dataset.roofVisible = String(this.roofVisible);
+    this.updateLabels();
+  }
+
+  toggleContext() {
+    if (this.destroyed) return;
+    this.contextVisible = !this.contextVisible;
+    if (this.contextButton) {
+      this.contextButton.setAttribute("aria-pressed", String(this.contextVisible));
+      this.contextButton.textContent = this.contextVisible ? "Context on" : "Context off";
+    }
+    this.container.dataset.contextVisible = String(this.contextVisible);
+    this.applyContextVisibility();
+    this.updateLabels();
+  }
+
+  applyContextVisibility() {
+    this.furnitureGroup.visible = this.contextVisible;
+    this.container.dataset.furnitureVisible = String(this.furnitureGroup.visible);
+    this.updateCameraAwareWalls();
+  }
+
+  setTouchInteraction(active) {
+    if (!this.isTouchDevice || this.destroyed) return;
+    const enabled = Boolean(active);
+    this.controls.enabled = enabled;
+    this.container.classList.toggle("is-touch-interacting", enabled);
+    this.container.dataset.touchInteraction = enabled ? "active" : "scroll";
+    this.touchToggle.setAttribute("aria-pressed", String(enabled));
+    this.touchToggle.textContent = enabled ? "Done" : "Explore 3D";
+    if (enabled) this.renderer.domElement.focus({ preventScroll: true });
   }
 
   updateCameraAwareWalls() {
@@ -1095,18 +1263,27 @@ class Room3DViewer {
     const viewDirection = this.camera.position.clone().sub(this.controls.target).normalize();
     const hidden = [];
     const visible = [];
+    const wallVisibility = new Map();
     this.wallGroup.children.forEach((wall) => {
       const cameraFacesWall = viewDirection.dot(wall.userData.normal) > 0.2;
       const frontPresetKeepsWall = this.activeCameraPreset === "front" && wall.userData.wall === "north";
       const shouldAutoHide = cameraFacesWall && !frontPresetKeepsWall;
       wall.visible = this.wallsVisible && !shouldAutoHide;
+      wallVisibility.set(wall.userData.wall, wall.visible);
       if (this.wallsVisible && shouldAutoHide) hidden.push(wall.userData.wall);
       if (wall.visible) visible.push(wall.userData.wall);
+    });
+    this.windowVisuals.forEach((visual) => {
+      visual.group.visible = Boolean(wallVisibility.get(visual.windowData.wall));
+    });
+    this.doorGroup.children.forEach((door) => {
+      door.visible = this.contextVisible && Boolean(wallVisibility.get(door.userData.wall));
     });
     hidden.sort();
     visible.sort();
     this.container.dataset.autoHiddenWalls = hidden.join(",");
     this.container.dataset.visibleWalls = visible.join(",");
+    this.container.dataset.doorVisible = String(this.doorGroup.children.some((door) => door.visible));
   }
 
   updateDebugState() {
@@ -1160,6 +1337,7 @@ class Room3DViewer {
   setActive(active) {
     if (this.destroyed) return;
     this.active = Boolean(active);
+    if (!this.active && this.isTouchDevice) this.setTouchInteraction(false);
     this.applyAnimationState();
     if (this.active) {
       this.resize();
@@ -1169,7 +1347,7 @@ class Room3DViewer {
 
   applyAnimationState() {
     if (this.destroyed) return;
-    const shouldRender = this.active && document.visibilityState !== "hidden";
+    const shouldRender = this.active && this.inViewport && document.visibilityState !== "hidden";
     this.renderer.setAnimationLoop(shouldRender ? () => {
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
@@ -1185,10 +1363,13 @@ class Room3DViewer {
     this.renderer.setAnimationLoop(null);
     this.container.dataset.rendering = "false";
     this.resizeObserver.disconnect();
+    this.intersectionObserver.disconnect();
     document.removeEventListener("visibilitychange", this.onVisibilityChange);
     this.cameraButtons.forEach((button) => button.removeEventListener("click", this.onCameraPreset));
     this.wallsButton?.removeEventListener("click", this.onToggleWalls);
     this.roofButton?.removeEventListener("click", this.onToggleRoof);
+    this.contextButton?.removeEventListener("click", this.onToggleContext);
+    this.touchToggle.removeEventListener("click", this.onToggleTouchInteraction);
     this.controls.removeEventListener("change", this.onControlsChange);
     this.renderer.domElement.removeEventListener("webglcontextlost", this.onContextLost);
     this.renderer.domElement.removeEventListener("keydown", this.onKeyDown);

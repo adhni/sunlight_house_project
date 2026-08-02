@@ -57,12 +57,12 @@
             </div>
 
             <div class="result-toolbar">
-              <div class="chip-row result-tab-row">
-                <button type="button" class="chip-button is-active" data-result-tab="current">Now</button>
-                <button type="button" class="chip-button" data-result-tab="room-3d">3D room</button>
-                <button type="button" class="chip-button" data-result-tab="sunlight-map">Today</button>
-                <button type="button" class="chip-button" data-result-tab="long-range">Year estimate</button>
-                <button type="button" class="chip-button" data-result-tab="outdoor-year">Outdoor context</button>
+              <div class="chip-row result-tab-row" role="tablist" aria-label="Room result views">
+                <button id="result-tab-current" type="button" role="tab" aria-controls="result-panel-current" aria-selected="true" tabindex="0" class="chip-button is-active" data-result-tab="current">Now</button>
+                <button id="result-tab-room-3d" type="button" role="tab" aria-controls="result-panel-room-3d" aria-selected="false" tabindex="-1" class="chip-button" data-result-tab="room-3d">3D room</button>
+                <button id="result-tab-sunlight-map" type="button" role="tab" aria-controls="result-panel-sunlight-map" aria-selected="false" tabindex="-1" class="chip-button" data-result-tab="sunlight-map">Today</button>
+                <button id="result-tab-long-range" type="button" role="tab" aria-controls="result-panel-long-range" aria-selected="false" tabindex="-1" class="chip-button" data-result-tab="long-range">Year estimate</button>
+                <button id="result-tab-outdoor-year" type="button" role="tab" aria-controls="result-panel-outdoor-year" aria-selected="false" tabindex="-1" class="chip-button" data-result-tab="outdoor-year">Outdoor context</button>
               </div>
               <div class="result-status-row">
                 <span id="update-status" class="update-status" data-state="idle" aria-live="polite">Preview is up to date.</span>
@@ -119,7 +119,7 @@
               </section>
             </details>
 
-            <div class="result-view is-active" data-result-panel="current">
+            <div id="result-panel-current" class="result-view is-active" role="tabpanel" aria-labelledby="result-tab-current" data-result-panel="current">
               <div class="room-snapshot-shell">
                 <div id="room-snapshot-svg" class="room-snapshot room-snapshot-large"></div>
               </div>
@@ -140,7 +140,7 @@
               </p>
             </div>
 
-            <div class="result-view" data-result-panel="room-3d">
+            <div id="result-panel-room-3d" class="result-view room3d-view" role="tabpanel" aria-labelledby="result-tab-room-3d" data-result-panel="room-3d">
               <div class="room3d-header">
                 <div>
                   <p class="section-kicker">Interactive view</p>
@@ -152,6 +152,7 @@
                   <button type="button" class="chip-button chip-button-soft" data-room3d-camera-preset="front" aria-pressed="false">Front</button>
                   <button id="room3d-toggle-walls" type="button" class="chip-button chip-button-soft" aria-pressed="true">Walls auto</button>
                   <button id="room3d-toggle-roof" type="button" class="chip-button chip-button-soft" aria-pressed="false">Show roof</button>
+                  <button id="room3d-toggle-context" type="button" class="chip-button chip-button-soft" aria-pressed="true">Context on</button>
                 </div>
               </div>
               <div id="room3d-animation-controls" class="room3d-animation-controls" data-state="idle">
@@ -168,15 +169,20 @@
                   value="60"
                   step="1"
                   aria-label="Sunlight animation time"
+                  aria-valuetext="{{ form_values.selected_time }}"
                   disabled
                 >
-                <div class="chip-row room3d-time-presets" aria-label="Sunlight time presets">
-                  <button type="button" class="chip-button chip-button-soft" data-room3d-time-preset="morning" disabled>Morning</button>
-                  <button type="button" class="chip-button chip-button-soft" data-room3d-time-preset="noon" disabled>Solar noon</button>
-                  <button type="button" class="chip-button chip-button-soft" data-room3d-time-preset="evening" disabled>Evening</button>
+                <div class="chip-row room3d-time-presets" role="group" aria-label="Sunlight time presets">
+                  <button type="button" class="chip-button chip-button-soft" data-room3d-time-preset="morning" aria-pressed="false" disabled>Morning</button>
+                  <button type="button" class="chip-button chip-button-soft" data-room3d-time-preset="noon" aria-pressed="false" disabled>Solar noon</button>
+                  <button type="button" class="chip-button chip-button-soft" data-room3d-time-preset="evening" aria-pressed="false" disabled>Evening</button>
                 </div>
                 <span id="room3d-animation-status" class="angle-caption room3d-animation-status" role="status">Open the 3D view to load the day.</span>
               </div>
+              <p id="room3d-interaction-hint" class="angle-caption room3d-interaction-hint">
+                <span class="room3d-pointer-help">Drag to look around · scroll to zoom · select a window to edit it.</span>
+                <span class="room3d-touch-help">Tap Explore 3D, then drag to look and pinch to zoom.</span>
+              </p>
               <div
                 id="room3d-container"
                 class="room3d-container"
@@ -184,13 +190,20 @@
                 role="region"
                 aria-label="Interactive 3D model of the room and its current direct sunlight"
               ></div>
+              <div class="room3d-scene-legend" aria-label="3D scene legend">
+                <span class="room3d-legend-sun">Direct sun</span>
+                <span class="room3d-legend-selected">Selected window</span>
+                <span class="room3d-legend-blocker">Shade blocker</span>
+                <span class="room3d-legend-context">Scale context</span>
+              </div>
+              <button id="room3d-edit-selected-window" type="button" class="chip-button chip-button-soft room3d-edit-selected-window">Edit selected window</button>
               <div class="room3d-footer">
                 <p id="room3d-status" class="angle-caption" role="status">Open this tab to load the 3D room.</p>
-                <p id="room3d-keyboard-help" class="angle-caption">Choose Perspective, Top, or Front · click a window to select it · drag to orbit · scroll to zoom. Keyboard: arrows orbit · Shift + arrows pan · +/− zoom.</p>
+                <p id="room3d-keyboard-help" class="angle-caption">Keyboard: arrows orbit · Shift + arrows pan · +/− zoom.</p>
               </div>
             </div>
 
-            <div class="result-view" data-result-panel="sunlight-map">
+            <div id="result-panel-sunlight-map" class="result-view" role="tabpanel" aria-labelledby="result-tab-sunlight-map" data-result-panel="sunlight-map">
               <div class="room-snapshot-shell">
                 <div id="daily-exposure-svg" class="room-snapshot room-snapshot-large"></div>
                 <div id="daily-exposure-tooltip" class="chart-tooltip" hidden></div>
@@ -224,7 +237,7 @@
               </p>
             </div>
 
-            <div class="result-view" data-result-panel="long-range">
+            <div id="result-panel-long-range" class="result-view" role="tabpanel" aria-labelledby="result-tab-long-range" data-result-panel="long-range">
               <div class="chip-row result-tab-row">
                 <button type="button" class="chip-button is-active" data-period-view="year">Year</button>
                 <button type="button" class="chip-button" data-period-view="winter">Winter</button>
@@ -265,7 +278,7 @@
               </p>
             </div>
 
-            <div class="result-view" data-result-panel="outdoor-year">
+            <div id="result-panel-outdoor-year" class="result-view" role="tabpanel" aria-labelledby="result-tab-outdoor-year" data-result-panel="outdoor-year">
               <section class="outdoor-year-view">
                 <div class="outdoor-year-header">
                   <div>
