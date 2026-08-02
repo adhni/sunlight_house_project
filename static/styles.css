@@ -1752,7 +1752,7 @@ input[type="range"] {
 
 }
 
-@media (max-width: 820px) and (pointer: coarse) {
+@media (max-width: 820px) and (any-pointer: coarse) {
   .room3d-pointer-help {
     display: none;
   }

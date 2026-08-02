@@ -185,6 +185,7 @@ test("loads cached day frames and applies presets without rebuilding the room", 
   const sunlightUpdateCount = await viewer.getAttribute("data-sunlight-update-count");
 
   await page.locator('[data-room3d-time-preset="noon"]').click();
+  await expect(page.locator('[data-room3d-time-preset="noon"]')).toHaveAttribute("aria-pressed", "true");
 
   await expect(page.locator("#room3d-time-readout")).not.toHaveText("--:--");
   await expect(page.locator("#room3d-time-slider")).toHaveAttribute(
@@ -196,6 +197,10 @@ test("loads cached day frames and applies presets without rebuilding the room", 
   );
   await expect(viewer).toHaveAttribute("data-scene-build-count", sceneBuildCount);
   await expect.poll(() => viewer.getAttribute("data-sunlight-update-count")).not.toBe(sunlightUpdateCount);
+
+  await page.locator("#selected-time-input").fill("10:10");
+  await expect(page.locator("#room3d-time-readout")).toHaveText("10:10");
+  await expect(page.locator('[data-room3d-time-preset="noon"]')).toHaveAttribute("aria-pressed", "false");
 
   await page.locator("#room3d-time-slider").fill("0");
   await expect(page.locator("#sun-summary-moment")).toHaveText(
@@ -339,7 +344,8 @@ test("supports keyboard orbit, pan, and zoom", async ({ page }) => {
   const canvas = viewer.locator("canvas");
   await canvas.focus();
   await expect(canvas).toBeFocused();
-  await expect(canvas).toHaveAttribute("aria-describedby", "room3d-keyboard-help");
+  await expect(canvas).toHaveAttribute("aria-describedby", /(?:^|\s)room3d-interaction-hint(?:\s|$)/);
+  await expect(canvas).toHaveAttribute("aria-describedby", /(?:^|\s)room3d-keyboard-help(?:\s|$)/);
 
   const initialCamera = await viewer.getAttribute("data-camera-position");
   await canvas.press("ArrowLeft");

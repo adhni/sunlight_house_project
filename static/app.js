@@ -1090,23 +1090,30 @@
     }
   }
 
-  function installDayAnimation(payload, key, source) {
-    dayAnimationPayload = payload;
-    dayAnimationKey = key;
-    dayAnimationIndex = nearestAnimationFrameIndex(payload);
-    const frame = payload.frames[dayAnimationIndex];
+  function syncDayAnimationControls(payload = dayAnimationPayload, index = dayAnimationIndex) {
+    const frame = payload?.frames?.[index];
     if (room3dTimeSlider) {
-      room3dTimeSlider.max = String(payload.frames.length - 1);
-      room3dTimeSlider.value = String(dayAnimationIndex);
+      room3dTimeSlider.value = String(index);
       room3dTimeSlider.setAttribute("aria-valuetext", frame?.selected_moment.slice(11, 16) || "Unavailable");
     }
     if (room3dTimeReadout && frame) room3dTimeReadout.textContent = frame.selected_moment.slice(11, 16);
     room3dPresetButtons.forEach((button) => {
-      const preset = payload.presets[button.dataset.room3dTimePreset];
+      const preset = payload?.presets?.[button.dataset.room3dTimePreset];
       if (preset) button.textContent = preset.label;
-      button.classList.toggle("is-active", preset?.index === dayAnimationIndex);
-      button.setAttribute("aria-pressed", String(preset?.index === dayAnimationIndex));
+      const isActive = preset?.index === index;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
     });
+  }
+
+  function installDayAnimation(payload, key, source) {
+    dayAnimationPayload = payload;
+    dayAnimationKey = key;
+    dayAnimationIndex = nearestAnimationFrameIndex(payload);
+    if (room3dTimeSlider) {
+      room3dTimeSlider.max = String(payload.frames.length - 1);
+    }
+    syncDayAnimationControls(payload, dayAnimationIndex);
     setDayAnimationEnabled(true);
     setDayAnimationStatus(
       `${payload.frames.length} frames ready · ${payload.step_minutes}-minute steps${source === "cache" || payload.cache_hit ? " · cached" : ""}.`,
@@ -1123,11 +1130,7 @@
     const key = currentDayAnimationKey();
     if (dayAnimationPayload && dayAnimationKey === key) {
       dayAnimationIndex = nearestAnimationFrameIndex();
-      const frame = dayAnimationPayload.frames[dayAnimationIndex];
-      if (room3dTimeSlider) {
-        room3dTimeSlider.value = String(dayAnimationIndex);
-        room3dTimeSlider.setAttribute("aria-valuetext", frame?.selected_moment.slice(11, 16) || "Unavailable");
-      }
+      syncDayAnimationControls(dayAnimationPayload, dayAnimationIndex);
       return dayAnimationPayload;
     }
     const cached = dayAnimationCache.get(key);
@@ -1211,9 +1214,7 @@
     timeSlider.value = String(animationFrameMinutes(frame));
     timeReadout.textContent = localTime;
     dayReadout.textContent = formatDateReadout(selectedDateInput.value);
-    if (room3dTimeSlider) room3dTimeSlider.value = String(boundedIndex);
-    if (room3dTimeSlider) room3dTimeSlider.setAttribute("aria-valuetext", localTime);
-    if (room3dTimeReadout) room3dTimeReadout.textContent = localTime;
+    syncDayAnimationControls(dayAnimationPayload, boundedIndex);
     currentPayload = {
       ...currentPayload,
       selected_moment: frame.selected_moment,
@@ -1225,11 +1226,6 @@
     };
     room3dViewer?.updateSunlightFrame(frame.snapshot, frame.selected_moment, { updateStatus: false });
     updateAnimatedMomentDom(currentPayload);
-    room3dPresetButtons.forEach((button) => {
-      const preset = dayAnimationPayload.presets[button.dataset.room3dTimePreset];
-      button.classList.toggle("is-active", preset?.index === boundedIndex);
-      button.setAttribute("aria-pressed", String(preset?.index === boundedIndex));
-    });
     if (room3dContainer) room3dContainer.dataset.animationIndex = String(boundedIndex);
   }
 
@@ -1269,12 +1265,7 @@
     }
     if (dayAnimationPayload) {
       dayAnimationIndex = nearestAnimationFrameIndex();
-      const frame = dayAnimationPayload.frames[dayAnimationIndex];
-      if (room3dTimeSlider) {
-        room3dTimeSlider.value = String(dayAnimationIndex);
-        room3dTimeSlider.setAttribute("aria-valuetext", frame?.selected_moment.slice(11, 16) || "Unavailable");
-      }
-      if (room3dTimeReadout && frame) room3dTimeReadout.textContent = frame.selected_moment.slice(11, 16);
+      syncDayAnimationControls(dayAnimationPayload, dayAnimationIndex);
     }
   }
 
@@ -2847,7 +2838,7 @@
     if (
       selectedTab === "room-3d"
       && room3dInteractionHint
-      && window.matchMedia?.("(max-width: 820px) and (pointer: coarse)").matches
+      && window.matchMedia?.("(max-width: 820px) and (any-pointer: coarse)").matches
     ) {
       room3dActivation.then(() => {
         window.requestAnimationFrame(() => {

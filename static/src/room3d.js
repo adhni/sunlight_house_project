@@ -672,7 +672,7 @@ class Room3DViewer {
     this.roofVisible = false;
     this.contextVisible = true;
     this.inViewport = true;
-    this.isTouchDevice = Boolean(window.matchMedia?.("(pointer: coarse)").matches);
+    this.isTouchDevice = Boolean(window.matchMedia?.("(any-pointer: coarse)").matches);
     this.selectedWindowName = null;
     this.windowVisuals = new Map();
     this.labelElements = new Map();
