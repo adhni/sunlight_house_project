@@ -94,6 +94,21 @@
   const room3dAnimationStatus = document.getElementById("room3d-animation-status");
   const room3dInteractionHint = document.getElementById("room3d-interaction-hint");
   const room3dPresetButtons = document.querySelectorAll("[data-room3d-time-preset]");
+  const furnitureJsonInput = document.getElementById("furniture-json-input");
+  const furniturePresetInput = document.getElementById("scene-furniture-preset");
+  const furnitureArrangeButton = document.getElementById("furniture-arrange-button");
+  const furnitureAddButton = document.getElementById("furniture-add-button");
+  const furnitureUndoButton = document.getElementById("furniture-undo-button");
+  const furniturePalette = document.getElementById("furniture-palette");
+  const furnitureAddButtons = document.querySelectorAll("[data-add-furniture]");
+  const furnitureSelectionEditor = document.getElementById("furniture-selection-editor");
+  const furnitureSelectionTitle = document.getElementById("furniture-selection-title");
+  const furnitureSaveStatus = document.getElementById("furniture-save-status");
+  const furnitureXInput = document.getElementById("furniture-x-input");
+  const furnitureYInput = document.getElementById("furniture-y-input");
+  const furnitureRotationInput = document.getElementById("furniture-rotation-input");
+  const furnitureScaleInput = document.getElementById("furniture-scale-input");
+  const furnitureActionButtons = document.querySelectorAll("[data-furniture-action]");
 
   const mapElement = document.getElementById("location-map");
   let map = null;
@@ -137,6 +152,19 @@
   let dayAnimationTimer = null;
   const dayAnimationCache = new Map();
   const DAY_ANIMATION_CACHE_MAX = 4;
+  const MAX_FURNITURE_ITEMS = 24;
+  const furnitureStorageKey = "sunlight-house-furniture-v1";
+  const furnitureFootprints = {
+    table: [1.15, 0.68],
+    chair: [0.42, 0.42],
+    sofa: [1.72, 0.72],
+    bed: [1.45, 2.0],
+  };
+  let furnitureItems = [];
+  let selectedFurnitureId = null;
+  let furnitureHistory = [];
+  let furnitureDragSnapshot = null;
+  let furnitureIdCounter = 0;
 
   function isLeapYear(year) {
     return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
@@ -964,6 +992,189 @@
     }
   }
 
+  function cloneFurnitureItems(items = furnitureItems) {
+    return items.map((item) => ({ ...item }));
+  }
+
+  function clampFurnitureItem(item) {
+    const room = currentPayload?.room || { width: 4, depth: 5 };
+    const [baseWidth, baseDepth] = furnitureFootprints[item.type] || [0.5, 0.5];
+    const rotation = ((Number(item.rotation) || 0) % 360 + 360) % 360;
+    const scale = Math.min(Math.max(Number(item.scale) || 1, 0.5), 1.5);
+    const angle = rotation * Math.PI / 180;
+    const width = (Math.abs(Math.cos(angle)) * baseWidth + Math.abs(Math.sin(angle)) * baseDepth) * scale;
+    const depth = (Math.abs(Math.sin(angle)) * baseWidth + Math.abs(Math.cos(angle)) * baseDepth) * scale;
+    const halfWidth = Math.min(width / 2, room.width / 2);
+    const halfDepth = Math.min(depth / 2, room.depth / 2);
+    return {
+      id: String(item.id),
+      type: item.type,
+      x: Number(Math.min(Math.max(Number(item.x) || room.width / 2, halfWidth), room.width - halfWidth).toFixed(4)),
+      y: Number(Math.min(Math.max(Number(item.y) || room.depth / 2, halfDepth), room.depth - halfDepth).toFixed(4)),
+      rotation: Number(rotation.toFixed(3)),
+      scale: Number(scale.toFixed(3)),
+    };
+  }
+
+  function normalizedFurnitureItems(items) {
+    if (!Array.isArray(items)) return [];
+    const ids = new Set();
+    return items.slice(0, MAX_FURNITURE_ITEMS).filter((item) => {
+      if (!item || !furnitureFootprints[item.type] || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(String(item.id))) return false;
+      if (ids.has(String(item.id))) return false;
+      ids.add(String(item.id));
+      return [item.x, item.y, item.rotation, item.scale].every((value) => Number.isFinite(Number(value)));
+    }).map(clampFurnitureItem);
+  }
+
+  function furnitureJson(items = furnitureItems) {
+    return JSON.stringify({ version: 1, items: cloneFurnitureItems(items) });
+  }
+
+  function updateFurnitureEditor() {
+    const selected = furnitureItems.find((item) => item.id === selectedFurnitureId);
+    furnitureSelectionEditor.hidden = !selected;
+    if (!selected) return;
+    furnitureSelectionTitle.textContent = `${selected.type[0].toUpperCase()}${selected.type.slice(1)}`;
+    furnitureXInput.value = selected.x.toFixed(2);
+    furnitureYInput.value = selected.y.toFixed(2);
+    furnitureRotationInput.value = selected.rotation.toFixed(0);
+    furnitureScaleInput.value = selected.scale.toFixed(2);
+    furnitureXInput.max = String(currentPayload.room.width);
+    furnitureYInput.max = String(currentPayload.room.depth);
+  }
+
+  function persistFurniture() {
+    try {
+      localStorage.setItem(furnitureStorageKey, JSON.stringify({
+        version: 1,
+        room: { width: currentPayload.room.width, depth: currentPayload.room.depth },
+        items: furnitureItems,
+      }));
+      if (furnitureSaveStatus) furnitureSaveStatus.textContent = "Saved in this browser";
+    } catch (error) {
+      console.warn("Could not save furniture layout", error);
+      if (furnitureSaveStatus) furnitureSaveStatus.textContent = "Saved for this session";
+    }
+  }
+
+  function setSelectedFurniture(item) {
+    selectedFurnitureId = item?.id || null;
+    room3dViewer?.setSelectedFurniture(selectedFurnitureId, false);
+    updateFurnitureEditor();
+  }
+
+  function syncFurnitureFromScene(furniture, { persist = true } = {}) {
+    if (!furniture) return;
+    furnitureItems = normalizedFurnitureItems(furniture.items || []);
+    furnitureJsonInput.value = furnitureJson();
+    furniturePresetInput.value = furniture.preset || "none";
+    if (!furnitureItems.some((item) => item.id === selectedFurnitureId)) selectedFurnitureId = null;
+    updateFurnitureEditor();
+    if (persist) {
+      if (furniture.preset === "custom") {
+        persistFurniture();
+      } else {
+        try {
+          localStorage.removeItem(furnitureStorageKey);
+        } catch (error) {
+          console.warn("Could not clear the saved furniture layout", error);
+        }
+      }
+    }
+  }
+
+  function applyFurnitureItems(items, {
+    historySnapshot = null,
+    selectId = selectedFurnitureId,
+    reason = "edit",
+    recordHistory = true,
+  } = {}) {
+    const next = normalizedFurnitureItems(items);
+    const previous = historySnapshot || cloneFurnitureItems();
+    if (recordHistory && JSON.stringify(previous) !== JSON.stringify(next)) {
+      furnitureHistory.push(previous);
+      if (furnitureHistory.length > 20) furnitureHistory.shift();
+    }
+    furnitureItems = next;
+    selectedFurnitureId = next.some((item) => item.id === selectId) ? selectId : null;
+    furniturePresetInput.value = "custom";
+    furnitureJsonInput.value = furnitureJson();
+    currentPayload = {
+      ...currentPayload,
+      scene: {
+        ...currentPayload.scene,
+        furniture: { version: 1, preset: "custom", items: cloneFurnitureItems(), affects_sunlight: false },
+      },
+    };
+    room3dViewer?.updateFurniture(currentPayload.scene.furniture);
+    room3dViewer?.setSelectedFurniture(selectedFurnitureId, false);
+    furnitureUndoButton.disabled = furnitureHistory.length === 0;
+    updateFurnitureEditor();
+    persistFurniture();
+    setUpdateStatus(`Furniture ${reason} saved.`, "idle");
+  }
+
+  function handleFurnitureChange(items, meta = {}) {
+    if (meta.phase === "start") {
+      furnitureDragSnapshot = cloneFurnitureItems();
+      return;
+    }
+    const historySnapshot = meta.reason === "move" ? furnitureDragSnapshot : null;
+    furnitureDragSnapshot = null;
+    applyFurnitureItems(items, { historySnapshot, selectId: meta.reason === "delete" ? null : meta.id, reason: meta.reason || "edit" });
+  }
+
+  function nextFurnitureId(type) {
+    do {
+      furnitureIdCounter += 1;
+    } while (furnitureItems.some((item) => item.id === `${type}-${furnitureIdCounter}`));
+    return `${type}-${furnitureIdCounter}`;
+  }
+
+  function addFurniture(type) {
+    if (furnitureItems.length >= MAX_FURNITURE_ITEMS) {
+      setUpdateStatus(`A room can contain up to ${MAX_FURNITURE_ITEMS} furniture items.`, "error");
+      return;
+    }
+    const id = nextFurnitureId(type);
+    const offset = (furnitureItems.length % 5) * 0.12;
+    const item = clampFurnitureItem({
+      id,
+      type,
+      x: currentPayload.room.width / 2 + offset,
+      y: currentPayload.room.depth / 2 + offset,
+      rotation: 0,
+      scale: 1,
+    });
+    applyFurnitureItems([...furnitureItems, item], { selectId: id, reason: "added" });
+    setSelectedFurniture(item);
+    furniturePalette.hidden = true;
+    furnitureAddButton.setAttribute("aria-expanded", "false");
+  }
+
+  function restoreStoredFurniture() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(furnitureStorageKey) || "null");
+      const sameRoom = saved?.version === 1
+        && Number(saved.room?.width) === Number(currentPayload.room.width)
+        && Number(saved.room?.depth) === Number(currentPayload.room.depth);
+      if (!sameRoom || !Array.isArray(saved.items)) return;
+      const items = normalizedFurnitureItems(saved.items);
+      currentPayload = {
+        ...currentPayload,
+        scene: {
+          ...currentPayload.scene,
+          furniture: { version: 1, preset: "custom", items, affects_sunlight: false },
+        },
+      };
+      furniturePresetInput.value = "custom";
+      furnitureJsonInput.value = furnitureJson(items);
+    } catch (error) {
+      console.warn("Ignoring an invalid saved furniture layout", error);
+    }
+  }
+
   async function ensureRoom3dViewer() {
     if (!room3dContainer) {
       return null;
@@ -990,9 +1201,12 @@
             roofButton: room3dRoofButton,
             contextButton: room3dContextButton,
             onWindowSelect: selectWindowFrom3d,
+            onFurnitureSelect: setSelectedFurniture,
+            onFurnitureChange: handleFurnitureChange,
             onUnavailable: pauseRoom3dAnimation,
           });
           room3dViewer.update(currentPayload);
+          room3dViewer.setSelectedFurniture(selectedFurnitureId, false);
           room3dViewer.setSelectedWindow(windowRows[activeWindowIndex]?.name);
           return room3dViewer;
         })
@@ -1056,6 +1270,7 @@
       "scene_door_enabled",
       "scene_door_wall",
       "scene_furniture_preset",
+      "scene_furniture_json",
     ].forEach((key) => params.delete(key));
     return params.toString();
   }
@@ -2436,7 +2651,9 @@
 
   function updateSnapshotDom(payload) {
     currentPayload = payload;
+    syncFurnitureFromScene(payload.scene?.furniture);
     room3dViewer?.update(payload);
+    room3dViewer?.setSelectedFurniture(selectedFurnitureId, false);
     room3dViewer?.setSelectedWindow(windowRows[activeWindowIndex]?.name);
     const snapshot = payload.snapshot;
     const daily = payload.daily;
@@ -2649,7 +2866,9 @@
       }
       if (requestId === latestSceneRequestId) {
         currentPayload = { ...currentPayload, scene: payload.scene };
+        syncFurnitureFromScene(payload.scene?.furniture);
         room3dViewer?.update(currentPayload);
+        room3dViewer?.setSelectedFurniture(selectedFurnitureId, false);
         room3dViewer?.setSelectedWindow(windowRows[activeWindowIndex]?.name);
         setUpdateStatus(defaultUpdateMessage, "idle");
       }
@@ -2924,8 +3143,92 @@
     });
   });
 
+  if (furnitureArrangeButton) {
+    furnitureArrangeButton.addEventListener("click", async () => {
+      const active = furnitureArrangeButton.getAttribute("aria-pressed") !== "true";
+      furnitureArrangeButton.setAttribute("aria-pressed", String(active));
+      furnitureArrangeButton.classList.toggle("is-active", active);
+      furnitureArrangeButton.textContent = active ? "Done arranging" : "Arrange furniture";
+      const viewer = await ensureRoom3dViewer();
+      viewer?.setArrangeMode(active);
+      if (active) {
+        setUpdateStatus("Select an item, then drag it across the floor.", "idle");
+      } else {
+        setSelectedFurniture(null);
+      }
+    });
+  }
+
+  furnitureAddButton?.addEventListener("click", async () => {
+    const open = furniturePalette.hidden;
+    furniturePalette.hidden = !open;
+    furnitureAddButton.setAttribute("aria-expanded", String(open));
+    if (open && furnitureArrangeButton.getAttribute("aria-pressed") !== "true") furnitureArrangeButton.click();
+    await ensureRoom3dViewer();
+  });
+
+  furnitureAddButtons.forEach((button) => {
+    button.addEventListener("click", () => addFurniture(button.dataset.addFurniture));
+  });
+
+  furnitureUndoButton?.addEventListener("click", () => {
+    const previous = furnitureHistory.pop();
+    if (!previous) return;
+    applyFurnitureItems(previous, { selectId: null, reason: "undo complete", recordHistory: false });
+    furnitureUndoButton.disabled = furnitureHistory.length === 0;
+  });
+
+  [furnitureXInput, furnitureYInput, furnitureRotationInput, furnitureScaleInput].forEach((input) => {
+    input?.addEventListener("change", () => {
+      const index = furnitureItems.findIndex((item) => item.id === selectedFurnitureId);
+      if (index < 0) return;
+      const next = cloneFurnitureItems();
+      next[index] = clampFurnitureItem({
+        ...next[index],
+        x: Number(furnitureXInput.value),
+        y: Number(furnitureYInput.value),
+        rotation: Number(furnitureRotationInput.value),
+        scale: Number(furnitureScaleInput.value),
+      });
+      applyFurnitureItems(next, { selectId: selectedFurnitureId, reason: "updated" });
+    });
+  });
+
+  furnitureActionButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = furnitureItems.findIndex((item) => item.id === selectedFurnitureId);
+      if (index < 0) return;
+      const action = button.dataset.furnitureAction;
+      const next = cloneFurnitureItems();
+      if (action === "delete") {
+        next.splice(index, 1);
+        applyFurnitureItems(next, { selectId: null, reason: "deleted" });
+      } else if (action === "duplicate") {
+        if (next.length >= MAX_FURNITURE_ITEMS) {
+          setUpdateStatus(`A room can contain up to ${MAX_FURNITURE_ITEMS} furniture items.`, "error");
+          return;
+        }
+        const source = next[index];
+        const copy = clampFurnitureItem({ ...source, id: nextFurnitureId(source.type), x: source.x + 0.2, y: source.y + 0.2 });
+        next.push(copy);
+        applyFurnitureItems(next, { selectId: copy.id, reason: "duplicated" });
+      } else {
+        next[index] = clampFurnitureItem({
+          ...next[index],
+          rotation: next[index].rotation + (action === "rotate-left" ? -15 : 15),
+        });
+        applyFurnitureItems(next, { selectId: selectedFurnitureId, reason: "rotated" });
+      }
+    });
+  });
+
   sceneDetailInputs.forEach((input) => {
     input.addEventListener("change", () => {
+      if (input === furniturePresetInput) {
+        furnitureHistory.push(cloneFurnitureItems());
+        if (furnitureHistory.length > 20) furnitureHistory.shift();
+        furnitureUndoButton.disabled = false;
+      }
       if (input.hasAttribute("data-sunlight-effect")) {
         scheduleRefresh("Updating sunlight obstructions...");
       } else {
@@ -3150,8 +3453,10 @@
   }
   baselinePayload = readStoredBaseline();
   loadEnvironmentData();
+  syncFurnitureFromScene(currentPayload.scene?.furniture, { persist: false });
+  restoreStoredFurniture();
   renderWindowBuilderFromTextarea();
-  updateSnapshotDom(initialData);
+  updateSnapshotDom(currentPayload);
   updateTimeScrubberReference(timezoneInput.value);
   setUpdateStatus(defaultUpdateMessage, "idle");
   document.addEventListener("visibilitychange", () => {

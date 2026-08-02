@@ -50,6 +50,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(values["scene_partition_enabled"], "1")
         self.assertEqual(values["scene_eaves_enabled"], "1")
         self.assertEqual(values["scene_furniture_preset"], "living")
+        self.assertEqual(len(json.loads(values["scene_furniture_json"])["items"]), 2)
         self.assertEqual(values["scene_external_obstruction"], "none")
         self.assertEqual(values["scene_external_wall"], "north")
 
@@ -86,6 +87,8 @@ class AppTests(unittest.TestCase):
         self.assertTrue(payload["scene"]["internal_wall"]["affects_sunlight"])
         self.assertFalse(payload["scene"]["external_obstruction"]["enabled"])
         self.assertEqual(payload["scene"]["furniture"]["preset"], "living")
+        self.assertEqual(payload["scene"]["furniture"]["version"], 1)
+        self.assertEqual(len(payload["scene"]["furniture"]["items"]), 2)
         self.assertFalse(payload["scene"]["furniture"]["affects_sunlight"])
         self.assertIn("source_center_xyz", payload["snapshot"]["patches"][0])
 
@@ -95,13 +98,52 @@ class AppTests(unittest.TestCase):
 
         scene = build_scene_details(values, config.room)
 
-        self.assertEqual(scene["version"], 2)
+        self.assertEqual(scene["version"], 3)
         self.assertEqual(scene["room_bounds"], {"width": 8.0, "depth": 6.0, "height": 3.0})
         self.assertAlmostEqual(scene["door"]["span_center"], 1.76)
         self.assertLessEqual(scene["door"]["width"], 0.9)
         self.assertAlmostEqual(scene["internal_wall"]["start_xy"][0], 4.48)
         self.assertAlmostEqual(scene["internal_wall"]["start_xy"][1], 3.48)
         self.assertEqual(scene["furniture"]["preset"], "living")
+
+    def test_custom_furniture_layout_is_validated_and_clamped_to_room(self) -> None:
+        layout = {
+            "version": 1,
+            "items": [
+                {"id": "sofa-1", "type": "sofa", "x": -100, "y": 100, "rotation": -15, "scale": 3},
+                {"id": "chair-1", "type": "chair", "x": 2, "y": 2, "rotation": 90, "scale": 1},
+            ],
+        }
+
+        response = self.client.get(
+            "/api/scene-details",
+            query_string={"scene_furniture_preset": "custom", "scene_furniture_json": json.dumps(layout)},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        furniture = response.get_json()["scene"]["furniture"]
+        self.assertEqual(furniture["preset"], "custom")
+        self.assertEqual([item["id"] for item in furniture["items"]], ["sofa-1", "chair-1"])
+        self.assertEqual(furniture["items"][0]["rotation"], 345.0)
+        self.assertEqual(furniture["items"][0]["scale"], 1.5)
+        self.assertGreaterEqual(furniture["items"][0]["x"], 0)
+        self.assertLessEqual(furniture["items"][0]["y"], 5)
+
+    def test_custom_furniture_layout_rejects_unknown_types_and_duplicate_ids(self) -> None:
+        invalid_layouts = [
+            {"version": 1, "items": [{"id": "lamp-1", "type": "lamp", "x": 1, "y": 1, "rotation": 0, "scale": 1}]},
+            {"version": 1, "items": [
+                {"id": "chair-1", "type": "chair", "x": 1, "y": 1, "rotation": 0, "scale": 1},
+                {"id": "chair-1", "type": "chair", "x": 2, "y": 2, "rotation": 0, "scale": 1},
+            ]},
+        ]
+        for layout in invalid_layouts:
+            with self.subTest(layout=layout):
+                response = self.client.get(
+                    "/api/scene-details",
+                    query_string={"scene_furniture_preset": "custom", "scene_furniture_json": json.dumps(layout)},
+                )
+                self.assertEqual(response.status_code, 400)
 
     def test_scene_obstructions_change_sunlight_without_furniture_participation(self) -> None:
         clear_scene = {

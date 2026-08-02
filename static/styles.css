@@ -1124,6 +1124,80 @@ input[type="range"] {
   display: none;
 }
 
+.furniture-tools {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.furniture-toolbar,
+.furniture-item-actions {
+  align-items: center;
+}
+
+.furniture-palette,
+.furniture-selection-editor {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 253, 248, 0.82);
+}
+
+.furniture-palette {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.furniture-palette[hidden],
+.furniture-selection-editor[hidden] {
+  display: none;
+}
+
+.furniture-editor-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+}
+
+.furniture-editor-heading strong,
+.furniture-editor-heading span {
+  display: block;
+}
+
+.furniture-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.furniture-fields label span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.furniture-fields input {
+  width: 100%;
+}
+
+.furniture-delete {
+  color: #8e3b18;
+}
+
+.room3d-container[data-arrange-mode="true"] canvas {
+  cursor: crosshair;
+}
+
+.room3d-container[data-dragging-furniture="true"] canvas {
+  cursor: grabbing;
+}
+
 .scene-details-body {
   display: grid;
   gap: 14px;
@@ -1641,19 +1715,23 @@ input[type="range"] {
   }
 
   .room3d-view .room3d-scene-legend {
+    order: 5;
+  }
+
+  .room3d-view .furniture-tools {
     order: 4;
   }
 
   .room3d-view .room3d-edit-selected-window {
-    order: 5;
-  }
-
-  .room3d-view .room3d-animation-controls {
     order: 6;
   }
 
-  .room3d-view .room3d-footer {
+  .room3d-view .room3d-animation-controls {
     order: 7;
+  }
+
+  .room3d-view .room3d-footer {
+    order: 8;
   }
 
   .room3d-actions {
@@ -1683,6 +1761,10 @@ input[type="range"] {
   .room3d-container,
   .room3d-container canvas {
     min-height: 360px;
+  }
+
+  .furniture-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .room3d-edit-selected-window {

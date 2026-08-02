@@ -78,7 +78,7 @@ test("tabs, window selection, and room facing remain interactive", async ({ page
   await expect(page.locator('[data-result-tab="room-3d"]')).toHaveAttribute("aria-selected", "true");
   await expect(page.locator('[data-result-panel="room-3d"]')).toHaveAttribute("aria-hidden", "false");
 
-  await page.getByRole("button", { name: "Window 2" }).click();
+  await page.getByRole("button", { name: "Window 2", exact: true }).click();
   await expect(page.locator("#selected-window-wall")).toHaveValue("east");
   await expect(page.locator("#window-position-label")).toContainText("depth axis");
 

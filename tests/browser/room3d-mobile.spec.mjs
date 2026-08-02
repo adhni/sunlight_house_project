@@ -42,6 +42,20 @@ test("uses an explicit touch interaction mode without trapping scroll", async ({
   await expect(viewer).toHaveAttribute("data-touch-interaction", "scroll");
 });
 
+test("opens touch interaction automatically while arranging furniture", async ({ page }) => {
+  await page.locator('[data-result-tab="room-3d"]').click();
+  const viewer = page.locator("#room3d-container");
+  await expect(viewer).toHaveAttribute("data-viewer-state", "ready");
+  await page.locator("#furniture-arrange-button").click();
+
+  await expect(viewer).toHaveAttribute("data-arrange-mode", "true");
+  await expect(viewer).toHaveAttribute("data-touch-interaction", "active");
+  await page.locator("#furniture-add-button").click();
+  await page.locator('[data-add-furniture="table"]').click();
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+  await expect(page.locator("#furniture-selection-editor")).toBeVisible();
+});
+
 test("keeps labels separate and offers an in-view edit action", async ({ page }) => {
   await page.locator('[data-result-tab="room-3d"]').click();
   const viewer = page.locator("#room3d-container");

@@ -52,7 +52,7 @@ test("lazy-loads the current room and sunlight in WebGL", async ({ page }) => {
   await expect(viewer).toHaveAttribute("data-wall-panel-count", /[1-9]\d*/);
   await expect(viewer).toHaveAttribute("data-room-size", "4,5,3");
   await expect(viewer).toHaveAttribute("data-rendering", "true");
-  await expect(page.locator("#room3d-status")).toContainText("furniture remains scale-only");
+  await expect(page.locator("#room3d-status")).toContainText("2 movable furniture items");
   await expect(page.locator(".room3d-compass-key-north")).toHaveText("N · true north");
   await expect(page.locator(".room3d-compass-key-front")).toHaveText("Front · NE");
   await expect(page.locator('.room3d-window-label[data-window-name="main_window"]')).toHaveText("Window 1");
@@ -108,6 +108,66 @@ test("keeps context optional without changing the sunlight scene", async ({ page
   await contextButton.click();
   await expect(viewer).toHaveAttribute("data-context-visible", "true");
   await expect(viewer).toHaveAttribute("data-furniture-visible", "true");
+});
+
+test("adds, edits, duplicates, deletes, undoes, and restores furniture", async ({ page }) => {
+  const viewer = await open3dRoom(page);
+  const patchCount = await viewer.getAttribute("data-patch-count");
+  await page.locator("#furniture-add-button").click();
+  await expect(page.locator("#furniture-arrange-button")).toHaveAttribute("aria-pressed", "true");
+  await page.locator('[data-add-furniture="chair"]').click();
+
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+  await expect(page.locator("#furniture-palette")).toBeHidden();
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(viewer).toHaveAttribute("data-selected-furniture", "chair-1");
+  await expect(page.locator("#furniture-selection-editor")).toBeVisible();
+  await expect(page.locator("#scene-furniture-preset")).toHaveValue("custom");
+  await expect(viewer).toHaveAttribute("data-patch-count", patchCount);
+
+  await page.locator('[data-room3d-camera-preset="top"]').click();
+  const cameraBeforeDrag = await viewer.getAttribute("data-camera-position");
+  const chairBeforeDrag = JSON.parse(await viewer.getAttribute("data-furniture-items"))
+    .find((item) => item.id === "chair-1");
+  await viewer.locator("canvas").scrollIntoViewIfNeeded();
+  const canvasBox = await viewer.locator("canvas").boundingBox();
+  const chairScreen = JSON.parse(await viewer.getAttribute("data-furniture-screen-positions"))
+    .find((item) => item.id === "chair-1");
+  const startX = canvasBox.x + chairScreen.x;
+  const startY = canvasBox.y + chairScreen.y;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 55, startY, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => JSON.parse(await viewer.getAttribute("data-furniture-items"))
+    .find((item) => item.id === "chair-1")?.x).toBeGreaterThan(chairBeforeDrag.x + 0.5);
+  await expect(viewer).toHaveAttribute("data-camera-position", cameraBeforeDrag);
+
+  await page.locator("#furniture-rotation-input").fill("45");
+  await page.locator("#furniture-rotation-input").press("Tab");
+  await expect.poll(async () => JSON.parse(await viewer.getAttribute("data-furniture-items"))
+    .find((item) => item.id === "chair-1")?.rotation).toBe(45);
+
+  const xBeforeKeyboard = JSON.parse(await viewer.getAttribute("data-furniture-items"))
+    .find((item) => item.id === "chair-1").x;
+  await viewer.locator("canvas").focus();
+  await viewer.locator("canvas").press("ArrowRight");
+  await expect.poll(async () => JSON.parse(await viewer.getAttribute("data-furniture-items"))
+    .find((item) => item.id === "chair-1")?.x).toBeGreaterThan(xBeforeKeyboard);
+
+  await page.locator('[data-furniture-action="duplicate"]').click();
+  await expect(viewer).toHaveAttribute("data-furniture-count", "4");
+  await page.locator('[data-furniture-action="delete"]').click();
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+  await page.locator("#furniture-undo-button").click();
+  await expect(viewer).toHaveAttribute("data-furniture-count", "4");
+
+  const savedItems = JSON.parse(await viewer.getAttribute("data-furniture-items"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const restoredViewer = await open3dRoom(page);
+  await expect(restoredViewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(restoredViewer).toHaveAttribute("data-furniture-count", "4");
+  expect(JSON.parse(await restoredViewer.getAttribute("data-furniture-items"))).toEqual(savedItems);
 });
 
 test("adds an exterior blocker through the full sunlight refresh path", async ({ page }) => {

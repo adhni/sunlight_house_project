@@ -32,6 +32,7 @@
 
       <form method="get" id="simulation-form" class="workspace-form">
         <input type="hidden" id="windows-json-input" name="windows_json" value="{{ form_values.windows_json }}">
+        <input type="hidden" id="furniture-json-input" name="scene_furniture_json" value="{{ form_values.scene_furniture_json }}" data-scene-detail>
         <input type="hidden" name="day_step_minutes" value="{{ form_values.day_step_minutes }}">
         <input type="hidden" name="year_step_hours" value="{{ form_values.year_step_hours }}">
 
@@ -183,6 +184,43 @@
                 <span class="room3d-pointer-help">Drag to look around · scroll to zoom · select a window to edit it.</span>
                 <span class="room3d-touch-help">Tap Explore 3D, then drag to look and pinch to zoom.</span>
               </p>
+              <section class="furniture-tools" aria-label="Furniture editor">
+                <div class="chip-row furniture-toolbar">
+                  <button id="furniture-arrange-button" type="button" class="chip-button" aria-pressed="false">Arrange furniture</button>
+                  <button id="furniture-add-button" type="button" class="chip-button chip-button-soft" aria-expanded="false" aria-controls="furniture-palette">Add furniture</button>
+                  <button id="furniture-undo-button" type="button" class="chip-button chip-button-soft" disabled>Undo</button>
+                </div>
+                <div id="furniture-palette" class="furniture-palette" hidden>
+                  <span class="explorer-label">Choose an item</span>
+                  <div class="chip-row">
+                    <button type="button" class="chip-button chip-button-soft" data-add-furniture="sofa">Sofa</button>
+                    <button type="button" class="chip-button chip-button-soft" data-add-furniture="chair">Chair</button>
+                    <button type="button" class="chip-button chip-button-soft" data-add-furniture="table">Table</button>
+                    <button type="button" class="chip-button chip-button-soft" data-add-furniture="bed">Bed</button>
+                  </div>
+                </div>
+                <div id="furniture-selection-editor" class="furniture-selection-editor" hidden>
+                  <div class="furniture-editor-heading">
+                    <div>
+                      <span class="section-kicker">Selected furniture</span>
+                      <strong id="furniture-selection-title">Furniture</strong>
+                    </div>
+                    <span id="furniture-save-status" class="angle-caption" role="status">Saved in this browser</span>
+                  </div>
+                  <div class="furniture-fields">
+                    <label><span>Left / right (m)</span><input id="furniture-x-input" type="number" min="0" step="0.05"></label>
+                    <label><span>Front / back (m)</span><input id="furniture-y-input" type="number" min="0" step="0.05"></label>
+                    <label><span>Rotation (°)</span><input id="furniture-rotation-input" type="number" step="15"></label>
+                    <label><span>Size</span><input id="furniture-scale-input" type="number" min="0.5" max="1.5" step="0.05"></label>
+                  </div>
+                  <div class="chip-row furniture-item-actions">
+                    <button type="button" class="chip-button chip-button-soft" data-furniture-action="rotate-left" aria-label="Rotate selected furniture left 15 degrees">↶ 15°</button>
+                    <button type="button" class="chip-button chip-button-soft" data-furniture-action="rotate-right" aria-label="Rotate selected furniture right 15 degrees">↷ 15°</button>
+                    <button type="button" class="chip-button chip-button-soft" data-furniture-action="duplicate">Duplicate</button>
+                    <button type="button" class="chip-button chip-button-soft furniture-delete" data-furniture-action="delete">Delete</button>
+                  </div>
+                </div>
+              </section>
               <div
                 id="room3d-container"
                 class="room3d-container"
@@ -199,7 +237,7 @@
               <button id="room3d-edit-selected-window" type="button" class="chip-button chip-button-soft room3d-edit-selected-window">Edit selected window</button>
               <div class="room3d-footer">
                 <p id="room3d-status" class="angle-caption" role="status">Open this tab to load the 3D room.</p>
-                <p id="room3d-keyboard-help" class="angle-caption">Keyboard: arrows orbit · Shift + arrows pan · +/− zoom.</p>
+                <p id="room3d-keyboard-help" class="angle-caption">Keyboard: arrows orbit · Shift + arrows pan · +/− zoom. In Arrange mode, arrows move the selected item, Q/E rotate, Delete removes.</p>
               </div>
             </div>
 
@@ -561,12 +599,13 @@
                       </select>
                     </label>
                     <label>
-                      <span>Scale furniture</span>
-                      <select name="scene_furniture_preset" data-scene-detail>
+                      <span>Furniture layout</span>
+                      <select id="scene-furniture-preset" name="scene_furniture_preset" data-scene-detail>
                         <option value="none" {% if form_values.scene_furniture_preset == 'none' %}selected{% endif %}>None</option>
                         <option value="living" {% if form_values.scene_furniture_preset == 'living' %}selected{% endif %}>Living room</option>
                         <option value="dining" {% if form_values.scene_furniture_preset == 'dining' %}selected{% endif %}>Dining</option>
                         <option value="bedroom" {% if form_values.scene_furniture_preset == 'bedroom' %}selected{% endif %}>Bedroom</option>
+                        <option value="custom" {% if form_values.scene_furniture_preset == 'custom' %}selected{% endif %}>Custom</option>
                       </select>
                     </label>
                   </div>
