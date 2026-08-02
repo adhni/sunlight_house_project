@@ -72,6 +72,7 @@
   const removeWindowButton = document.getElementById("remove-window-button");
   const selectedWindowWallSelect = document.getElementById("selected-window-wall");
   const selectedWindowFacingCopy = document.getElementById("selected-window-facing-copy");
+  const selectedWindowCard = document.querySelector(".selected-window-card");
   const windowEditorTitle = document.getElementById("window-editor-title");
   const windowEditorCopy = document.getElementById("window-editor-copy");
   const windowPositionLabel = document.getElementById("window-position-label");
@@ -83,12 +84,15 @@
   const room3dCameraButtons = document.querySelectorAll("[data-room3d-camera-preset]");
   const room3dWallsButton = document.getElementById("room3d-toggle-walls");
   const room3dRoofButton = document.getElementById("room3d-toggle-roof");
+  const room3dContextButton = document.getElementById("room3d-toggle-context");
+  const room3dEditSelectedWindowButton = document.getElementById("room3d-edit-selected-window");
   const sceneDetailInputs = document.querySelectorAll("[data-scene-detail]");
   const room3dAnimationControls = document.getElementById("room3d-animation-controls");
   const room3dPlayButton = document.getElementById("room3d-play");
   const room3dTimeSlider = document.getElementById("room3d-time-slider");
   const room3dTimeReadout = document.getElementById("room3d-time-readout");
   const room3dAnimationStatus = document.getElementById("room3d-animation-status");
+  const room3dInteractionHint = document.getElementById("room3d-interaction-hint");
   const room3dPresetButtons = document.querySelectorAll("[data-room3d-time-preset]");
 
   const mapElement = document.getElementById("location-map");
@@ -984,6 +988,7 @@
             cameraButtons: room3dCameraButtons,
             wallsButton: room3dWallsButton,
             roofButton: room3dRoofButton,
+            contextButton: room3dContextButton,
             onWindowSelect: selectWindowFrom3d,
             onUnavailable: pauseRoom3dAnimation,
           });
@@ -1089,15 +1094,18 @@
     dayAnimationPayload = payload;
     dayAnimationKey = key;
     dayAnimationIndex = nearestAnimationFrameIndex(payload);
+    const frame = payload.frames[dayAnimationIndex];
     if (room3dTimeSlider) {
       room3dTimeSlider.max = String(payload.frames.length - 1);
       room3dTimeSlider.value = String(dayAnimationIndex);
+      room3dTimeSlider.setAttribute("aria-valuetext", frame?.selected_moment.slice(11, 16) || "Unavailable");
     }
-    const frame = payload.frames[dayAnimationIndex];
     if (room3dTimeReadout && frame) room3dTimeReadout.textContent = frame.selected_moment.slice(11, 16);
     room3dPresetButtons.forEach((button) => {
       const preset = payload.presets[button.dataset.room3dTimePreset];
       if (preset) button.textContent = preset.label;
+      button.classList.toggle("is-active", preset?.index === dayAnimationIndex);
+      button.setAttribute("aria-pressed", String(preset?.index === dayAnimationIndex));
     });
     setDayAnimationEnabled(true);
     setDayAnimationStatus(
@@ -1115,7 +1123,11 @@
     const key = currentDayAnimationKey();
     if (dayAnimationPayload && dayAnimationKey === key) {
       dayAnimationIndex = nearestAnimationFrameIndex();
-      if (room3dTimeSlider) room3dTimeSlider.value = String(dayAnimationIndex);
+      const frame = dayAnimationPayload.frames[dayAnimationIndex];
+      if (room3dTimeSlider) {
+        room3dTimeSlider.value = String(dayAnimationIndex);
+        room3dTimeSlider.setAttribute("aria-valuetext", frame?.selected_moment.slice(11, 16) || "Unavailable");
+      }
       return dayAnimationPayload;
     }
     const cached = dayAnimationCache.get(key);
@@ -1148,6 +1160,7 @@
   }
 
   function pauseRoom3dAnimation() {
+    const wasPlaying = Boolean(dayAnimationTimer);
     if (dayAnimationTimer) {
       window.clearInterval(dayAnimationTimer);
       dayAnimationTimer = null;
@@ -1157,6 +1170,9 @@
       room3dPlayButton.setAttribute("aria-pressed", "false");
     }
     if (room3dContainer) room3dContainer.dataset.animationPlaying = "false";
+    if (wasPlaying) {
+      setRoom3dStatus(`Day playback paused at ${room3dTimeReadout?.textContent || "the selected time"}.`);
+    }
   }
 
   function updateAnimatedMomentDom(payload) {
@@ -1196,6 +1212,7 @@
     timeReadout.textContent = localTime;
     dayReadout.textContent = formatDateReadout(selectedDateInput.value);
     if (room3dTimeSlider) room3dTimeSlider.value = String(boundedIndex);
+    if (room3dTimeSlider) room3dTimeSlider.setAttribute("aria-valuetext", localTime);
     if (room3dTimeReadout) room3dTimeReadout.textContent = localTime;
     currentPayload = {
       ...currentPayload,
@@ -1206,11 +1223,12 @@
         moment_text: snapshotMomentText(frame.snapshot.state),
       },
     };
-    room3dViewer?.updateSunlightFrame(frame.snapshot, frame.selected_moment);
+    room3dViewer?.updateSunlightFrame(frame.snapshot, frame.selected_moment, { updateStatus: false });
     updateAnimatedMomentDom(currentPayload);
     room3dPresetButtons.forEach((button) => {
       const preset = dayAnimationPayload.presets[button.dataset.room3dTimePreset];
       button.classList.toggle("is-active", preset?.index === boundedIndex);
+      button.setAttribute("aria-pressed", String(preset?.index === boundedIndex));
     });
     if (room3dContainer) room3dContainer.dataset.animationIndex = String(boundedIndex);
   }
@@ -1228,6 +1246,7 @@
     room3dPlayButton.textContent = "Pause";
     room3dPlayButton.setAttribute("aria-pressed", "true");
     if (room3dContainer) room3dContainer.dataset.animationPlaying = "true";
+    setRoom3dStatus(`Playing the day from ${room3dTimeReadout?.textContent || "the selected time"}.`);
     dayAnimationTimer = window.setInterval(() => {
       const next = dayAnimationIndex >= payload.playback_end_index
         ? payload.playback_start_index
@@ -1250,8 +1269,11 @@
     }
     if (dayAnimationPayload) {
       dayAnimationIndex = nearestAnimationFrameIndex();
-      if (room3dTimeSlider) room3dTimeSlider.value = String(dayAnimationIndex);
       const frame = dayAnimationPayload.frames[dayAnimationIndex];
+      if (room3dTimeSlider) {
+        room3dTimeSlider.value = String(dayAnimationIndex);
+        room3dTimeSlider.setAttribute("aria-valuetext", frame?.selected_moment.slice(11, 16) || "Unavailable");
+      }
       if (room3dTimeReadout && frame) room3dTimeReadout.textContent = frame.selected_moment.slice(11, 16);
     }
   }
@@ -1569,7 +1591,7 @@
     persistActiveWindowEditor();
     activeWindowIndex = nextIndex;
     renderWindowEditor();
-    setUpdateStatus(`${windowName.replace(/_/g, " ")} selected.`, "idle");
+    setUpdateStatus(`Window ${nextIndex + 1} selected.`, "idle");
   }
 
   function renderWindowBuilderFromRows(rows) {
@@ -2804,30 +2826,62 @@
     });
   });
 
-  resultTabButtons.forEach((button) => {
+  function activateResultTab(selectedTab, { focus = false } = {}) {
+    const activeButton = Array.from(resultTabButtons).find((item) => item.dataset.resultTab === selectedTab);
+    if (!activeButton) return;
+    activeResultTab = selectedTab;
+    resultTabButtons.forEach((item) => {
+      const isActive = item === activeButton;
+      item.classList.toggle("is-active", isActive);
+      item.setAttribute("aria-pressed", String(isActive));
+      item.setAttribute("aria-selected", String(isActive));
+      item.tabIndex = isActive ? 0 : -1;
+    });
+    resultPanels.forEach((panel) => {
+      const isActive = panel.dataset.resultPanel === selectedTab;
+      panel.classList.toggle("is-active", isActive);
+      panel.setAttribute("aria-hidden", String(!isActive));
+    });
+    if (focus) activeButton.focus();
+    const room3dActivation = setRoom3dActive(selectedTab === "room-3d");
+    if (
+      selectedTab === "room-3d"
+      && room3dInteractionHint
+      && window.matchMedia?.("(max-width: 820px) and (pointer: coarse)").matches
+    ) {
+      room3dActivation.then(() => {
+        window.requestAnimationFrame(() => {
+          room3dInteractionHint.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      });
+    }
+    if (selectedTab === "long-range") {
+      fetchLongRangeExposure();
+    }
+    if (selectedTab === "outdoor-year") {
+      const selectedMonth = parseInt(selectedDateInput.value.slice(5, 7), 10) - 1;
+      if (Number.isFinite(selectedMonth)) {
+        activeOutdoorYearMonth = clamp(selectedMonth, 0, 11);
+      }
+      renderOutdoorYearPanel();
+    }
+  }
+
+  resultTabButtons.forEach((button, index) => {
     button.addEventListener("click", () => {
-      const selectedTab = button.dataset.resultTab;
-      activeResultTab = selectedTab;
-      resultTabButtons.forEach((item) => {
-        item.classList.toggle("is-active", item === button);
-        item.setAttribute("aria-pressed", String(item === button));
-      });
-      resultPanels.forEach((panel) => {
-        const isActive = panel.dataset.resultPanel === selectedTab;
-        panel.classList.toggle("is-active", isActive);
-        panel.setAttribute("aria-hidden", String(!isActive));
-      });
-      setRoom3dActive(selectedTab === "room-3d");
-      if (selectedTab === "long-range") {
-        fetchLongRangeExposure();
-      }
-      if (selectedTab === "outdoor-year") {
-        const selectedMonth = parseInt(selectedDateInput.value.slice(5, 7), 10) - 1;
-        if (Number.isFinite(selectedMonth)) {
-          activeOutdoorYearMonth = clamp(selectedMonth, 0, 11);
-        }
-        renderOutdoorYearPanel();
-      }
+      activateResultTab(button.dataset.resultTab);
+    });
+    button.addEventListener("keydown", (event) => {
+      const lastIndex = resultTabButtons.length - 1;
+      let nextIndex = null;
+      if (event.key === "ArrowRight") nextIndex = index === lastIndex ? 0 : index + 1;
+      if (event.key === "ArrowLeft") nextIndex = index === 0 ? lastIndex : index - 1;
+      if (event.key === "Home") nextIndex = 0;
+      if (event.key === "End") nextIndex = lastIndex;
+      if (nextIndex === null) return;
+      event.preventDefault();
+      const nextButton = resultTabButtons[nextIndex];
+      activateResultTab(nextButton.dataset.resultTab, { focus: true });
     });
   });
 
@@ -2853,6 +2907,14 @@
 
   if (room3dPlayButton) {
     room3dPlayButton.addEventListener("click", playRoom3dAnimation);
+  }
+
+  if (room3dEditSelectedWindowButton && selectedWindowCard) {
+    room3dEditSelectedWindowButton.addEventListener("click", () => {
+      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      selectedWindowCard.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+      selectedWindowWallSelect?.focus({ preventScroll: true });
+    });
   }
 
   if (room3dTimeSlider) {
@@ -3083,7 +3145,10 @@
   setActiveButtons(locationChipButtons, "locationPreset", locationPresetInput.value);
   setActiveButtons(windowFacingButtons, "windowFacing", windowFacingInput.value);
   resultTabButtons.forEach((button) => {
-    button.setAttribute("aria-pressed", String(button.dataset.resultTab === activeResultTab));
+    const isActive = button.dataset.resultTab === activeResultTab;
+    button.setAttribute("aria-pressed", String(isActive));
+    button.setAttribute("aria-selected", String(isActive));
+    button.tabIndex = isActive ? 0 : -1;
   });
   resultPanels.forEach((panel) => {
     panel.setAttribute("aria-hidden", String(panel.dataset.resultPanel !== activeResultTab));

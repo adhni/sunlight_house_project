@@ -1,0 +1,70 @@
+import { test, expect } from "@playwright/test";
+
+test.use({
+  viewport: { width: 390, height: 844 },
+  isMobile: true,
+  hasTouch: true,
+});
+
+test.beforeEach(async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#room-window-source")).toBeVisible();
+});
+
+test("brings the model forward and keeps playback below it", async ({ page }) => {
+  await page.locator('[data-result-tab="room-3d"]').click();
+  const viewer = page.locator("#room3d-container");
+  await expect(viewer).toHaveAttribute("data-viewer-state", "ready");
+  await expect(viewer.locator("canvas")).toBeVisible();
+
+  await expect.poll(async () => (await viewer.boundingBox())?.y ?? 9999).toBeLessThan(180);
+  const viewerBox = await viewer.boundingBox();
+  const animationBox = await page.locator("#room3d-animation-controls").boundingBox();
+  expect(animationBox.y).toBeGreaterThan(viewerBox.y + viewerBox.height);
+});
+
+test("uses an explicit touch interaction mode without trapping scroll", async ({ page }) => {
+  await page.locator('[data-result-tab="room-3d"]').click();
+  const viewer = page.locator("#room3d-container");
+  await expect(viewer).toHaveAttribute("data-viewer-state", "ready");
+  const touchToggle = viewer.locator(".room3d-touch-toggle");
+
+  await expect(touchToggle).toBeVisible();
+  await expect(viewer).toHaveAttribute("data-touch-interaction", "scroll");
+  await expect(viewer).toHaveCSS("touch-action", "pan-y pinch-zoom");
+
+  await touchToggle.click();
+  await expect(touchToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(viewer).toHaveAttribute("data-touch-interaction", "active");
+  await expect(viewer).toHaveCSS("touch-action", "none");
+
+  await touchToggle.click();
+  await expect(viewer).toHaveAttribute("data-touch-interaction", "scroll");
+});
+
+test("keeps labels separate and offers an in-view edit action", async ({ page }) => {
+  await page.locator('[data-result-tab="room-3d"]').click();
+  const viewer = page.locator("#room3d-container");
+  await expect(viewer).toHaveAttribute("data-viewer-state", "ready");
+  const labels = viewer.locator(".room3d-window-label:visible");
+  await expect(labels).toHaveCount(2);
+
+  const first = await labels.nth(0).boundingBox();
+  const second = await labels.nth(1).boundingBox();
+  const overlap = first.x < second.x + second.width
+    && first.x + first.width > second.x
+    && first.y < second.y + second.height
+    && first.y + first.height > second.y;
+  expect(overlap).toBe(false);
+
+  await labels.nth(1).click();
+  await expect(viewer).toHaveAttribute("data-selected-window", "side_window");
+  const editButton = page.locator("#room3d-edit-selected-window");
+  await expect(editButton).toBeVisible();
+  await editButton.click();
+  await expect(page.locator("#selected-window-wall")).toBeFocused();
+  await expect.poll(async () => {
+    const box = await page.locator(".selected-window-card").boundingBox();
+    return box ? box.y < 844 && box.y + box.height > 0 : false;
+  }).toBe(true);
+});

@@ -68,8 +68,15 @@ test("tabs, window selection, and room facing remain interactive", async ({ page
     const tab = page.locator(`[data-result-tab="${tabName}"]`);
     await tab.click();
     await expect(tab).toHaveAttribute("aria-pressed", "true");
+    await expect(tab).toHaveAttribute("aria-selected", "true");
     await expect(page.locator(`[data-result-panel="${tabName}"]`)).toHaveAttribute("aria-hidden", "false");
   }
+
+  const currentTab = page.locator('[data-result-tab="current"]');
+  await currentTab.focus();
+  await currentTab.press("ArrowRight");
+  await expect(page.locator('[data-result-tab="room-3d"]')).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator('[data-result-panel="room-3d"]')).toHaveAttribute("aria-hidden", "false");
 
   await page.getByRole("button", { name: "Window 2" }).click();
   await expect(page.locator("#selected-window-wall")).toHaveValue("east");
