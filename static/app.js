@@ -1084,12 +1084,19 @@
     }
   }
 
+  function invalidatePendingFurnitureSceneRequests() {
+    latestSceneRequestId += 1;
+    activeSceneController?.abort();
+    activeSceneController = null;
+  }
+
   function applyFurnitureItems(items, {
     historySnapshot = null,
     selectId = selectedFurnitureId,
     reason = "edit",
     recordHistory = true,
   } = {}) {
+    invalidatePendingFurnitureSceneRequests();
     const next = normalizedFurnitureItems(items);
     const previous = historySnapshot || cloneFurnitureItems();
     if (recordHistory && JSON.stringify(previous) !== JSON.stringify(next)) {
@@ -1117,6 +1124,7 @@
 
   function handleFurnitureChange(items, meta = {}) {
     if (meta.phase === "start") {
+      invalidatePendingFurnitureSceneRequests();
       furnitureDragSnapshot = cloneFurnitureItems();
       return;
     }
@@ -3400,7 +3408,13 @@
   });
 
   form.querySelectorAll('input[type="number"]').forEach((input) => {
-    if (input === latitudeInput || input === longitudeInput || input === yearInput || windowGeometryInputs.has(input)) {
+    if (
+      input === latitudeInput
+      || input === longitudeInput
+      || input === yearInput
+      || windowGeometryInputs.has(input)
+      || furnitureSelectionEditor?.contains(input)
+    ) {
       return;
     }
     input.addEventListener("input", () => refreshFromNumberField(input));

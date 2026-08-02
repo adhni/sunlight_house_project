@@ -54,6 +54,12 @@ test("opens touch interaction automatically while arranging furniture", async ({
   await page.locator('[data-add-furniture="table"]').click();
   await expect(viewer).toHaveAttribute("data-furniture-count", "3");
   await expect(page.locator("#furniture-selection-editor")).toBeVisible();
+
+  await page.locator("#furniture-arrange-button").click();
+  await expect(viewer).toHaveAttribute("data-arrange-mode", "false");
+  await expect(viewer).toHaveAttribute("data-touch-interaction", "scroll");
+  await expect(viewer).toHaveCSS("touch-action", "pan-y pinch-zoom");
+  await expect(viewer.locator(".room3d-touch-toggle")).toHaveAttribute("aria-pressed", "false");
 });
 
 test("keeps labels separate and offers an in-view edit action", async ({ page }) => {

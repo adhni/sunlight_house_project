@@ -112,6 +112,10 @@ test("keeps context optional without changing the sunlight scene", async ({ page
 
 test("adds, edits, duplicates, deletes, undoes, and restores furniture", async ({ page }) => {
   const viewer = await open3dRoom(page);
+  const snapshotRequests = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/snapshot") snapshotRequests.push(request.url());
+  });
   const patchCount = await viewer.getAttribute("data-patch-count");
   await page.locator("#furniture-add-button").click();
   await expect(page.locator("#furniture-arrange-button")).toHaveAttribute("aria-pressed", "true");
@@ -147,6 +151,8 @@ test("adds, edits, duplicates, deletes, undoes, and restores furniture", async (
   await page.locator("#furniture-rotation-input").press("Tab");
   await expect.poll(async () => JSON.parse(await viewer.getAttribute("data-furniture-items"))
     .find((item) => item.id === "chair-1")?.rotation).toBe(45);
+  await page.waitForTimeout(650);
+  expect(snapshotRequests).toHaveLength(0);
 
   const xBeforeKeyboard = JSON.parse(await viewer.getAttribute("data-furniture-items"))
     .find((item) => item.id === "chair-1").x;
@@ -168,6 +174,34 @@ test("adds, edits, duplicates, deletes, undoes, and restores furniture", async (
   await expect(restoredViewer).toHaveAttribute("data-furniture-preset", "custom");
   await expect(restoredViewer).toHaveAttribute("data-furniture-count", "4");
   expect(JSON.parse(await restoredViewer.getAttribute("data-furniture-items"))).toEqual(savedItems);
+});
+
+test("keeps a local furniture edit when an older scene response arrives", async ({ page }) => {
+  let releaseSceneResponse;
+  let markSceneRequestStarted;
+  const sceneResponseHeld = new Promise((resolve) => { releaseSceneResponse = resolve; });
+  const sceneRequestStarted = new Promise((resolve) => { markSceneRequestStarted = resolve; });
+  await page.route("**/api/scene-details?**", async (route) => {
+    markSceneRequestStarted();
+    const response = await route.fetch();
+    await sceneResponseHeld;
+    await route.fulfill({ response });
+  });
+
+  const viewer = await open3dRoom(page);
+  await page.locator(".scene-details > summary").click();
+  await page.locator('select[name="scene_furniture_preset"]').selectOption("dining");
+  await sceneRequestStarted;
+
+  await page.locator("#furniture-add-button").click();
+  await page.locator('[data-add-furniture="chair"]').click();
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+
+  releaseSceneResponse();
+  await page.waitForTimeout(300);
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
 });
 
 test("adds an exterior blocker through the full sunlight refresh path", async ({ page }) => {

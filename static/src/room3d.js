@@ -1007,7 +1007,10 @@ class Room3DViewer {
     this.arrangeFurniture = Boolean(active);
     if (this.arrangeFurniture && !this.contextVisible) this.toggleContext();
     if (this.arrangeFurniture && this.isTouchDevice) this.setTouchInteraction(true);
-    if (!this.arrangeFurniture) this.setSelectedFurniture(null, true);
+    if (!this.arrangeFurniture) {
+      if (this.isTouchDevice) this.setTouchInteraction(false);
+      this.setSelectedFurniture(null, true);
+    }
     this.container.dataset.arrangeMode = String(this.arrangeFurniture);
     this.renderer.domElement.setAttribute(
       "aria-label",
