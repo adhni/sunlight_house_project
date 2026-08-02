@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import tempfile
 from collections import OrderedDict
 from datetime import date, datetime, timedelta
@@ -24,8 +25,18 @@ _ANIMATION_STEP_MINUTES = 10
 _DAY_ANIMATION_CACHE_MAX = 24
 _SCENE_TOGGLE_VALUES = {"0", "1"}
 _SCENE_DOOR_WALLS = {"north", "south", "east", "west"}
-_SCENE_FURNITURE_PRESETS = {"none", "living", "dining", "bedroom"}
+_SCENE_FURNITURE_PRESETS = {"none", "living", "dining", "bedroom", "custom"}
 _SCENE_EXTERNAL_PRESETS = {"none", "fence", "building"}
+_FURNITURE_TYPES = {"sofa", "chair", "table", "bed"}
+_FURNITURE_FOOTPRINTS = {
+    "table": (1.15, 0.68),
+    "chair": (0.42, 0.42),
+    "sofa": (1.72, 0.72),
+    "bed": (1.45, 2.0),
+}
+_MAX_FURNITURE_ITEMS = 24
+_MAX_FURNITURE_JSON_BYTES = 50_000
+_FURNITURE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 _day_animation_cache: OrderedDict[tuple, dict[str, object]] = OrderedDict()
 _day_animation_cache_lock = Lock()
 
@@ -87,6 +98,7 @@ def create_app() -> Flask:
                 "scene_partition_enabled",
                 "scene_eaves_enabled",
                 "scene_furniture_preset",
+                "scene_furniture_json",
                 "scene_external_obstruction",
                 "scene_external_wall",
             ):
@@ -280,11 +292,105 @@ def default_form_values() -> dict[str, str]:
         "scene_partition_enabled": "1",
         "scene_eaves_enabled": "1",
         "scene_furniture_preset": "living",
+        "scene_furniture_json": furniture_json_string(starter_furniture_items("living", room)),
         "scene_external_obstruction": "none",
         "scene_external_wall": "north",
         "day_step_minutes": str(scenario.day_step_minutes),
         "year_step_hours": str(scenario.year_step_hours),
     }
+
+
+def furniture_json_string(items: list[dict[str, object]]) -> str:
+    return json.dumps({"version": 1, "items": items}, separators=(",", ":"))
+
+
+def _clamp_furniture_item(item: dict[str, object], room: Room) -> dict[str, object]:
+    item_type = str(item["type"])
+    rotation = float(item["rotation"]) % 360.0
+    scale = min(max(float(item["scale"]), 0.5), 1.5)
+    width, depth = _FURNITURE_FOOTPRINTS[item_type]
+    angle = math.radians(rotation)
+    bound_width = (abs(math.cos(angle)) * width + abs(math.sin(angle)) * depth) * scale
+    bound_depth = (abs(math.sin(angle)) * width + abs(math.cos(angle)) * depth) * scale
+    half_width = min(bound_width / 2.0, room.width / 2.0)
+    half_depth = min(bound_depth / 2.0, room.depth / 2.0)
+    return {
+        "id": str(item["id"]),
+        "type": item_type,
+        "x": round(min(max(float(item["x"]), half_width), room.width - half_width), 4),
+        "y": round(min(max(float(item["y"]), half_depth), room.depth - half_depth), 4),
+        "rotation": round(rotation, 3),
+        "scale": round(scale, 3),
+    }
+
+
+def starter_furniture_items(preset: str, room: Room) -> list[dict[str, object]]:
+    """Return stable, editable furniture items in app room coordinates (metres)."""
+    layouts: dict[str, list[tuple[str, str, float, float, float, float]]] = {
+        "none": [],
+        "living": [
+            ("living-sofa", "sofa", 0.42, 0.30, 0.0, 1.0),
+            ("living-table", "table", 0.42, 0.54, 0.0, 0.72),
+        ],
+        "dining": [
+            ("dining-table", "table", 0.50, 0.48, 0.0, 1.0),
+            ("dining-chair-1", "chair", 0.295, 0.48, 270.0, 1.0),
+            ("dining-chair-2", "chair", 0.705, 0.48, 90.0, 1.0),
+            ("dining-chair-3", "chair", 0.50, 0.31, 0.0, 1.0),
+            ("dining-chair-4", "chair", 0.50, 0.65, 180.0, 1.0),
+        ],
+        "bedroom": [
+            ("bedroom-bed", "bed", 0.42, 0.48, 0.0, 1.0),
+            ("bedroom-table", "table", 0.75, 0.66, 0.0, 0.5),
+        ],
+    }
+    return [
+        _clamp_furniture_item(
+            {
+                "id": item_id,
+                "type": item_type,
+                "x": room.width * x_ratio,
+                "y": room.depth * y_ratio,
+                "rotation": rotation,
+                "scale": scale,
+            },
+            room,
+        )
+        for item_id, item_type, x_ratio, y_ratio, rotation, scale in layouts.get(preset, [])
+    ]
+
+
+def parse_furniture_items(raw_json: str, room: Room) -> list[dict[str, object]]:
+    if len(raw_json.encode("utf-8")) > _MAX_FURNITURE_JSON_BYTES:
+        raise ValueError("Furniture layout is too large.")
+    try:
+        payload = json.loads(raw_json)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValueError("Furniture layout must be valid JSON.") from exc
+    if not isinstance(payload, dict) or payload.get("version") != 1 or not isinstance(payload.get("items"), list):
+        raise ValueError("Furniture layout must use version 1 with an items list.")
+    if len(payload["items"]) > _MAX_FURNITURE_ITEMS:
+        raise ValueError(f"Furniture layout supports at most {_MAX_FURNITURE_ITEMS} items.")
+    seen_ids: set[str] = set()
+    items: list[dict[str, object]] = []
+    for index, raw_item in enumerate(payload["items"], start=1):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"Furniture item {index} must be an object.")
+        item_id = str(raw_item.get("id", ""))
+        item_type = str(raw_item.get("type", "")).lower()
+        if not _FURNITURE_ID_RE.fullmatch(item_id) or item_id in seen_ids:
+            raise ValueError("Furniture item IDs must be unique letters, numbers, dashes, or underscores.")
+        if item_type not in _FURNITURE_TYPES:
+            raise ValueError("Furniture type must be sofa, chair, table, or bed.")
+        try:
+            numeric = {key: float(raw_item.get(key)) for key in ("x", "y", "rotation", "scale")}
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Furniture item {item_id} has invalid coordinates.") from exc
+        if not all(math.isfinite(value) for value in numeric.values()):
+            raise ValueError(f"Furniture item {item_id} has invalid coordinates.")
+        seen_ids.add(item_id)
+        items.append(_clamp_furniture_item({"id": item_id, "type": item_type, **numeric}, room))
+    return items
 
 
 def default_demo_windows_json() -> str:
@@ -759,7 +865,12 @@ def build_scene_details(form_values: dict[str, str], room: Room) -> dict[str, ob
         raise ValueError("3D door wall must be north, south, east, or west.")
     furniture_preset = str(form_values.get("scene_furniture_preset", "")).strip().lower()
     if furniture_preset not in _SCENE_FURNITURE_PRESETS:
-        raise ValueError("3D furniture preset must be none, living, dining, or bedroom.")
+        raise ValueError("3D furniture layout must be none, living, dining, bedroom, or custom.")
+    furniture_items = (
+        parse_furniture_items(str(form_values.get("scene_furniture_json", "")), room)
+        if furniture_preset == "custom"
+        else starter_furniture_items(furniture_preset, room)
+    )
     external_preset = str(form_values.get("scene_external_obstruction", "")).strip().lower()
     if external_preset not in _SCENE_EXTERNAL_PRESETS:
         raise ValueError("Outside obstruction must be none, fence, or building.")
@@ -808,7 +919,7 @@ def build_scene_details(form_values: dict[str, str], room: Room) -> dict[str, ob
         external_center = [-external_distance, external_center_span, external_height / 2.0]
         external_size = [external_thickness, external_width, external_height]
     return {
-        "version": 2,
+        "version": 3,
         "visual_only": False,
         "room_bounds": {"width": room.width, "depth": room.depth, "height": room.height},
         "door": {
@@ -843,7 +954,12 @@ def build_scene_details(form_values: dict[str, str], room: Room) -> dict[str, ob
             "center_xyz": external_center,
             "size_xyz": external_size,
         },
-        "furniture": {"preset": furniture_preset, "affects_sunlight": False},
+        "furniture": {
+            "version": 1,
+            "preset": furniture_preset,
+            "items": furniture_items,
+            "affects_sunlight": False,
+        },
     }
 
 
@@ -972,6 +1088,13 @@ def build_safe_form_values(form_values: dict[str, str], defaults: dict[str, str]
     safe["scene_furniture_preset"] = (
         furniture if furniture in _SCENE_FURNITURE_PRESETS else defaults["scene_furniture_preset"]
     )
+    try:
+        safe_items = parse_furniture_items(
+            str(form_values.get("scene_furniture_json", defaults["scene_furniture_json"])), safe_room
+        )
+        safe["scene_furniture_json"] = furniture_json_string(safe_items)
+    except ValueError:
+        safe["scene_furniture_json"] = defaults["scene_furniture_json"]
     external_preset = str(
         form_values.get("scene_external_obstruction", defaults["scene_external_obstruction"])
     ).strip().lower()

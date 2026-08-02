@@ -52,7 +52,7 @@ test("lazy-loads the current room and sunlight in WebGL", async ({ page }) => {
   await expect(viewer).toHaveAttribute("data-wall-panel-count", /[1-9]\d*/);
   await expect(viewer).toHaveAttribute("data-room-size", "4,5,3");
   await expect(viewer).toHaveAttribute("data-rendering", "true");
-  await expect(page.locator("#room3d-status")).toContainText("furniture remains scale-only");
+  await expect(page.locator("#room3d-status")).toContainText("2 movable furniture items");
   await expect(page.locator(".room3d-compass-key-north")).toHaveText("N · true north");
   await expect(page.locator(".room3d-compass-key-front")).toHaveText("Front · NE");
   await expect(page.locator('.room3d-window-label[data-window-name="main_window"]')).toHaveText("Window 1");
@@ -108,6 +108,165 @@ test("keeps context optional without changing the sunlight scene", async ({ page
   await contextButton.click();
   await expect(viewer).toHaveAttribute("data-context-visible", "true");
   await expect(viewer).toHaveAttribute("data-furniture-visible", "true");
+});
+
+test("adds, edits, duplicates, deletes, undoes, and restores furniture", async ({ page }) => {
+  const viewer = await open3dRoom(page);
+  const snapshotRequests = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/snapshot") snapshotRequests.push(request.url());
+  });
+  const patchCount = await viewer.getAttribute("data-patch-count");
+  await page.locator("#furniture-add-button").click();
+  await expect(page.locator("#furniture-arrange-button")).toHaveAttribute("aria-pressed", "true");
+  await page.locator('[data-add-furniture="chair"]').click();
+
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+  await expect(page.locator("#furniture-palette")).toBeHidden();
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(viewer).toHaveAttribute("data-selected-furniture", "chair-1");
+  await expect(page.locator("#furniture-selection-editor")).toBeVisible();
+  await expect(page.locator("#scene-furniture-preset")).toHaveValue("custom");
+  await expect(viewer).toHaveAttribute("data-patch-count", patchCount);
+
+  await page.locator("#furniture-x-input").fill("0");
+  await page.locator("#furniture-x-input").press("Tab");
+  await expect.poll(async () => JSON.parse(await viewer.getAttribute("data-furniture-items"))
+    .find((item) => item.id === "chair-1")?.x).toBeCloseTo(0.21, 2);
+
+  await page.locator('[data-room3d-camera-preset="top"]').click();
+  const cameraBeforeDrag = await viewer.getAttribute("data-camera-position");
+  const chairBeforeDrag = JSON.parse(await viewer.getAttribute("data-furniture-items"))
+    .find((item) => item.id === "chair-1");
+  await viewer.locator("canvas").scrollIntoViewIfNeeded();
+  const canvasBox = await viewer.locator("canvas").boundingBox();
+  const chairScreen = JSON.parse(await viewer.getAttribute("data-furniture-screen-positions"))
+    .find((item) => item.id === "chair-1");
+  const startX = canvasBox.x + chairScreen.x;
+  const startY = canvasBox.y + chairScreen.y;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 55, startY, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => JSON.parse(await viewer.getAttribute("data-furniture-items"))
+    .find((item) => item.id === "chair-1")?.x).toBeGreaterThan(chairBeforeDrag.x + 0.5);
+  await expect(viewer).toHaveAttribute("data-camera-position", cameraBeforeDrag);
+
+  await page.locator("#furniture-rotation-input").fill("45");
+  await page.locator("#furniture-rotation-input").press("Tab");
+  await expect.poll(async () => JSON.parse(await viewer.getAttribute("data-furniture-items"))
+    .find((item) => item.id === "chair-1")?.rotation).toBe(45);
+  await page.waitForTimeout(650);
+  expect(snapshotRequests).toHaveLength(0);
+
+  const xBeforeKeyboard = JSON.parse(await viewer.getAttribute("data-furniture-items"))
+    .find((item) => item.id === "chair-1").x;
+  await viewer.locator("canvas").focus();
+  await viewer.locator("canvas").press("ArrowRight");
+  await expect.poll(async () => JSON.parse(await viewer.getAttribute("data-furniture-items"))
+    .find((item) => item.id === "chair-1")?.x).toBeGreaterThan(xBeforeKeyboard);
+
+  await page.locator('[data-furniture-action="duplicate"]').click();
+  await expect(viewer).toHaveAttribute("data-furniture-count", "4");
+  await page.locator('[data-furniture-action="delete"]').click();
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+  await page.locator("#furniture-undo-button").click();
+  await expect(viewer).toHaveAttribute("data-furniture-count", "4");
+
+  const savedItems = JSON.parse(await viewer.getAttribute("data-furniture-items"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const restoredViewer = await open3dRoom(page);
+  await expect(restoredViewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(restoredViewer).toHaveAttribute("data-furniture-count", "4");
+  expect(JSON.parse(await restoredViewer.getAttribute("data-furniture-items"))).toEqual(savedItems);
+});
+
+test("keeps a local furniture edit when an older scene response arrives", async ({ page }) => {
+  let releaseSceneResponse;
+  let markSceneRequestStarted;
+  const sceneResponseHeld = new Promise((resolve) => { releaseSceneResponse = resolve; });
+  const sceneRequestStarted = new Promise((resolve) => { markSceneRequestStarted = resolve; });
+  await page.route("**/api/scene-details?**", async (route) => {
+    markSceneRequestStarted();
+    const response = await route.fetch();
+    await sceneResponseHeld;
+    await route.fulfill({ response });
+  });
+
+  const viewer = await open3dRoom(page);
+  await page.locator(".scene-details > summary").click();
+  await page.locator('select[name="scene_furniture_preset"]').selectOption("dining");
+  await sceneRequestStarted;
+
+  await page.locator("#furniture-add-button").click();
+  await page.locator('[data-add-furniture="chair"]').click();
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+
+  releaseSceneResponse();
+  await page.waitForTimeout(300);
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+});
+
+test("preserves a concurrent door change when furniture changes", async ({ page }) => {
+  let releaseSceneResponse;
+  let markSceneRequestStarted;
+  const sceneResponseHeld = new Promise((resolve) => { releaseSceneResponse = resolve; });
+  const sceneRequestStarted = new Promise((resolve) => { markSceneRequestStarted = resolve; });
+  await page.route("**/api/scene-details?**", async (route) => {
+    markSceneRequestStarted();
+    const response = await route.fetch();
+    await sceneResponseHeld;
+    await route.fulfill({ response });
+  });
+
+  const viewer = await open3dRoom(page);
+  await page.locator(".scene-details > summary").click();
+  await page.locator('select[name="scene_door_enabled"]').selectOption("0");
+  await sceneRequestStarted;
+
+  await page.locator("#furniture-add-button").click();
+  await page.locator('[data-add-furniture="chair"]').click();
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+
+  releaseSceneResponse();
+  await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
+  await expect(viewer).toHaveAttribute("data-door-count", "0");
+  await expect(viewer).toHaveAttribute("data-opening-count", "2");
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+});
+
+test("preserves concurrent sunlight scene changes when furniture changes", async ({ page }) => {
+  let releaseSnapshotResponse;
+  let markSnapshotRequestStarted;
+  const snapshotResponseHeld = new Promise((resolve) => { releaseSnapshotResponse = resolve; });
+  const snapshotRequestStarted = new Promise((resolve) => { markSnapshotRequestStarted = resolve; });
+  await page.route("**/api/snapshot?**", async (route) => {
+    markSnapshotRequestStarted();
+    const response = await route.fetch();
+    await snapshotResponseHeld;
+    await route.fulfill({ response });
+  });
+
+  const viewer = await open3dRoom(page);
+  await page.locator(".scene-details > summary").click();
+  await page.locator('select[name="scene_external_obstruction"]').selectOption("building");
+  await snapshotRequestStarted;
+
+  await page.locator("#furniture-add-button").click();
+  await page.locator('[data-add-furniture="chair"]').click();
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
+
+  releaseSnapshotResponse();
+  await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
+  await expect(viewer).toHaveAttribute("data-external-obstruction-preset", "building");
+  await expect(viewer).toHaveAttribute("data-external-obstruction-count", "1");
+  await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
+  await expect(viewer).toHaveAttribute("data-furniture-count", "3");
 });
 
 test("adds an exterior blocker through the full sunlight refresh path", async ({ page }) => {

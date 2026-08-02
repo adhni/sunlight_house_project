@@ -32,6 +32,13 @@ const FACING_DEGREES = {
   NW: 315,
 };
 
+const FURNITURE_FOOTPRINTS = {
+  table: [1.15, 0.68],
+  chair: [0.42, 0.42],
+  sofa: [1.72, 0.72],
+  bed: [1.45, 2.0],
+};
+
 function disposeMaterial(material) {
   const materials = Array.isArray(material) ? material : [material];
   materials.filter(Boolean).forEach((item) => {
@@ -571,34 +578,49 @@ function makeBed(scale) {
   return group;
 }
 
+function clampFurnitureItem(item, room) {
+  const [baseWidth, baseDepth] = FURNITURE_FOOTPRINTS[item.type] || [0.5, 0.5];
+  const numericRotation = Number(item.rotation);
+  const numericScale = Number(item.scale);
+  const numericX = Number(item.x);
+  const numericY = Number(item.y);
+  const rotation = (((Number.isFinite(numericRotation) ? numericRotation : 0) % 360) + 360) % 360;
+  const scale = THREE.MathUtils.clamp(Number.isFinite(numericScale) ? numericScale : 1, 0.5, 1.5);
+  const angle = THREE.MathUtils.degToRad(rotation);
+  const width = (Math.abs(Math.cos(angle)) * baseWidth + Math.abs(Math.sin(angle)) * baseDepth) * scale;
+  const depth = (Math.abs(Math.sin(angle)) * baseWidth + Math.abs(Math.cos(angle)) * baseDepth) * scale;
+  const halfWidth = Math.min(width / 2, room.width / 2);
+  const halfDepth = Math.min(depth / 2, room.depth / 2);
+  return {
+    ...item,
+    x: THREE.MathUtils.clamp(Number.isFinite(numericX) ? numericX : room.width / 2, halfWidth, room.width - halfWidth),
+    y: THREE.MathUtils.clamp(Number.isFinite(numericY) ? numericY : room.depth / 2, halfDepth, room.depth - halfDepth),
+    rotation,
+    scale,
+  };
+}
+
+function makeFurnitureItem(itemData, room) {
+  const item = clampFurnitureItem(itemData, room);
+  const makers = { sofa: makeSofa, chair: makeChair, table: makeTable, bed: makeBed };
+  const root = (makers[item.type] || makeTable)(item.scale);
+  root.position.copy(appPointToThree([item.x, item.y, 0], room));
+  root.rotation.y = -THREE.MathUtils.degToRad(item.rotation);
+  root.userData = { kind: "furniture", furnitureId: item.id, type: item.type };
+  root.traverse((object) => {
+    object.userData.furnitureId = item.id;
+    object.userData.furnitureType = item.type;
+  });
+  return { root, item };
+}
+
 function makeFurniture(furnitureData, room) {
   const group = new THREE.Group();
   const preset = furnitureData?.preset || "none";
-  const scale = Math.max(Math.min(room.width / 4, room.depth / 5, room.height / 3, 1), 0.08);
-  const addItem = (item, x, z, rotation = 0) => {
-    item.position.set(x, 0, -z);
-    item.rotation.y = -rotation;
-    group.add(item);
-  };
-  if (preset === "living") {
-    addItem(makeSofa(scale), -room.width * 0.08, -room.depth * 0.2, 0);
-    const coffeeTable = makeTable(scale * 0.72);
-    coffeeTable.scale.y = 0.62;
-    addItem(coffeeTable, -room.width * 0.08, room.depth * 0.04, 0);
-  } else if (preset === "dining") {
-    addItem(makeTable(scale), 0, -room.depth * 0.02, 0);
-    [
-      [-0.82, 0, -Math.PI / 2],
-      [0.82, 0, Math.PI / 2],
-      [0, -0.68, 0],
-      [0, 0.68, Math.PI],
-    ].forEach(([x, z, rotation]) => addItem(makeChair(scale), x * scale, z * scale - room.depth * 0.02, rotation));
-  } else if (preset === "bedroom") {
-    addItem(makeBed(scale), -room.width * 0.08, -room.depth * 0.02, 0);
-    addItem(makeTable(scale * 0.48), room.width * 0.25, room.depth * 0.16, 0);
-  }
+  const items = Array.isArray(furnitureData?.items) ? furnitureData.items : [];
+  items.forEach((itemData) => group.add(makeFurnitureItem(itemData, room).root));
   group.userData = { kind: "furniture-preset", preset };
-  return { group, itemCount: group.children.length, preset };
+  return { group, items: items.map((item) => clampFurnitureItem(item, room)), itemCount: group.children.length, preset };
 }
 
 function compassVector(worldAzimuth, frontFacing) {
@@ -651,6 +673,8 @@ class Room3DViewer {
     roofButton,
     contextButton,
     onWindowSelect,
+    onFurnitureSelect,
+    onFurnitureChange,
     onUnavailable,
   }) {
     if (window.__SUNLIGHT_FORCE_WEBGL_FAILURE__) {
@@ -663,6 +687,8 @@ class Room3DViewer {
     this.roofButton = roofButton;
     this.contextButton = contextButton;
     this.onWindowSelect = onWindowSelect;
+    this.onFurnitureSelect = onFurnitureSelect;
+    this.onFurnitureChange = onFurnitureChange;
     this.onUnavailable = onUnavailable;
     this.payload = null;
     this.active = false;
@@ -675,6 +701,12 @@ class Room3DViewer {
     this.isTouchDevice = Boolean(window.matchMedia?.("(any-pointer: coarse)").matches);
     this.selectedWindowName = null;
     this.windowVisuals = new Map();
+    this.furnitureVisuals = new Map();
+    this.furnitureItems = [];
+    this.selectedFurnitureId = null;
+    this.arrangeFurniture = false;
+    this.furnitureDrag = null;
+    this.justDraggedFurniture = false;
     this.labelElements = new Map();
     this.sceneBuildCount = 0;
     this.sunlightUpdateCount = 0;
@@ -698,21 +730,17 @@ class Room3DViewer {
       this.showFallback("The 3D renderer stopped. The 2D views are still available.");
     };
     this.onKeyDown = (event) => this.handleKeyDown(event);
-    this.onPointerDown = (event) => {
-      this.pointerStart = { x: event.clientX, y: event.clientY };
-    };
-    this.onPointerMove = (event) => {
-      if (!this.pointerStart || event.buttons === 0) return;
-      if (Math.hypot(event.clientX - this.pointerStart.x, event.clientY - this.pointerStart.y) > 6) {
-        this.setActiveCameraPreset("custom");
-      }
-    };
+    this.onPointerDown = (event) => this.handlePointerDown(event);
+    this.onPointerMove = (event) => this.handlePointerMove(event);
+    this.onPointerUp = (event) => this.handlePointerUp(event);
     this.onWheel = () => this.setActiveCameraPreset("custom");
     this.onCanvasClick = (event) => this.handleCanvasClick(event);
     this.renderer.domElement.addEventListener("webglcontextlost", this.onContextLost);
     this.renderer.domElement.addEventListener("keydown", this.onKeyDown);
     this.renderer.domElement.addEventListener("pointerdown", this.onPointerDown);
     this.renderer.domElement.addEventListener("pointermove", this.onPointerMove);
+    this.renderer.domElement.addEventListener("pointerup", this.onPointerUp);
+    this.renderer.domElement.addEventListener("pointercancel", this.onPointerUp);
     this.renderer.domElement.addEventListener("wheel", this.onWheel, { passive: true });
     this.renderer.domElement.addEventListener("click", this.onCanvasClick);
 
@@ -751,6 +779,7 @@ class Room3DViewer {
     this.internalWallGroup = new THREE.Group();
     this.externalObstructionGroup = new THREE.Group();
     this.furnitureGroup = new THREE.Group();
+    this.furnitureSelectionGroup = new THREE.Group();
     this.eaveGroup = new THREE.Group();
     this.roofGroup = new THREE.Group();
     this.sunlightGroup = new THREE.Group();
@@ -763,6 +792,7 @@ class Room3DViewer {
       this.internalWallGroup,
       this.externalObstructionGroup,
       this.furnitureGroup,
+      this.furnitureSelectionGroup,
       this.eaveGroup,
       this.roofGroup,
       this.sunlightGroup,
@@ -838,12 +868,14 @@ class Room3DViewer {
     replaceGroupContents(this.internalWallGroup);
     replaceGroupContents(this.externalObstructionGroup);
     replaceGroupContents(this.furnitureGroup);
+    replaceGroupContents(this.furnitureSelectionGroup);
     replaceGroupContents(this.eaveGroup);
     replaceGroupContents(this.roofGroup);
     replaceGroupContents(this.sunlightGroup);
     replaceGroupContents(this.orientationGroup);
     this.clearLabels();
     this.windowVisuals.clear();
+    this.furnitureVisuals.clear();
 
     const floor = new THREE.Mesh(
       new THREE.BoxGeometry(room.width, 0.04, room.depth),
@@ -877,8 +909,7 @@ class Room3DViewer {
     if (sceneDetails.roof?.enabled) this.roofGroup.add(roofDetails.roofGroup);
     this.eaveGroup.add(roofDetails.eaveGroup);
     this.roofGroup.visible = this.roofVisible;
-    const furniture = makeFurniture(sceneDetails.furniture, room);
-    this.furnitureGroup.add(furniture.group);
+    const furniture = this.updateFurniture(sceneDetails.furniture, { preserveSelection: true });
 
     payload.windows.forEach((windowData, index) => {
       const visual = makeWindow(windowData, room);
@@ -951,9 +982,62 @@ class Room3DViewer {
       };
     }));
     this.setStatus(
-      `${payload.windows.length} window opening${payload.windows.length === 1 ? "" : "s"} · ${sunlightBlockerCount} sunlight blocker${sunlightBlockerCount === 1 ? "" : "s"} · furniture remains scale-only.`,
+      `${payload.windows.length} window opening${payload.windows.length === 1 ? "" : "s"} · ${sunlightBlockerCount} sunlight blocker${sunlightBlockerCount === 1 ? "" : "s"} · ${furniture.itemCount} movable furniture item${furniture.itemCount === 1 ? "" : "s"}.`,
     );
     this.updateDebugState();
+  }
+
+  updateFurniture(furnitureData, { preserveSelection = true } = {}) {
+    const room = this.payload?.room;
+    if (!room) return { itemCount: 0, preset: "none", items: [] };
+    const previousSelection = preserveSelection ? this.selectedFurnitureId : null;
+    replaceGroupContents(this.furnitureGroup);
+    replaceGroupContents(this.furnitureSelectionGroup);
+    this.furnitureVisuals.clear();
+    const furniture = makeFurniture(furnitureData, room);
+    this.furnitureGroup.add(furniture.group);
+    this.furnitureItems = furniture.items.map((item) => ({ ...item }));
+    furniture.group.children.forEach((root) => this.furnitureVisuals.set(root.userData.furnitureId, root));
+    this.furnitureGroup.visible = this.contextVisible;
+    this.furnitureSelectionGroup.visible = this.contextVisible;
+    this.container.dataset.furnitureCount = String(furniture.itemCount);
+    this.container.dataset.furniturePreset = furniture.preset;
+    this.container.dataset.furnitureItems = JSON.stringify(this.furnitureItems);
+    this.setSelectedFurniture(this.furnitureVisuals.has(previousSelection) ? previousSelection : null, false);
+    return furniture;
+  }
+
+  setArrangeMode(active) {
+    this.arrangeFurniture = Boolean(active);
+    if (this.arrangeFurniture && !this.contextVisible) this.toggleContext();
+    if (this.arrangeFurniture && this.isTouchDevice) this.setTouchInteraction(true);
+    if (!this.arrangeFurniture) {
+      if (this.isTouchDevice) this.setTouchInteraction(false);
+      this.setSelectedFurniture(null, true);
+    }
+    this.container.dataset.arrangeMode = String(this.arrangeFurniture);
+    this.renderer.domElement.setAttribute(
+      "aria-label",
+      this.arrangeFurniture
+        ? "3D room furniture editor. Select or drag furniture on the floor."
+        : "Orbitable 3D room model. Click a window to select it.",
+    );
+  }
+
+  setSelectedFurniture(id, notify = false) {
+    const selectedId = id && this.furnitureVisuals.has(id) ? id : null;
+    this.selectedFurnitureId = selectedId;
+    replaceGroupContents(this.furnitureSelectionGroup);
+    if (selectedId) {
+      const helper = new THREE.BoxHelper(this.furnitureVisuals.get(selectedId), COLORS.furnitureAccent);
+      helper.material.depthTest = false;
+      helper.renderOrder = 20;
+      this.furnitureSelectionGroup.add(helper);
+    }
+    this.container.dataset.selectedFurniture = selectedId || "";
+    if (notify) {
+      this.onFurnitureSelect?.(this.furnitureItems.find((item) => item.id === selectedId) || null);
+    }
   }
 
   updateSunlightFrame(snapshot, selectedMoment, { updateStatus = true } = {}) {
@@ -1140,17 +1224,122 @@ class Room3DViewer {
     this.updateLabels();
   }
 
+  eventPointer(event) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    return new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+  }
+
+  furnitureHit(event) {
+    this.raycaster.setFromCamera(this.eventPointer(event), this.camera);
+    return this.raycaster.intersectObjects(this.furnitureGroup.children, true)
+      .find((entry) => entry.object.userData.furnitureId && objectIsVisible(entry.object, this.scene));
+  }
+
+  floorPoint(event) {
+    this.raycaster.setFromCamera(this.eventPointer(event), this.camera);
+    const point = new THREE.Vector3();
+    return this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), point) ? point : null;
+  }
+
+  handlePointerDown(event) {
+    this.pointerStart = { x: event.clientX, y: event.clientY };
+    if (!this.arrangeFurniture || event.button !== 0) return;
+    const hit = this.furnitureHit(event);
+    if (!hit) return;
+    const id = hit.object.userData.furnitureId;
+    const root = this.furnitureVisuals.get(id);
+    const floorPoint = this.floorPoint(event);
+    if (!root || !floorPoint) return;
+    this.setSelectedFurniture(id, true);
+    this.furnitureDrag = {
+      id,
+      pointerId: event.pointerId,
+      offset: root.position.clone().sub(floorPoint),
+      moved: false,
+      controlsWereEnabled: this.controls.enabled,
+    };
+    this.controls.enabled = false;
+    this.renderer.domElement.setPointerCapture?.(event.pointerId);
+    this.container.dataset.draggingFurniture = "true";
+    this.onFurnitureChange?.(this.furnitureItems.map((item) => ({ ...item })), { phase: "start", reason: "move", id });
+    event.preventDefault();
+  }
+
+  handlePointerMove(event) {
+    if (this.furnitureDrag) {
+      const floorPoint = this.floorPoint(event);
+      if (!floorPoint) return;
+      const drag = this.furnitureDrag;
+      const root = this.furnitureVisuals.get(drag.id);
+      const index = this.furnitureItems.findIndex((item) => item.id === drag.id);
+      if (!root || index < 0) return;
+      const target = floorPoint.add(drag.offset);
+      const item = clampFurnitureItem({
+        ...this.furnitureItems[index],
+        x: target.x + this.payload.room.width / 2,
+        y: this.payload.room.depth / 2 - target.z,
+      }, this.payload.room);
+      this.furnitureItems[index] = item;
+      root.position.copy(appPointToThree([item.x, item.y, 0], this.payload.room));
+      this.furnitureSelectionGroup.children[0]?.update();
+      drag.moved = true;
+      this.container.dataset.furnitureItems = JSON.stringify(this.furnitureItems);
+      event.preventDefault();
+      return;
+    }
+    if (!this.pointerStart || event.buttons === 0) return;
+    if (Math.hypot(event.clientX - this.pointerStart.x, event.clientY - this.pointerStart.y) > 6) {
+      this.setActiveCameraPreset("custom");
+    }
+  }
+
+  handlePointerUp(event) {
+    if (!this.furnitureDrag) return;
+    const drag = this.furnitureDrag;
+    this.furnitureDrag = null;
+    this.controls.enabled = this.isTouchDevice
+      ? this.container.classList.contains("is-touch-interacting")
+      : drag.controlsWereEnabled;
+    this.renderer.domElement.releasePointerCapture?.(drag.pointerId);
+    this.container.dataset.draggingFurniture = "false";
+    this.justDraggedFurniture = drag.moved;
+    if (drag.moved) {
+      this.onFurnitureChange?.(this.furnitureItems.map((item) => ({ ...item })), { phase: "commit", reason: "move", id: drag.id });
+    }
+    event.preventDefault();
+  }
+
+  mutateSelectedFurniture(changes, reason) {
+    const index = this.furnitureItems.findIndex((item) => item.id === this.selectedFurnitureId);
+    if (index < 0) return;
+    const next = this.furnitureItems.map((item) => ({ ...item }));
+    if (changes === null) {
+      next.splice(index, 1);
+    } else {
+      next[index] = clampFurnitureItem({ ...next[index], ...changes }, this.payload.room);
+    }
+    this.onFurnitureChange?.(next, { phase: "commit", reason, id: this.selectedFurnitureId });
+  }
+
   handleCanvasClick(event) {
+    if (this.justDraggedFurniture) {
+      this.justDraggedFurniture = false;
+      this.pointerStart = null;
+      return;
+    }
     const pointerStart = this.pointerStart;
     this.pointerStart = null;
     if (!pointerStart) return;
     if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 6) return;
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const pointer = new THREE.Vector2(
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      -((event.clientY - rect.top) / rect.height) * 2 + 1,
-    );
-    this.raycaster.setFromCamera(pointer, this.camera);
+    if (this.arrangeFurniture) {
+      const furnitureHit = this.furnitureHit(event);
+      this.setSelectedFurniture(furnitureHit?.object.userData.furnitureId || null, true);
+      return;
+    }
+    this.raycaster.setFromCamera(this.eventPointer(event), this.camera);
     const hit = this.raycaster.intersectObjects(this.windowGroup.children, true)
       .find((entry) => entry.object.userData.windowName && objectIsVisible(entry.object, this.scene));
     if (hit) this.selectWindow(hit.object.userData.windowName, true);
@@ -1231,6 +1420,10 @@ class Room3DViewer {
 
   toggleContext() {
     if (this.destroyed) return;
+    if (this.arrangeFurniture && this.contextVisible) {
+      this.setStatus("Finish arranging furniture before hiding context.");
+      return;
+    }
     this.contextVisible = !this.contextVisible;
     if (this.contextButton) {
       this.contextButton.setAttribute("aria-pressed", String(this.contextVisible));
@@ -1243,6 +1436,7 @@ class Room3DViewer {
 
   applyContextVisibility() {
     this.furnitureGroup.visible = this.contextVisible;
+    this.furnitureSelectionGroup.visible = this.contextVisible;
     this.container.dataset.furnitureVisible = String(this.furnitureGroup.visible);
     this.updateCameraAwareWalls();
   }
@@ -1290,10 +1484,41 @@ class Room3DViewer {
     this.container.dataset.cameraPosition = this.camera.position.toArray().map((value) => value.toFixed(3)).join(",");
     this.container.dataset.cameraTarget = this.controls.target.toArray().map((value) => value.toFixed(3)).join(",");
     this.container.dataset.cameraUp = this.camera.up.toArray().map((value) => value.toFixed(3)).join(",");
+    const width = Math.max(this.container.clientWidth, 1);
+    const height = Math.max(this.container.clientHeight, 1);
+    this.container.dataset.furnitureScreenPositions = JSON.stringify(this.furnitureItems.map((item) => {
+      const root = this.furnitureVisuals.get(item.id);
+      const point = root
+        ? new THREE.Box3().setFromObject(root).getCenter(new THREE.Vector3()).project(this.camera)
+        : null;
+      return {
+        id: item.id,
+        x: point ? Number(((point.x * 0.5 + 0.5) * width).toFixed(1)) : 0,
+        y: point ? Number(((-point.y * 0.5 + 0.5) * height).toFixed(1)) : 0,
+      };
+    }));
   }
 
   handleKeyDown(event) {
     if (this.destroyed || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (this.arrangeFurniture && this.selectedFurnitureId) {
+      const item = this.furnitureItems.find((entry) => entry.id === this.selectedFurnitureId);
+      if (!item) return;
+      const step = event.shiftKey ? 0.25 : 0.05;
+      const changes = {};
+      if (event.key === "ArrowLeft") changes.x = item.x - step;
+      if (event.key === "ArrowRight") changes.x = item.x + step;
+      if (event.key === "ArrowUp") changes.y = item.y + step;
+      if (event.key === "ArrowDown") changes.y = item.y - step;
+      if (event.key.toLowerCase() === "q") changes.rotation = item.rotation - 15;
+      if (event.key.toLowerCase() === "e") changes.rotation = item.rotation + 15;
+      const shouldDelete = event.key === "Delete" || event.key === "Backspace";
+      if (Object.keys(changes).length || shouldDelete) {
+        event.preventDefault();
+        this.mutateSelectedFurniture(shouldDelete ? null : changes, shouldDelete ? "delete" : "keyboard");
+        return;
+      }
+    }
     const isArrow = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key);
     const isZoom = ["+", "=", "-", "_"].includes(event.key);
     if (!isArrow && !isZoom) return;
@@ -1375,6 +1600,8 @@ class Room3DViewer {
     this.renderer.domElement.removeEventListener("keydown", this.onKeyDown);
     this.renderer.domElement.removeEventListener("pointerdown", this.onPointerDown);
     this.renderer.domElement.removeEventListener("pointermove", this.onPointerMove);
+    this.renderer.domElement.removeEventListener("pointerup", this.onPointerUp);
+    this.renderer.domElement.removeEventListener("pointercancel", this.onPointerUp);
     this.renderer.domElement.removeEventListener("wheel", this.onWheel);
     this.renderer.domElement.removeEventListener("click", this.onCanvasClick);
     this.clearLabels();
