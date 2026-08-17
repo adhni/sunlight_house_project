@@ -92,10 +92,10 @@ The app currently includes:
 - day-of-year and time-of-day scrubbers
 - a `Now` button for the selected timezone
 - a `Current Moment` room snapshot
-- a lazy-loaded `3D room` view with real window openings, friendly window selection, compass/front indicators, host-aware cutaway walls, optional scale context, orbit, zoom, pan, and camera reset
+- a lazy-loaded `3D room` view with real window openings, a plain-language current-sun reading, per-window sunlight tracing, compass/front indicators, a 1 m scale grid, host-aware cutaway walls, orbit, bounded zoom/pan, and camera reset
 - optional 3D details: an exterior door, sunlight-blocking internal divider and roof eaves, outside fence/building presets, and scale furniture
 - cached 3D day playback with a time scrubber plus morning, solar-noon, and evening presets
-- mobile-first 3D interaction with explicit touch activation, scroll-safe viewing, an in-view window edit action, and responsive model-first ordering
+- mobile-first 3D interaction with explicit touch activation, scroll-safe viewing, 44 px window targets, an in-view window edit action, model-first ordering, and progressively disclosed display/furniture tools
 - a `Direct Sun Hours Today` floor map with legend, stats, and in-chart tooltip
 - a `Yearly / Seasonal` floor map with `Year`, `Winter`, `Spring`, `Summer`, and `Fall`
 - an advanced IFC room/window import workflow

@@ -19,6 +19,20 @@ async function dragCanvas(page, canvas, deltaX, deltaY) {
   await page.mouse.up();
 }
 
+async function openDisplayOptions(page) {
+  const details = page.locator(".room3d-display-options");
+  if (await details.getAttribute("open") === null) {
+    await details.locator("summary").click();
+  }
+}
+
+async function openFurnitureTools(page) {
+  const details = page.locator(".furniture-tools");
+  if (await details.getAttribute("open") === null) {
+    await details.locator("summary").click();
+  }
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#room-window-source")).toBeVisible();
@@ -45,18 +59,35 @@ test("lazy-loads the current room and sunlight in WebGL", async ({ page }) => {
   await expect(viewer).toHaveAttribute("data-furniture-preset", "living");
   await expect(viewer).toHaveAttribute("data-furniture-visible", "true");
   await expect(viewer).toHaveAttribute("data-context-visible", "true");
+  await expect(viewer).toHaveAttribute("data-floor-grid-visible", "true");
+  await expect(viewer).toHaveAttribute("data-floor-grid-spacing", "1");
   await expect(viewer).toHaveAttribute("data-scene-visual-only", "false");
   await expect(viewer).toHaveAttribute("data-front-facing", "NE");
   await expect(viewer).toHaveAttribute("data-axis-convention", "east-positive-x north-negative-z");
   await expect(viewer).toHaveAttribute("data-selected-window", "main_window");
   await expect(viewer).toHaveAttribute("data-wall-panel-count", /[1-9]\d*/);
   await expect(viewer).toHaveAttribute("data-room-size", "4,5,3");
+  await expect(viewer).toHaveAttribute("data-camera-distance-range", "1.500,27.500");
   await expect(viewer).toHaveAttribute("data-rendering", "true");
-  await expect(page.locator("#room3d-status")).toContainText("2 movable furniture items");
+  await expect(viewer).toHaveAttribute("data-selected-sunlight-window", "main_window");
+  await expect(viewer).toHaveAttribute("data-selected-sunlight-patch-count", /[1-9]\d*/);
+  await expect(page.locator("#room3d-status")).toContainText("2 scale objects (visual only)");
+  await expect(page.locator("#room3d-reading-state")).toHaveText("At 10:00, direct sun reaches the floor.");
+  await expect(page.locator("#room3d-reading-sun")).toContainText("above horizon");
+  await expect(page.locator("#room3d-reading-floor")).toContainText("from 2 windows");
+  await expect(page.locator("#room3d-reading-selected-label")).toHaveText("Selected · Window 1");
+  await expect(page.locator("#room3d-reading-selected")).toContainText("strongest source");
+  await expect(page.locator("#room3d-reading-blockers")).toHaveText("Divider + Roof eaves");
+  await expect(page.locator(".room3d-scope-note")).toContainText("do not shade");
   await expect(page.locator(".room3d-compass-key-north")).toHaveText("N · true north");
   await expect(page.locator(".room3d-compass-key-front")).toHaveText("Front · NE");
   await expect(page.locator('.room3d-window-label[data-window-name="main_window"]')).toHaveText("Window 1");
   await expect(page.locator('.room3d-window-label[data-window-name="side_window"]')).toHaveText("Window 2");
+  await expect(page.locator('.room3d-window-label[data-window-name="main_window"]')).toHaveAttribute("data-sun-state", "floor");
+  await expect(page.locator(".room3d-display-options")).not.toHaveAttribute("open", "");
+  await expect(page.locator("#room3d-toggle-roof")).toBeHidden();
+  await expect(page.locator(".furniture-tools")).not.toHaveAttribute("open", "");
+  await expect(page.locator("#furniture-arrange-button")).toBeHidden();
 
   const room = (await viewer.getAttribute("data-room-size")).split(",").map(Number);
   const appWindows = JSON.parse(await viewer.getAttribute("data-window-geometry"));
@@ -89,6 +120,7 @@ test("updates visual architecture without resetting the camera", async ({ page }
   await expect(viewer).toHaveAttribute("data-door-count", "0");
   await expect(viewer).toHaveAttribute("data-opening-count", "2");
 
+  await openDisplayOptions(page);
   await page.locator("#room3d-toggle-roof").click();
   await expect(page.locator("#room3d-toggle-roof")).toHaveAttribute("aria-pressed", "true");
   await expect(viewer).toHaveAttribute("data-roof-visible", "true");
@@ -99,19 +131,23 @@ test("keeps context optional without changing the sunlight scene", async ({ page
   const patchCount = await viewer.getAttribute("data-patch-count");
   const contextButton = page.locator("#room3d-toggle-context");
 
+  await openDisplayOptions(page);
   await contextButton.click();
   await expect(contextButton).toHaveAttribute("aria-pressed", "false");
   await expect(viewer).toHaveAttribute("data-context-visible", "false");
   await expect(viewer).toHaveAttribute("data-furniture-visible", "false");
+  await expect(viewer).toHaveAttribute("data-floor-grid-visible", "false");
   await expect(viewer).toHaveAttribute("data-patch-count", patchCount);
 
   await contextButton.click();
   await expect(viewer).toHaveAttribute("data-context-visible", "true");
   await expect(viewer).toHaveAttribute("data-furniture-visible", "true");
+  await expect(viewer).toHaveAttribute("data-floor-grid-visible", "true");
 });
 
 test("adds, edits, duplicates, deletes, undoes, and restores furniture", async ({ page }) => {
   const viewer = await open3dRoom(page);
+  await openFurnitureTools(page);
   const snapshotRequests = [];
   page.on("request", (request) => {
     if (new URL(request.url()).pathname === "/api/snapshot") snapshotRequests.push(request.url());
@@ -194,6 +230,7 @@ test("keeps a local furniture edit when an older scene response arrives", async 
   });
 
   const viewer = await open3dRoom(page);
+  await openFurnitureTools(page);
   await page.locator(".scene-details > summary").click();
   await page.locator('select[name="scene_furniture_preset"]').selectOption("dining");
   await sceneRequestStarted;
@@ -222,6 +259,7 @@ test("preserves a concurrent door change when furniture changes", async ({ page 
   });
 
   const viewer = await open3dRoom(page);
+  await openFurnitureTools(page);
   await page.locator(".scene-details > summary").click();
   await page.locator('select[name="scene_door_enabled"]').selectOption("0");
   await sceneRequestStarted;
@@ -252,6 +290,7 @@ test("preserves concurrent sunlight scene changes when furniture changes", async
   });
 
   const viewer = await open3dRoom(page);
+  await openFurnitureTools(page);
   await page.locator(".scene-details > summary").click();
   await page.locator('select[name="scene_external_obstruction"]').selectOption("building");
   await snapshotRequestStarted;
@@ -324,10 +363,19 @@ test("selects and highlights a named window from the 3D view", async ({ page }) 
   const sideWindowLabel = page.locator('.room3d-window-label[data-window-name="side_window"]');
   await expect(sideWindowLabel).toBeVisible();
   await expect(sideWindowLabel).toHaveText("Window 2");
-  await sideWindowLabel.click();
+  const sidePatch = JSON.parse(await viewer.getAttribute("data-sunlight-screen-positions"))
+    .find((patch) => patch.windowName === "side_window");
+  expect(sidePatch).toBeTruthy();
+  await viewer.locator("canvas").scrollIntoViewIfNeeded();
+  const canvasBox = await viewer.locator("canvas").boundingBox();
+  await page.mouse.click(canvasBox.x + sidePatch.x, canvasBox.y + sidePatch.y);
 
   await expect(viewer).toHaveAttribute("data-selected-window", "side_window");
+  await expect(viewer).toHaveAttribute("data-selected-sunlight-window", "side_window");
+  await expect(viewer).toHaveAttribute("data-selected-sunlight-patch-count", /[1-9]\d*/);
   await expect(sideWindowLabel).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#room3d-reading-selected-label")).toHaveText("Selected · Window 2");
+  await expect(page.locator("#room3d-reading-selected")).toContainText("Reaches the floor");
   await expect(page.locator("#window-editor-title")).toHaveText("Window 2");
   await expect(page.locator("#selected-window-wall")).toHaveValue("east");
   const animationRequestsAfterSelection = await page.evaluate(() => performance.getEntries()
@@ -359,16 +407,20 @@ test("loads cached day frames and applies presets without rebuilding the room", 
 
   await page.locator("#selected-time-input").fill("10:10");
   await expect(page.locator("#room3d-time-readout")).toHaveText("10:10");
+  await expect(viewer).toHaveAttribute("data-scene-build-count", sceneBuildCount);
   await expect(page.locator('[data-room3d-time-preset="noon"]')).toHaveAttribute("aria-pressed", "false");
 
   await page.locator("#room3d-time-slider").fill("0");
   await expect(page.locator("#sun-summary-moment")).toHaveText(
-    "At the selected time, the sun does not enter this window.",
+    "At the selected time, the sun does not enter the room.",
   );
+  await expect(page.locator("#room3d-reading-state")).toHaveText("At 00:00, the sun does not enter the room.");
+  await expect(page.locator("#room3d-reading-floor")).toHaveText("No direct sun on the floor");
   await page.locator('.room3d-window-label[data-window-name="side_window"]').click();
   await expect(page.locator("#sun-summary-moment")).toHaveText(
-    "At the selected time, the sun does not enter this window.",
+    "At the selected time, the sun does not enter the room.",
   );
+  await expect(page.locator("#room3d-reading-selected")).toHaveText("No direct sun at this time");
 });
 
 test("plays and pauses daylight while keeping the selected time synchronized", async ({ page }) => {
@@ -426,9 +478,11 @@ test("orbits, resets, and toggles walls", async ({ page }) => {
   await expect.poll(() => viewer.getAttribute("data-camera-position")).toBe(initialCamera);
   await expect(viewer).toHaveAttribute("data-camera-preset", "perspective");
 
+  await openDisplayOptions(page);
   await page.locator("#room3d-toggle-walls").click();
   await expect(page.locator("#room3d-toggle-walls")).toHaveAttribute("aria-pressed", "false");
   await expect(viewer).toHaveAttribute("data-walls-visible", "false");
+  await expect(page.locator('.room3d-window-label[data-window-name="main_window"]')).toBeVisible();
   await expect(viewer.locator("canvas")).toBeVisible();
 });
 
@@ -470,6 +524,7 @@ test("offers top and front camera presets aligned with the 2D plan", async ({ pa
   await expect(viewer).toHaveAttribute("data-camera-preset", "custom");
   await expect.poll(async () => (await viewer.getAttribute("data-auto-hidden-walls")).split(","))
     .toContain("north");
+  await expect(page.locator('.room3d-window-label[data-window-name="main_window"]')).toBeVisible();
 });
 
 test("automatically hides camera-facing walls and updates after orbit", async ({ page }) => {
@@ -517,6 +572,19 @@ test("supports keyboard orbit, pan, and zoom", async ({ page }) => {
   const cameraBeforeZoom = await viewer.getAttribute("data-camera-position");
   await canvas.press("+");
   await expect.poll(() => viewer.getAttribute("data-camera-position")).not.toBe(cameraBeforeZoom);
+
+  const [minimumDistance, maximumDistance] = (await viewer.getAttribute("data-camera-distance-range")).split(",").map(Number);
+  for (let index = 0; index < 50; index += 1) await canvas.press("-");
+  let position = (await viewer.getAttribute("data-camera-position")).split(",").map(Number);
+  let target = (await viewer.getAttribute("data-camera-target")).split(",").map(Number);
+  let distance = Math.hypot(...position.map((value, index) => value - target[index]));
+  expect(distance).toBeLessThanOrEqual(maximumDistance + 0.01);
+
+  for (let index = 0; index < 100; index += 1) await canvas.press("+");
+  position = (await viewer.getAttribute("data-camera-position")).split(",").map(Number);
+  target = (await viewer.getAttribute("data-camera-target")).split(",").map(Number);
+  distance = Math.hypot(...position.map((value, index) => value - target[index]));
+  expect(distance).toBeGreaterThanOrEqual(minimumDistance - 0.01);
 });
 
 test("permanently tears down a viewer after WebGL context loss", async ({ page }) => {

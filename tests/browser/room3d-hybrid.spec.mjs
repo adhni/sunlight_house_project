@@ -40,4 +40,13 @@ test("offers touch activation when a touchscreen is not the primary pointer", as
   await expect(viewer).toHaveAttribute("data-viewer-state", "ready");
   await expect(viewer).toHaveAttribute("data-touch-interaction", "scroll");
   await expect(viewer.locator(".room3d-touch-toggle")).toBeVisible();
+
+  const cameraBeforeMouseDrag = await viewer.getAttribute("data-camera-position");
+  const canvasBox = await viewer.locator("canvas").boundingBox();
+  await page.mouse.move(canvasBox.x + canvasBox.width * 0.5, canvasBox.y + canvasBox.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + canvasBox.width * 0.65, canvasBox.y + canvasBox.height * 0.5, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(() => viewer.getAttribute("data-camera-position")).not.toBe(cameraBeforeMouseDrag);
+  await expect(viewer).toHaveAttribute("data-touch-interaction", "scroll");
 });

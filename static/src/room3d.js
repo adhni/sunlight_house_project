@@ -6,7 +6,7 @@ const COLORS = {
   wall: 0xe7ddd0,
   wallEdge: 0x657378,
   window: 0x2b627a,
-  selectedWindowFrame: 0xd36c32,
+  selectedWindowFrame: 0x6d4bb8,
   sunlight: 0xffbd55,
   sunlightEdge: 0xd85824,
   north: 0x2b627a,
@@ -16,7 +16,7 @@ const COLORS = {
   internalWall: 0xd8cbbb,
   roof: 0xb9afa3,
   furniture: 0x56747f,
-  furnitureAccent: 0xc86a3a,
+  furnitureAccent: 0x8b6a54,
   furnitureWood: 0x9a744f,
   externalObstruction: 0x8f857c,
 };
@@ -252,6 +252,7 @@ function makeWindow(windowData, room) {
     opacity: 0.36,
     roughness: 0.18,
     metalness: 0.12,
+    depthWrite: false,
     side: THREE.DoubleSide,
   });
   const glass = new THREE.Mesh(geometry, glassMaterial);
@@ -274,7 +275,7 @@ function makeWindow(windowData, room) {
 function makePatch(patch, room) {
   const points = patch.polygon_xy.map((point) => new THREE.Vector3(
     Number(point[0]) - room.width / 2,
-    0.025,
+    0.002,
     room.depth / 2 - Number(point[1]),
   ));
   const shape = new THREE.Shape();
@@ -292,28 +293,65 @@ function makePatch(patch, room) {
     opacity: 0.48 + intensity * 0.36,
     side: THREE.DoubleSide,
     depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
   });
   const fill = new THREE.Mesh(geometry, material);
-  fill.position.y = 0.025;
+  fill.position.y = 0.002;
   fill.renderOrder = 3;
-  fill.userData = { kind: "sunlight-patch", windowName: patch.window_name };
+  fill.userData = {
+    kind: "sunlight-patch",
+    windowName: patch.window_name,
+    baseOpacity: material.opacity,
+  };
 
   const edge = new THREE.LineLoop(
     new THREE.BufferGeometry().setFromPoints(points),
     new THREE.LineBasicMaterial({ color: COLORS.sunlightEdge, transparent: true, opacity: 0.96 }),
   );
   edge.renderOrder = 4;
-  edge.userData = { kind: "sunlight-patch-edge", windowName: patch.window_name };
+  edge.userData = {
+    kind: "sunlight-patch-edge",
+    windowName: patch.window_name,
+    baseOpacity: edge.material.opacity,
+  };
   const group = new THREE.Group();
   group.add(fill, edge);
+  group.userData = { kind: "sunlight-patch-group", windowName: patch.window_name };
   return group;
+}
+
+function makeFloorGrid(room) {
+  const points = [];
+  for (let offset = 1; offset < room.width - 1e-8; offset += 1) {
+    const x = -room.width / 2 + offset;
+    points.push(
+      new THREE.Vector3(x, 0.001, -room.depth / 2),
+      new THREE.Vector3(x, 0.001, room.depth / 2),
+    );
+  }
+  for (let offset = 1; offset < room.depth - 1e-8; offset += 1) {
+    const z = room.depth / 2 - offset;
+    points.push(
+      new THREE.Vector3(-room.width / 2, 0.001, z),
+      new THREE.Vector3(room.width / 2, 0.001, z),
+    );
+  }
+  const grid = new THREE.LineSegments(
+    new THREE.BufferGeometry().setFromPoints(points),
+    new THREE.LineBasicMaterial({ color: 0x8e9698, transparent: true, opacity: 0.28 }),
+  );
+  grid.renderOrder = 2;
+  grid.userData = { kind: "floor-grid", spacingMetres: 1 };
+  return grid;
 }
 
 function makeBeam(windowData, patch, room) {
   const source = appPointToThree(patch.source_center_xyz || windowData.center_xyz, room);
   const floorPoints = patch.polygon_xy.map((point) => new THREE.Vector3(
     Number(point[0]) - room.width / 2,
-    0.04,
+    0.006,
     room.depth / 2 - Number(point[1]),
   ));
   const vertices = [];
@@ -337,7 +375,11 @@ function makeBeam(windowData, patch, room) {
     }),
   );
   fan.renderOrder = 3;
-  fan.userData = { kind: "sunlight-volume", windowName: patch.window_name };
+  fan.userData = {
+    kind: "sunlight-volume",
+    windowName: patch.window_name,
+    baseOpacity: fan.material.opacity,
+  };
 
   const centroid = floorPoints.reduce((total, point) => total.add(point), new THREE.Vector3())
     .multiplyScalar(1 / floorPoints.length);
@@ -352,9 +394,14 @@ function makeBeam(windowData, patch, room) {
     }),
   );
   ray.renderOrder = 4;
-  ray.userData = { kind: "sunlight-ray", windowName: patch.window_name };
+  ray.userData = {
+    kind: "sunlight-ray",
+    windowName: patch.window_name,
+    baseOpacity: ray.material.opacity,
+  };
   const group = new THREE.Group();
   group.add(fan, ray);
+  group.userData = { kind: "sunlight-beam-group", windowName: patch.window_name };
   return group;
 }
 
@@ -664,6 +711,15 @@ function objectIsVisible(object, root) {
   return false;
 }
 
+function structuralSceneSignature(payload) {
+  return JSON.stringify({
+    room: payload.room,
+    windows: payload.windows,
+    frontFacing: payload.window_facing_label,
+    scene: payload.scene,
+  });
+}
+
 class Room3DViewer {
   constructor({
     container,
@@ -699,7 +755,9 @@ class Room3DViewer {
     this.contextVisible = true;
     this.inViewport = true;
     this.isTouchDevice = Boolean(window.matchMedia?.("(any-pointer: coarse)").matches);
+    this.primaryPointerIsCoarse = Boolean(window.matchMedia?.("(pointer: coarse)").matches);
     this.selectedWindowName = null;
+    this.currentSnapshot = null;
     this.windowVisuals = new Map();
     this.furnitureVisuals = new Map();
     this.furnitureItems = [];
@@ -709,8 +767,10 @@ class Room3DViewer {
     this.justDraggedFurniture = false;
     this.labelElements = new Map();
     this.sceneBuildCount = 0;
+    this.structuralSignature = "";
     this.sunlightUpdateCount = 0;
     this.activeCameraPreset = "perspective";
+    this.needsRender = true;
     this.raycaster = new THREE.Raycaster();
     this.labelRaycaster = new THREE.Raycaster();
     this.pointerStart = null;
@@ -723,7 +783,7 @@ class Room3DViewer {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = false;
     this.renderer.domElement.tabIndex = 0;
-    this.renderer.domElement.setAttribute("aria-label", "Orbitable 3D room model. Click a window to select it.");
+    this.renderer.domElement.setAttribute("aria-label", "Orbitable 3D room model. Select a window or its sunlight to trace the floor result.");
     this.renderer.domElement.setAttribute("aria-describedby", "room3d-interaction-hint room3d-keyboard-help");
     this.onContextLost = (event) => {
       event.preventDefault();
@@ -759,20 +819,21 @@ class Room3DViewer {
     container.replaceChildren(this.renderer.domElement, this.labelLayer, this.interactionLayer);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enabled = !this.isTouchDevice;
+    this.controls.enabled = !this.primaryPointerIsCoarse;
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
     this.controls.minPolarAngle = 0.0001;
     this.controls.maxPolarAngle = Math.PI / 2;
     this.onControlsChange = () => {
-      this.updateDebugState();
+      this.constrainCamera();
       this.updateCameraAwareWalls();
-      this.updateLabels();
+      this.needsRender = true;
     };
     this.controls.addEventListener("change", this.onControlsChange);
 
     this.contentGroup = new THREE.Group();
     this.floorGroup = new THREE.Group();
+    this.floorGridGroup = new THREE.Group();
     this.wallGroup = new THREE.Group();
     this.windowGroup = new THREE.Group();
     this.doorGroup = new THREE.Group();
@@ -786,6 +847,7 @@ class Room3DViewer {
     this.orientationGroup = new THREE.Group();
     this.contentGroup.add(
       this.floorGroup,
+      this.floorGridGroup,
       this.wallGroup,
       this.windowGroup,
       this.doorGroup,
@@ -853,15 +915,25 @@ class Room3DViewer {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
+    this.needsRender = true;
     this.updateLabels();
   }
 
   update(payload) {
     if (this.destroyed || !payload?.room || !Array.isArray(payload.windows)) return;
+    const nextSignature = structuralSceneSignature(payload);
+    if (this.payload && nextSignature === this.structuralSignature) {
+      this.payload = payload;
+      this.updateSunlightFrame(payload.snapshot, payload.selected_moment);
+      this.updateDebugState();
+      return;
+    }
     this.payload = payload;
+    this.structuralSignature = nextSignature;
     this.sceneBuildCount += 1;
     const room = payload.room;
     replaceGroupContents(this.floorGroup);
+    replaceGroupContents(this.floorGridGroup);
     replaceGroupContents(this.wallGroup);
     replaceGroupContents(this.windowGroup);
     replaceGroupContents(this.doorGroup);
@@ -883,6 +955,7 @@ class Room3DViewer {
     );
     floor.position.y = -0.025;
     this.floorGroup.add(floor);
+    this.floorGridGroup.add(makeFloorGrid(room));
 
     const thickness = Math.max(Math.min(room.width, room.depth) * 0.022, 0.045);
     const sceneDetails = payload.scene || {};
@@ -927,10 +1000,15 @@ class Room3DViewer {
     const scale = Math.max(room.width, room.depth, room.height, 1);
     this.camera.near = Math.max(scale / 500, 0.01);
     this.camera.far = scale * 25;
+    this.controls.minDistance = Math.max(scale * 0.3, 0.6);
+    this.controls.maxDistance = scale * 5.5;
+    this.container.dataset.cameraDistanceRange = `${this.controls.minDistance.toFixed(3)},${this.controls.maxDistance.toFixed(3)}`;
     this.camera.updateProjectionMatrix();
     if (!this.hasFramedScene) {
       this.frameScene();
       this.hasFramedScene = true;
+    } else {
+      this.constrainCamera();
     }
     const selectedExists = payload.windows.some((windowData) => windowData.name === this.selectedWindowName);
     this.setSelectedWindow(selectedExists ? this.selectedWindowName : payload.windows[0]?.name);
@@ -959,6 +1037,8 @@ class Room3DViewer {
     this.container.dataset.furniturePreset = furniture.preset;
     this.container.dataset.roofVisible = String(this.roofVisible);
     this.container.dataset.contextVisible = String(this.contextVisible);
+    this.container.dataset.floorGridVisible = String(this.floorGridGroup.visible);
+    this.container.dataset.floorGridSpacing = "1";
     this.container.dataset.sceneVisualOnly = String(Boolean(sceneDetails.visual_only));
     this.container.dataset.patchCount = String(payload.snapshot.patches.length);
     this.container.dataset.selectedMoment = payload.selected_moment;
@@ -981,9 +1061,19 @@ class Room3DViewer {
         z: Number(center.z.toFixed(3)),
       };
     }));
+    const blockerLabels = [];
+    if (sceneDetails.internal_wall?.enabled) blockerLabels.push("divider");
+    if (sceneDetails.roof?.eaves_enabled) blockerLabels.push("roof eaves");
+    if (sceneDetails.external_obstruction?.enabled) {
+      blockerLabels.push(sceneDetails.external_obstruction.preset === "building" ? "nearby building" : "outside fence");
+    }
+    const blockerStatus = blockerLabels.length
+      ? `${blockerLabels.join(" + ")} included in shading`
+      : "no extra shade blockers";
     this.setStatus(
-      `${payload.windows.length} window opening${payload.windows.length === 1 ? "" : "s"} · ${sunlightBlockerCount} sunlight blocker${sunlightBlockerCount === 1 ? "" : "s"} · ${furniture.itemCount} movable furniture item${furniture.itemCount === 1 ? "" : "s"}.`,
+      `${payload.windows.length} window opening${payload.windows.length === 1 ? "" : "s"} · ${blockerStatus} · ${furniture.itemCount} scale object${furniture.itemCount === 1 ? "" : "s"} (visual only).`,
     );
+    this.needsRender = true;
     this.updateDebugState();
   }
 
@@ -1004,6 +1094,7 @@ class Room3DViewer {
     this.container.dataset.furniturePreset = furniture.preset;
     this.container.dataset.furnitureItems = JSON.stringify(this.furnitureItems);
     this.setSelectedFurniture(this.furnitureVisuals.has(previousSelection) ? previousSelection : null, false);
+    this.needsRender = true;
     return furniture;
   }
 
@@ -1020,7 +1111,7 @@ class Room3DViewer {
       "aria-label",
       this.arrangeFurniture
         ? "3D room furniture editor. Select or drag furniture on the floor."
-        : "Orbitable 3D room model. Click a window to select it.",
+        : "Orbitable 3D room model. Select a window or its sunlight to trace the floor result.",
     );
   }
 
@@ -1035,6 +1126,7 @@ class Room3DViewer {
       this.furnitureSelectionGroup.add(helper);
     }
     this.container.dataset.selectedFurniture = selectedId || "";
+    this.needsRender = true;
     if (notify) {
       this.onFurnitureSelect?.(this.furnitureItems.find((item) => item.id === selectedId) || null);
     }
@@ -1042,6 +1134,7 @@ class Room3DViewer {
 
   updateSunlightFrame(snapshot, selectedMoment, { updateStatus = true } = {}) {
     if (this.destroyed || !this.payload || !snapshot?.patches) return;
+    this.currentSnapshot = snapshot;
     replaceGroupContents(this.sunlightGroup);
     const room = this.payload.room;
     const windowsByName = new Map(this.payload.windows.map((windowData) => [windowData.name, windowData]));
@@ -1052,13 +1145,22 @@ class Room3DViewer {
         this.sunlightGroup.add(makeBeam(windowData, patch, room));
       }
     });
+    this.updateWindowSunStates();
+    this.updateSunlightSelection();
+    this.needsRender = true;
     this.sunlightUpdateCount += 1;
     this.container.dataset.sunlightUpdateCount = String(this.sunlightUpdateCount);
     this.container.dataset.patchCount = String(snapshot.patches.length);
     if (selectedMoment) this.container.dataset.selectedMoment = selectedMoment;
     if (updateStatus) {
+      const time = String(selectedMoment || "").slice(11, 16) || "this time";
+      const result = snapshot.state === "floor_hit"
+        ? `direct sun reaches the floor in ${snapshot.patches.length} patch${snapshot.patches.length === 1 ? "" : "es"}`
+        : snapshot.state === "through_window_no_floor_hit"
+          ? "sun enters the room but misses the floor"
+          : "the sun does not enter the room";
       this.setStatus(
-        `${snapshot.patches.length} sunlight patch${snapshot.patches.length === 1 ? "" : "es"} at ${String(selectedMoment || "").slice(11, 16)}.`,
+        `At ${time}, ${result}.`,
       );
     }
   }
@@ -1079,7 +1181,60 @@ class Room3DViewer {
       occlusionAnchor: center.clone(),
       wall: windowData.wall,
       windowName: windowData.name,
+      friendlyName,
     });
+  }
+
+  updateWindowSunStates() {
+    const intensities = new Map(
+      (this.currentSnapshot?.window_intensities || []).map((entry) => [entry.name, Number(entry.intensity) || 0]),
+    );
+    const floorWindows = new Set((this.currentSnapshot?.patches || []).map((patch) => patch.window_name));
+    this.labelElements.forEach(({ element, windowName, friendlyName }) => {
+      if (!windowName) return;
+      const state = floorWindows.has(windowName)
+        ? "floor"
+        : intensities.get(windowName) > 0
+          ? "enters"
+          : "off";
+      element.dataset.sunState = state;
+      const stateLabel = state === "floor"
+        ? "Direct sun reaches the floor"
+        : state === "enters"
+          ? "Sun enters but misses the floor"
+          : "No direct sun at this time";
+      element.setAttribute("aria-label", `Select ${friendlyName} in the room editor. ${stateLabel}.`);
+    });
+  }
+
+  updateSunlightSelection() {
+    const selectedName = this.selectedWindowName;
+    let selectedPatchCount = 0;
+    let mutedPatchCount = 0;
+    this.sunlightGroup.children.forEach((group) => {
+      const selected = Boolean(selectedName && group.userData.windowName === selectedName);
+      if (group.userData.kind === "sunlight-patch-group") {
+        if (selected) selectedPatchCount += 1;
+        else mutedPatchCount += 1;
+      }
+      group.traverse((object) => {
+        if (!object.material || object.userData.baseOpacity === undefined) return;
+        const kind = object.userData.kind;
+        if (kind === "sunlight-patch") {
+          object.material.opacity = object.userData.baseOpacity * (selected ? 1.06 : 0.62);
+        } else if (kind === "sunlight-volume") {
+          object.material.opacity = object.userData.baseOpacity * (selected ? 1.15 : 0.5);
+        } else {
+          object.material.opacity = selected ? Math.min(1, object.userData.baseOpacity * 1.15) : object.userData.baseOpacity * 0.48;
+        }
+        if (kind === "sunlight-patch-edge" || kind === "sunlight-ray") {
+          object.material.color.setHex(selected ? COLORS.selectedWindowFrame : COLORS.sunlightEdge);
+        }
+      });
+    });
+    this.container.dataset.selectedSunlightWindow = selectedName || "";
+    this.container.dataset.selectedSunlightPatchCount = String(selectedPatchCount);
+    this.container.dataset.mutedSunlightPatchCount = String(mutedPatchCount);
   }
 
   addCompassLegend(facingLabel) {
@@ -1118,6 +1273,10 @@ class Room3DViewer {
         visual
         && objectIsVisible(visual.group, this.scene)
         && facesCamera
+        && projected.x > -1.08
+        && projected.x < 1.08
+        && projected.y > -1.08
+        && projected.y < 1.08
         && projected.z > -1
         && projected.z < 1
         && (this.activeCameraPreset === "top" || !this.isLabelOccluded(occlusionAnchor)),
@@ -1148,7 +1307,8 @@ class Room3DViewer {
       const halfWidth = element.offsetWidth / 2;
       const halfHeight = element.offsetHeight / 2;
       const clampedX = THREE.MathUtils.clamp(x, halfWidth + 8, width - halfWidth - 8);
-      const offsets = [0, -30, 30, -60, 60];
+      const labelStep = Math.max(element.offsetHeight + 10, 40);
+      const offsets = [0, -labelStep, labelStep, -labelStep * 2, labelStep * 2];
       let position = null;
       for (const offset of offsets) {
         const clampedY = THREE.MathUtils.clamp(y + offset, halfHeight + 8, height - halfHeight - 8);
@@ -1191,6 +1351,8 @@ class Room3DViewer {
     const occluders = [
       ...this.wallGroup.children,
       ...this.roofGroup.children,
+      ...this.internalWallGroup.children,
+      ...this.externalObstructionGroup.children,
     ];
     return this.labelRaycaster.intersectObjects(occluders, true).some((hit) => (
       hit.object.isMesh
@@ -1211,7 +1373,7 @@ class Room3DViewer {
     this.windowVisuals.forEach((visual, windowName) => {
       const selected = windowName === name;
       visual.glassMaterial.color.setHex(COLORS.window);
-      visual.glassMaterial.emissive.setHex(selected ? 0x1a4c62 : 0x123442);
+      visual.glassMaterial.emissive.setHex(selected ? 0x3d2769 : 0x123442);
       visual.glassMaterial.emissiveIntensity = selected ? 0.24 : 0.12;
       visual.glassMaterial.opacity = selected ? 0.46 : 0.36;
       visual.frameMaterial.color.setHex(selected ? COLORS.selectedWindowFrame : 0xffffff);
@@ -1221,6 +1383,9 @@ class Room3DViewer {
       label?.setAttribute("aria-pressed", String(selected));
     });
     this.container.dataset.selectedWindow = name;
+    this.updateSunlightSelection();
+    this.updateCameraAwareWalls();
+    this.needsRender = true;
     this.updateLabels();
   }
 
@@ -1285,6 +1450,7 @@ class Room3DViewer {
       this.furnitureItems[index] = item;
       root.position.copy(appPointToThree([item.x, item.y, 0], this.payload.room));
       this.furnitureSelectionGroup.children[0]?.update();
+      this.needsRender = true;
       drag.moved = true;
       this.container.dataset.furnitureItems = JSON.stringify(this.furnitureItems);
       event.preventDefault();
@@ -1300,7 +1466,7 @@ class Room3DViewer {
     if (!this.furnitureDrag) return;
     const drag = this.furnitureDrag;
     this.furnitureDrag = null;
-    this.controls.enabled = this.isTouchDevice
+    this.controls.enabled = this.primaryPointerIsCoarse
       ? this.container.classList.contains("is-touch-interacting")
       : drag.controlsWereEnabled;
     this.renderer.domElement.releasePointerCapture?.(drag.pointerId);
@@ -1340,7 +1506,10 @@ class Room3DViewer {
       return;
     }
     this.raycaster.setFromCamera(this.eventPointer(event), this.camera);
-    const hit = this.raycaster.intersectObjects(this.windowGroup.children, true)
+    const hit = this.raycaster.intersectObjects([
+      ...this.windowGroup.children,
+      ...this.sunlightGroup.children,
+    ], true)
       .find((entry) => entry.object.userData.windowName && objectIsVisible(entry.object, this.scene));
     if (hit) this.selectWindow(hit.object.userData.windowName, true);
   }
@@ -1400,10 +1569,11 @@ class Room3DViewer {
     this.wallsVisible = !this.wallsVisible;
     if (this.wallsButton) {
       this.wallsButton.setAttribute("aria-pressed", String(this.wallsVisible));
-      this.wallsButton.textContent = this.wallsVisible ? "Walls auto" : "Walls off";
+      this.wallsButton.textContent = this.wallsVisible ? "Auto-hide walls" : "Walls hidden";
     }
     this.container.dataset.wallsVisible = String(this.wallsVisible);
     this.updateCameraAwareWalls();
+    this.needsRender = true;
   }
 
   toggleRoof() {
@@ -1415,6 +1585,7 @@ class Room3DViewer {
       this.roofButton.textContent = this.roofVisible ? "Hide roof" : "Show roof";
     }
     this.container.dataset.roofVisible = String(this.roofVisible);
+    this.needsRender = true;
     this.updateLabels();
   }
 
@@ -1427,24 +1598,27 @@ class Room3DViewer {
     this.contextVisible = !this.contextVisible;
     if (this.contextButton) {
       this.contextButton.setAttribute("aria-pressed", String(this.contextVisible));
-      this.contextButton.textContent = this.contextVisible ? "Context on" : "Context off";
+      this.contextButton.textContent = this.contextVisible ? "Scale objects on" : "Scale objects off";
     }
     this.container.dataset.contextVisible = String(this.contextVisible);
     this.applyContextVisibility();
+    this.needsRender = true;
     this.updateLabels();
   }
 
   applyContextVisibility() {
     this.furnitureGroup.visible = this.contextVisible;
     this.furnitureSelectionGroup.visible = this.contextVisible;
+    this.floorGridGroup.visible = this.contextVisible;
     this.container.dataset.furnitureVisible = String(this.furnitureGroup.visible);
+    this.container.dataset.floorGridVisible = String(this.floorGridGroup.visible);
     this.updateCameraAwareWalls();
   }
 
   setTouchInteraction(active) {
     if (!this.isTouchDevice || this.destroyed) return;
     const enabled = Boolean(active);
-    this.controls.enabled = enabled;
+    this.controls.enabled = enabled || !this.primaryPointerIsCoarse;
     this.container.classList.toggle("is-touch-interacting", enabled);
     this.container.dataset.touchInteraction = enabled ? "active" : "scroll";
     this.touchToggle.setAttribute("aria-pressed", String(enabled));
@@ -1468,7 +1642,8 @@ class Room3DViewer {
       if (wall.visible) visible.push(wall.userData.wall);
     });
     this.windowVisuals.forEach((visual) => {
-      visual.group.visible = Boolean(wallVisibility.get(visual.windowData.wall));
+      const wallIsVisible = Boolean(wallVisibility.get(visual.windowData.wall));
+      visual.group.visible = !this.wallsVisible || wallIsVisible || visual.windowData.name === this.selectedWindowName;
     });
     this.doorGroup.children.forEach((door) => {
       door.visible = this.contextVisible && Boolean(wallVisibility.get(door.userData.wall));
@@ -1478,6 +1653,25 @@ class Room3DViewer {
     this.container.dataset.autoHiddenWalls = hidden.join(",");
     this.container.dataset.visibleWalls = visible.join(",");
     this.container.dataset.doorVisible = String(this.doorGroup.children.some((door) => door.visible));
+  }
+
+  constrainCamera() {
+    if (this.destroyed || !this.payload) return;
+    const room = this.payload.room;
+    const previousTarget = this.controls.target.clone();
+    this.controls.target.set(
+      THREE.MathUtils.clamp(this.controls.target.x, -room.width * 0.75, room.width * 0.75),
+      THREE.MathUtils.clamp(this.controls.target.y, 0, room.height * 1.25),
+      THREE.MathUtils.clamp(this.controls.target.z, -room.depth * 0.75, room.depth * 0.75),
+    );
+    this.camera.position.add(this.controls.target.clone().sub(previousTarget));
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    const distance = offset.length();
+    if (distance > 1e-8) {
+      offset.setLength(THREE.MathUtils.clamp(distance, this.controls.minDistance, this.controls.maxDistance));
+      this.camera.position.copy(this.controls.target).add(offset);
+    }
+    this.camera.lookAt(this.controls.target);
   }
 
   updateDebugState() {
@@ -1497,6 +1691,19 @@ class Room3DViewer {
         y: point ? Number(((-point.y * 0.5 + 0.5) * height).toFixed(1)) : 0,
       };
     }));
+    this.container.dataset.sunlightScreenPositions = JSON.stringify(
+      this.sunlightGroup.children
+        .filter((group) => group.userData.kind === "sunlight-patch-group")
+        .map((group, index) => {
+          const point = new THREE.Box3().setFromObject(group).getCenter(new THREE.Vector3()).project(this.camera);
+          return {
+            index,
+            windowName: group.userData.windowName,
+            x: Number(((point.x * 0.5 + 0.5) * width).toFixed(1)),
+            y: Number(((-point.y * 0.5 + 0.5) * height).toFixed(1)),
+          };
+        }),
+    );
   }
 
   handleKeyDown(event) {
@@ -1550,7 +1757,12 @@ class Room3DViewer {
       this.camera.position.copy(this.controls.target).add(new THREE.Vector3().setFromSpherical(spherical));
     } else {
       const zoomFactor = event.key === "+" || event.key === "=" ? 0.9 : 1.1;
-      this.camera.position.copy(this.controls.target).add(offset.multiplyScalar(zoomFactor));
+      const nextDistance = THREE.MathUtils.clamp(
+        distance * zoomFactor,
+        this.controls.minDistance,
+        this.controls.maxDistance,
+      );
+      this.camera.position.copy(this.controls.target).add(offset.setLength(nextDistance));
     }
     this.camera.lookAt(this.controls.target);
     this.controls.update();
@@ -1574,10 +1786,12 @@ class Room3DViewer {
     if (this.destroyed) return;
     const shouldRender = this.active && this.inViewport && document.visibilityState !== "hidden";
     this.renderer.setAnimationLoop(shouldRender ? () => {
-      this.controls.update();
+      const controlsChanged = this.controls.update();
+      if (!controlsChanged && !this.needsRender) return;
       this.renderer.render(this.scene, this.camera);
       this.updateLabels();
       this.updateDebugState();
+      this.needsRender = false;
     } : null);
     this.container.dataset.rendering = String(shouldRender);
   }
