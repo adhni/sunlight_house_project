@@ -887,7 +887,11 @@ class Room3DViewer {
     this.touchToggle.addEventListener("click", this.onToggleTouchInteraction);
 
     this.container.dataset.viewerState = "ready";
-    this.container.dataset.touchInteraction = this.isTouchDevice ? "scroll" : "desktop";
+    if (this.isTouchDevice) {
+      this.setTouchInteraction(false);
+    } else {
+      this.container.dataset.touchInteraction = "desktop";
+    }
     this.setStatus("3D room ready.");
     this.resize();
   }
@@ -1410,6 +1414,15 @@ class Room3DViewer {
   }
 
   handlePointerDown(event) {
+    if (
+      event.pointerType === "touch"
+      && this.isTouchDevice
+      && !this.container.classList.contains("is-touch-interacting")
+    ) {
+      this.pointerStart = null;
+      event.stopImmediatePropagation();
+      return;
+    }
     this.pointerStart = { x: event.clientX, y: event.clientY };
     if (!this.arrangeFurniture || event.button !== 0) return;
     const hit = this.furnitureHit(event);
@@ -1619,6 +1632,7 @@ class Room3DViewer {
     if (!this.isTouchDevice || this.destroyed) return;
     const enabled = Boolean(active);
     this.controls.enabled = enabled || !this.primaryPointerIsCoarse;
+    this.renderer.domElement.style.touchAction = enabled ? "none" : "pan-y pinch-zoom";
     this.container.classList.toggle("is-touch-interacting", enabled);
     this.container.dataset.touchInteraction = enabled ? "active" : "scroll";
     this.touchToggle.setAttribute("aria-pressed", String(enabled));

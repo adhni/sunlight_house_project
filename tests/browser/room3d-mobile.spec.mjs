@@ -37,14 +37,17 @@ test("uses an explicit touch interaction mode without trapping scroll", async ({
   await expect(touchToggle).toBeVisible();
   await expect(viewer).toHaveAttribute("data-touch-interaction", "scroll");
   await expect(viewer).toHaveCSS("touch-action", "pan-y pinch-zoom");
+  await expect(viewer.locator("canvas")).toHaveCSS("touch-action", "pan-y pinch-zoom");
 
   await touchToggle.click();
   await expect(touchToggle).toHaveAttribute("aria-pressed", "true");
   await expect(viewer).toHaveAttribute("data-touch-interaction", "active");
   await expect(viewer).toHaveCSS("touch-action", "none");
+  await expect(viewer.locator("canvas")).toHaveCSS("touch-action", "none");
 
   await touchToggle.click();
   await expect(viewer).toHaveAttribute("data-touch-interaction", "scroll");
+  await expect(viewer.locator("canvas")).toHaveCSS("touch-action", "pan-y pinch-zoom");
 });
 
 test("opens touch interaction automatically while arranging furniture", async ({ page }) => {
