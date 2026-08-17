@@ -94,6 +94,13 @@
   const room3dAnimationStatus = document.getElementById("room3d-animation-status");
   const room3dInteractionHint = document.getElementById("room3d-interaction-hint");
   const room3dPresetButtons = document.querySelectorAll("[data-room3d-time-preset]");
+  const room3dReadingState = document.getElementById("room3d-reading-state");
+  const room3dReadingRoom = document.getElementById("room3d-reading-room");
+  const room3dReadingSun = document.getElementById("room3d-reading-sun");
+  const room3dReadingFloor = document.getElementById("room3d-reading-floor");
+  const room3dReadingSelectedLabel = document.getElementById("room3d-reading-selected-label");
+  const room3dReadingSelected = document.getElementById("room3d-reading-selected");
+  const room3dReadingBlockers = document.getElementById("room3d-reading-blockers");
   const furnitureJsonInput = document.getElementById("furniture-json-input");
   const furniturePresetInput = document.getElementById("scene-furniture-preset");
   const furnitureArrangeButton = document.getElementById("furniture-arrange-button");
@@ -786,9 +793,9 @@
       return "Sun reaches floor";
     }
     if (state === "through_window_no_floor_hit") {
-      return "Sun enters window but misses floor";
+      return "Sun enters the room but misses the floor";
     }
-    return "Sun does not enter this window";
+    return "Sun does not enter the room";
   }
 
   function snapshotStateClass(state) {
@@ -799,6 +806,86 @@
       return "status-chip status-chip-mid";
     }
     return "status-chip status-chip-off";
+  }
+
+  function friendlyWindowLabel(payload, name) {
+    const index = payload?.windows?.findIndex((windowData) => windowData.name === name) ?? -1;
+    if (index < 0) return String(name || "Window").replace(/_/g, " ");
+    return payload.windows.length === 1 ? "Window" : `Window ${index + 1}`;
+  }
+
+  function compassDirection(azimuthDegrees) {
+    const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+    const normalized = ((Number(azimuthDegrees) % 360) + 360) % 360;
+    return directions[Math.round(normalized / 45) % directions.length];
+  }
+
+  function room3dBlockerLabels(payload) {
+    const scene = payload?.scene || {};
+    const labels = [];
+    if (scene.internal_wall?.enabled) labels.push("Divider");
+    if (scene.roof?.eaves_enabled) labels.push("Roof eaves");
+    if (scene.external_obstruction?.enabled) {
+      labels.push(scene.external_obstruction.preset === "building" ? "Nearby building" : "Outside fence");
+    }
+    return labels;
+  }
+
+  function updateRoom3dReading(payload) {
+    const snapshot = payload?.snapshot;
+    if (!snapshot) return;
+    const time = String(payload.selected_moment || "").slice(11, 16) || "this time";
+    const stateText = snapshot.state === "floor_hit"
+      ? "direct sun reaches the floor"
+      : snapshot.state === "through_window_no_floor_hit"
+        ? "sun enters the room but misses the floor"
+        : "the sun does not enter the room";
+    if (room3dReadingState) {
+      room3dReadingState.textContent = `At ${time}, ${stateText}.`;
+      room3dReadingState.dataset.state = snapshot.state || "no_entry";
+    }
+
+    if (room3dReadingRoom) {
+      room3dReadingRoom.textContent = `${Number(payload.room.width).toFixed(1)} × ${Number(payload.room.depth).toFixed(1)} × ${Number(payload.room.height).toFixed(1)} m room`;
+    }
+    if (room3dReadingSun) {
+      room3dReadingSun.textContent = snapshot.elevation_deg > 0
+        ? `${compassDirection(snapshot.azimuth_deg)} · ${Math.round(snapshot.elevation_deg)}° above horizon`
+        : "Below the horizon";
+    }
+
+    const patches = Array.isArray(snapshot.patches) ? snapshot.patches : [];
+    const contributingWindows = new Set(patches.map((patch) => patch.window_name));
+    if (room3dReadingFloor) {
+      room3dReadingFloor.textContent = patches.length
+        ? `${patches.length} floor patch${patches.length === 1 ? "" : "es"} from ${contributingWindows.size} window${contributingWindows.size === 1 ? "" : "s"}`
+        : "No direct sun on the floor";
+    }
+
+    const selectedName = windowRows[activeWindowIndex]?.name || payload.windows?.[0]?.name;
+    const selectedLabel = friendlyWindowLabel(payload, selectedName);
+    const selectedPatchCount = patches.filter((patch) => patch.window_name === selectedName).length;
+    const selectedIntensity = snapshot.window_intensities
+      ?.find((entry) => entry.name === selectedName)?.intensity || 0;
+    const isStrongest = snapshot.strongest_window === selectedName && selectedIntensity > 0;
+    if (room3dReadingSelectedLabel) room3dReadingSelectedLabel.textContent = `Selected · ${selectedLabel}`;
+    if (room3dReadingSelected) {
+      if (selectedPatchCount) {
+        room3dReadingSelected.textContent = `Reaches the floor${isStrongest ? " · strongest source" : ""}`;
+        room3dReadingSelected.dataset.state = "floor";
+      } else if (selectedIntensity > 0) {
+        room3dReadingSelected.textContent = "Sun enters, but misses the floor";
+        room3dReadingSelected.dataset.state = "enters";
+      } else {
+        room3dReadingSelected.textContent = "No direct sun at this time";
+        room3dReadingSelected.dataset.state = "off";
+      }
+    }
+
+    const blockers = room3dBlockerLabels(payload);
+    if (room3dReadingBlockers) {
+      room3dReadingBlockers.textContent = blockers.length ? blockers.join(" + ") : "No extra blockers";
+    }
   }
 
   function debounce(fn, waitMs) {
@@ -955,9 +1042,9 @@
       return "At the selected time, the sun reaches the floor.";
     }
     if (state === "through_window_no_floor_hit") {
-      return "At the selected time, the sun enters the window but does not reach the floor.";
+      return "At the selected time, the sun enters the room but does not reach the floor.";
     }
-    return "At the selected time, the sun does not enter this window.";
+    return "At the selected time, the sun does not enter the room.";
   }
 
   function updateSummaryMetrics(payload) {
@@ -1348,7 +1435,7 @@
     syncDayAnimationControls(payload, dayAnimationIndex);
     setDayAnimationEnabled(true);
     setDayAnimationStatus(
-      `${payload.frames.length} frames ready · ${payload.step_minutes}-minute steps${source === "cache" || payload.cache_hit ? " · cached" : ""}.`,
+      `Day ready · sampled every ${payload.step_minutes} minutes${source === "cache" || payload.cache_hit ? " · cached" : ""}.`,
       "ready",
     );
     if (room3dContainer) {
@@ -1412,18 +1499,21 @@
 
   function updateAnimatedMomentDom(payload) {
     const snapshot = payload.snapshot;
+    updateRoom3dReading(payload);
     setText("sun-summary-moment", snapshotMomentText(snapshot.state));
     setText("selected-moment-label", formatSelectedMoment(payload));
     setText("live-elevation", `${snapshot.elevation_deg.toFixed(2)} deg`);
     setText("live-azimuth", `${snapshot.azimuth_deg.toFixed(2)} deg`);
     setText("live-entry", snapshot.entered_direct_sun ? "Yes — reaches floor" : "No floor patch");
     setText("live-strongest", snapshot.strongest_window
-      ? `${snapshot.strongest_window} (${snapshot.strongest_intensity.toFixed(3)})`
+      ? `${friendlyWindowLabel(payload, snapshot.strongest_window)} (${snapshot.strongest_intensity.toFixed(3)})`
       : "None");
     setText("live-vector", `(${snapshot.vector.map((value) => value.toFixed(3)).join(", ")})`);
-    setHtml("room-snapshot-svg", createRoomSvg(payload));
-    wireRoomWindowDrag();
-    wireRoomWindowResize();
+    if (activeResultTab === "current") {
+      setHtml("room-snapshot-svg", createRoomSvg(payload));
+      wireRoomWindowDrag();
+      wireRoomWindowResize();
+    }
     const snapshotStatus = document.getElementById("room-snapshot-status");
     if (snapshotStatus) {
       snapshotStatus.textContent = snapshotStateLabel(snapshot.state);
@@ -2677,6 +2767,7 @@
     const timeZone = payload.location.timezone_name;
     const sunActiveWindowCount = snapshot.window_intensities.filter((entry) => entry.intensity > 0).length;
     const floorPatchCount = snapshot.patches.length;
+    updateRoom3dReading(payload);
     updateSummaryDom(payload.summary);
     updateSummaryMetrics(payload);
 
@@ -2694,7 +2785,7 @@
     setText("live-azimuth", `${snapshot.azimuth_deg.toFixed(2)} deg`);
     setText("live-entry", snapshot.entered_direct_sun ? "Yes — reaches floor" : "No floor patch");
     setText("live-strongest", snapshot.strongest_window
-      ? `${snapshot.strongest_window} (${snapshot.strongest_intensity.toFixed(3)})`
+      ? `${friendlyWindowLabel(payload, snapshot.strongest_window)} (${snapshot.strongest_intensity.toFixed(3)})`
       : "None");
     setText("live-vector", `(${snapshot.vector.map((value) => value.toFixed(3)).join(", ")})`);
     setText("live-daily-peak", daily.peak_time
@@ -2713,7 +2804,7 @@
     if (payload.window_override_active && windowRows.length > 1) {
       const patchLabel = floorPatchCount === 1 ? "1 floor patch" : `${floorPatchCount} floor patches`;
       const activeLabel = sunActiveWindowCount === 1 ? "1 active window" : `${sunActiveWindowCount} active windows`;
-      setText("window-centre-readout", `Strongest window: ${snapshot.strongest_window || "None"}`);
+      setText("window-centre-readout", `Strongest window: ${snapshot.strongest_window ? friendlyWindowLabel(payload, snapshot.strongest_window) : "None"}`);
       setText("window-width-readout", `${activeLabel} · ${patchLabel}`);
     } else {
       updateWindowGeometryReadout(center, width);
@@ -3073,6 +3164,9 @@
       panel.classList.toggle("is-active", isActive);
       panel.setAttribute("aria-hidden", String(!isActive));
     });
+    if (selectedTab === "current" && currentPayload) {
+      updateAnimatedMomentDom(currentPayload);
+    }
     if (focus) activeButton.focus();
     const room3dActivation = setRoom3dActive(selectedTab === "room-3d");
     if (

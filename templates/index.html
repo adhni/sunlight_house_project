@@ -50,9 +50,9 @@
                 {% if snapshot.entered_direct_sun %}
                 Sun reaches floor
                 {% elif strongest_intensity > 0 %}
-                Sun enters window but misses floor
+                Sun enters the room but misses the floor
                 {% else %}
-                Sun does not enter this window
+                Sun does not enter the room
                 {% endif %}
               </div>
             </div>
@@ -147,15 +147,68 @@
                   <p class="section-kicker">Interactive view</p>
                   <h3>Sunlight inside the room</h3>
                 </div>
-                <div class="chip-row room3d-actions" role="group" aria-label="3D view controls">
-                  <button id="room3d-reset-camera" type="button" class="chip-button chip-button-soft is-active" data-room3d-camera-preset="perspective" aria-pressed="true">Perspective</button>
-                  <button type="button" class="chip-button chip-button-soft" data-room3d-camera-preset="top" aria-pressed="false">Top</button>
-                  <button type="button" class="chip-button chip-button-soft" data-room3d-camera-preset="front" aria-pressed="false">Front</button>
-                  <button id="room3d-toggle-walls" type="button" class="chip-button chip-button-soft" aria-pressed="true">Walls auto</button>
-                  <button id="room3d-toggle-roof" type="button" class="chip-button chip-button-soft" aria-pressed="false">Show roof</button>
-                  <button id="room3d-toggle-context" type="button" class="chip-button chip-button-soft" aria-pressed="true">Context on</button>
+                <div class="room3d-toolbar">
+                  <div class="room3d-control-group" role="group" aria-label="Camera view">
+                    <span class="room3d-control-label">View</span>
+                    <div class="chip-row room3d-actions">
+                      <button id="room3d-reset-camera" type="button" class="chip-button chip-button-soft is-active" data-room3d-camera-preset="perspective" aria-pressed="true" aria-label="Reset to the 3D corner view">Reset 3D</button>
+                      <button type="button" class="chip-button chip-button-soft" data-room3d-camera-preset="top" aria-pressed="false">Floor plan</button>
+                      <button type="button" class="chip-button chip-button-soft" data-room3d-camera-preset="front" aria-pressed="false">Front wall</button>
+                    </div>
+                  </div>
+                  <details class="room3d-display-options">
+                    <summary class="chip-button chip-button-soft">Display</summary>
+                    <div class="chip-row room3d-display-actions" role="group" aria-label="3D display options">
+                      <button id="room3d-toggle-walls" type="button" class="chip-button chip-button-soft" aria-pressed="true">Auto-hide walls</button>
+                      <button id="room3d-toggle-roof" type="button" class="chip-button chip-button-soft" aria-pressed="false">Show roof</button>
+                      <button id="room3d-toggle-context" type="button" class="chip-button chip-button-soft" aria-pressed="true">Scale objects on</button>
+                    </div>
+                  </details>
                 </div>
               </div>
+              <p id="room3d-interaction-hint" class="angle-caption room3d-interaction-hint">
+                <span class="room3d-pointer-help">Drag to look around · scroll to zoom · select a window or its sunlight to trace the result.</span>
+                <span class="room3d-touch-help">Tap Explore 3D, then drag to look and pinch to zoom.</span>
+              </p>
+              <div
+                id="room3d-container"
+                class="room3d-container"
+                data-viewer-state="idle"
+                role="region"
+                aria-label="Interactive 3D model of the room and its current direct sunlight"
+              ></div>
+              <div class="room3d-scene-legend" aria-label="3D scene legend">
+                <span class="room3d-legend-sun">Direct sun on floor</span>
+                <span class="room3d-legend-selected">Selected window + its sun</span>
+                <span class="room3d-legend-blocker">Shade blocker</span>
+                <span class="room3d-legend-context">1 m grid + scale objects</span>
+              </div>
+              <section id="room3d-reading" class="room3d-reading" aria-label="Current 3D sunlight reading">
+                <div class="room3d-reading-lead">
+                  <span class="section-kicker">Current reading</span>
+                  <strong id="room3d-reading-state" data-state="idle">Reading the sunlight…</strong>
+                  <span id="room3d-reading-room" class="angle-caption">Room scale</span>
+                </div>
+                <dl>
+                  <div>
+                    <dt>Sun position</dt>
+                    <dd id="room3d-reading-sun">Calculating…</dd>
+                  </div>
+                  <div>
+                    <dt>Floor sunlight</dt>
+                    <dd id="room3d-reading-floor">Calculating…</dd>
+                  </div>
+                  <div class="room3d-reading-selected">
+                    <dt id="room3d-reading-selected-label">Selected window</dt>
+                    <dd id="room3d-reading-selected">Calculating…</dd>
+                  </div>
+                  <div>
+                    <dt>Shading included</dt>
+                    <dd id="room3d-reading-blockers">Calculating…</dd>
+                  </div>
+                </dl>
+                <p class="room3d-scope-note">Furniture and the door are visual scale guides only; they do not shade the sunlight result.</p>
+              </section>
               <div id="room3d-animation-controls" class="room3d-animation-controls" data-state="idle">
                 <div class="room3d-animation-primary">
                   <button id="room3d-play" type="button" class="chip-button" aria-pressed="false" disabled>Play day</button>
@@ -180,61 +233,52 @@
                 </div>
                 <span id="room3d-animation-status" class="angle-caption room3d-animation-status" role="status">Open the 3D view to load the day.</span>
               </div>
-              <p id="room3d-interaction-hint" class="angle-caption room3d-interaction-hint">
-                <span class="room3d-pointer-help">Drag to look around · scroll to zoom · select a window to edit it.</span>
-                <span class="room3d-touch-help">Tap Explore 3D, then drag to look and pinch to zoom.</span>
-              </p>
-              <section class="furniture-tools" aria-label="Furniture editor">
-                <div class="chip-row furniture-toolbar">
-                  <button id="furniture-arrange-button" type="button" class="chip-button" aria-pressed="false">Arrange furniture</button>
-                  <button id="furniture-add-button" type="button" class="chip-button chip-button-soft" aria-expanded="false" aria-controls="furniture-palette">Add furniture</button>
-                  <button id="furniture-undo-button" type="button" class="chip-button chip-button-soft" disabled>Undo</button>
-                </div>
-                <div id="furniture-palette" class="furniture-palette" hidden>
-                  <span class="explorer-label">Choose an item</span>
-                  <div class="chip-row">
-                    <button type="button" class="chip-button chip-button-soft" data-add-furniture="sofa">Sofa</button>
-                    <button type="button" class="chip-button chip-button-soft" data-add-furniture="chair">Chair</button>
-                    <button type="button" class="chip-button chip-button-soft" data-add-furniture="table">Table</button>
-                    <button type="button" class="chip-button chip-button-soft" data-add-furniture="bed">Bed</button>
-                  </div>
-                </div>
-                <div id="furniture-selection-editor" class="furniture-selection-editor" hidden>
-                  <div class="furniture-editor-heading">
-                    <div>
-                      <span class="section-kicker">Selected furniture</span>
-                      <strong id="furniture-selection-title">Furniture</strong>
-                    </div>
-                    <span id="furniture-save-status" class="angle-caption" role="status">Saved in this browser</span>
-                  </div>
-                  <div class="furniture-fields">
-                    <label><span>Left / right (m)</span><input id="furniture-x-input" type="number" min="0" step="0.05"></label>
-                    <label><span>Front / back (m)</span><input id="furniture-y-input" type="number" min="0" step="0.05"></label>
-                    <label><span>Rotation (°)</span><input id="furniture-rotation-input" type="number" step="15"></label>
-                    <label><span>Size</span><input id="furniture-scale-input" type="number" min="0.5" max="1.5" step="0.05"></label>
-                  </div>
-                  <div class="chip-row furniture-item-actions">
-                    <button type="button" class="chip-button chip-button-soft" data-furniture-action="rotate-left" aria-label="Rotate selected furniture left 15 degrees">↶ 15°</button>
-                    <button type="button" class="chip-button chip-button-soft" data-furniture-action="rotate-right" aria-label="Rotate selected furniture right 15 degrees">↷ 15°</button>
-                    <button type="button" class="chip-button chip-button-soft" data-furniture-action="duplicate">Duplicate</button>
-                    <button type="button" class="chip-button chip-button-soft furniture-delete" data-furniture-action="delete">Delete</button>
-                  </div>
-                </div>
-              </section>
-              <div
-                id="room3d-container"
-                class="room3d-container"
-                data-viewer-state="idle"
-                role="region"
-                aria-label="Interactive 3D model of the room and its current direct sunlight"
-              ></div>
-              <div class="room3d-scene-legend" aria-label="3D scene legend">
-                <span class="room3d-legend-sun">Direct sun</span>
-                <span class="room3d-legend-selected">Selected window</span>
-                <span class="room3d-legend-blocker">Shade blocker</span>
-                <span class="room3d-legend-context">Scale context</span>
-              </div>
               <button id="room3d-edit-selected-window" type="button" class="chip-button chip-button-soft room3d-edit-selected-window">Edit selected window</button>
+              <details class="furniture-tools">
+                <summary>
+                  <span>
+                    <strong>Furniture layout</strong>
+                    <small>Optional visual scale context</small>
+                  </span>
+                </summary>
+                <div class="furniture-tools-body" aria-label="Furniture editor">
+                  <div class="chip-row furniture-toolbar">
+                    <button id="furniture-arrange-button" type="button" class="chip-button" aria-pressed="false">Arrange furniture</button>
+                    <button id="furniture-add-button" type="button" class="chip-button chip-button-soft" aria-expanded="false" aria-controls="furniture-palette">Add furniture</button>
+                    <button id="furniture-undo-button" type="button" class="chip-button chip-button-soft" disabled>Undo</button>
+                  </div>
+                  <div id="furniture-palette" class="furniture-palette" hidden>
+                    <span class="explorer-label">Choose an item</span>
+                    <div class="chip-row">
+                      <button type="button" class="chip-button chip-button-soft" data-add-furniture="sofa">Sofa</button>
+                      <button type="button" class="chip-button chip-button-soft" data-add-furniture="chair">Chair</button>
+                      <button type="button" class="chip-button chip-button-soft" data-add-furniture="table">Table</button>
+                      <button type="button" class="chip-button chip-button-soft" data-add-furniture="bed">Bed</button>
+                    </div>
+                  </div>
+                  <div id="furniture-selection-editor" class="furniture-selection-editor" hidden>
+                    <div class="furniture-editor-heading">
+                      <div>
+                        <span class="section-kicker">Selected furniture</span>
+                        <strong id="furniture-selection-title">Furniture</strong>
+                      </div>
+                      <span id="furniture-save-status" class="angle-caption" role="status">Saved in this browser</span>
+                    </div>
+                    <div class="furniture-fields">
+                      <label><span>Left / right (m)</span><input id="furniture-x-input" type="number" min="0" step="0.05"></label>
+                      <label><span>Front / back (m)</span><input id="furniture-y-input" type="number" min="0" step="0.05"></label>
+                      <label><span>Rotation (°)</span><input id="furniture-rotation-input" type="number" step="15"></label>
+                      <label><span>Size</span><input id="furniture-scale-input" type="number" min="0.5" max="1.5" step="0.05"></label>
+                    </div>
+                    <div class="chip-row furniture-item-actions">
+                      <button type="button" class="chip-button chip-button-soft" data-furniture-action="rotate-left" aria-label="Rotate selected furniture left 15 degrees">↶ 15°</button>
+                      <button type="button" class="chip-button chip-button-soft" data-furniture-action="rotate-right" aria-label="Rotate selected furniture right 15 degrees">↷ 15°</button>
+                      <button type="button" class="chip-button chip-button-soft" data-furniture-action="duplicate">Duplicate</button>
+                      <button type="button" class="chip-button chip-button-soft furniture-delete" data-furniture-action="delete">Delete</button>
+                    </div>
+                  </div>
+                </div>
+              </details>
               <div class="room3d-footer">
                 <p id="room3d-status" class="angle-caption" role="status">Open this tab to load the 3D room.</p>
                 <p id="room3d-keyboard-help" class="angle-caption">Keyboard: arrows orbit · Shift + arrows pan · +/− zoom. In Arrange mode, arrows move the selected item, Q/E rotate, Delete removes.</p>
