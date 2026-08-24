@@ -149,10 +149,12 @@
   let goalStudioQuery = "";
   let latestGoalStudioRequestId = 0;
   let activeGoalStudioController = null;
+  let goalProbeKeyboardTimer = null;
   let currentPayload = initialData;
   let baselinePayload = null;
   const defaultUpdateMessage = "Map is up to date.";
   const MAX_WINDOWS = 10;
+  const GOAL_PROBE_KEY_DEBOUNCE_MS = 300;
   const baselineStorageKey = "sunlight-house-baseline";
   const environmentReferenceRadiusKm = 50;
   let environmentByHour = new Map();
@@ -2999,8 +3001,19 @@
     goalProbe.x = clamp(local.x, 0, currentPayload.room.width);
     goalProbe.y = clamp(currentPayload.room.depth - local.y, 0, currentPayload.room.depth);
     goalStudioPayload = null;
+    clearTimeout(goalProbeKeyboardTimer);
+    goalProbeKeyboardTimer = null;
     renderGoalProbeMap();
     fetchGoalStudio(true);
+  }
+
+  function scheduleKeyboardProbeEvaluation() {
+    clearTimeout(goalProbeKeyboardTimer);
+    setGoalStudioStatus("Probe moved. Evaluating after you finish moving it...", "draft");
+    goalProbeKeyboardTimer = setTimeout(() => {
+      goalProbeKeyboardTimer = null;
+      fetchGoalStudio(true);
+    }, GOAL_PROBE_KEY_DEBOUNCE_MS);
   }
 
   function moveGoalProbeFromKeyboard(event) {
@@ -3014,7 +3027,7 @@
     clampGoalProbeToRoom();
     goalStudioPayload = null;
     renderGoalProbeMap();
-    fetchGoalStudio(true);
+    scheduleKeyboardProbeEvaluation();
   }
 
   function clockMinutes(value) {
@@ -3485,6 +3498,8 @@
 
   goalPresetButtons.forEach((button) => {
     button.addEventListener("click", () => {
+      clearTimeout(goalProbeKeyboardTimer);
+      goalProbeKeyboardTimer = null;
       activeGoalKey = button.dataset.goalPreset;
       goalPresetButtons.forEach((item) => {
         const active = item === button;
@@ -3498,6 +3513,8 @@
 
   goalZoneSizeButtons.forEach((button) => {
     button.addEventListener("click", () => {
+      clearTimeout(goalProbeKeyboardTimer);
+      goalProbeKeyboardTimer = null;
       goalProbe.size = Math.min(Number(button.dataset.goalZoneSize), currentPayload.room.width, currentPayload.room.depth);
       goalZoneSizeButtons.forEach((item) => {
         const active = item === button;
@@ -3510,7 +3527,11 @@
     });
   });
 
-  goalEvaluateButton?.addEventListener("click", () => fetchGoalStudio(true));
+  goalEvaluateButton?.addEventListener("click", () => {
+    clearTimeout(goalProbeKeyboardTimer);
+    goalProbeKeyboardTimer = null;
+    fetchGoalStudio(true);
+  });
   goalProbeMap?.addEventListener("click", moveGoalProbeFromPointer);
   goalProbeMap?.addEventListener("keydown", moveGoalProbeFromKeyboard);
 
@@ -3889,6 +3910,7 @@
   });
   window.addEventListener("beforeunload", () => {
     pauseRoom3dAnimation();
+    clearTimeout(goalProbeKeyboardTimer);
     dayAnimationController?.abort();
     activeSceneController?.abort();
     activeGoalStudioController?.abort();

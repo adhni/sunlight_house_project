@@ -26,9 +26,17 @@ test("evaluates a goal at a movable, keyboard-accessible floor zone", async ({ p
   expect(await page.locator(".goal-suggestion-card").count()).toBeGreaterThan(0);
 
   const originalReadout = await page.locator("#goal-probe-readout").textContent();
+  let goalRequestCount = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/api/goal-studio")) goalRequestCount += 1;
+  });
   await page.locator("#goal-probe-map").focus();
-  await page.locator("#goal-probe-map").press("ArrowRight");
+  for (let index = 0; index < 6; index += 1) {
+    await page.locator("#goal-probe-map").press("ArrowRight");
+  }
   await expect(page.locator("#goal-probe-readout")).not.toHaveText(originalReadout);
+  await expect(page.locator("#goal-studio-status")).toContainText("evaluated", { timeout: 25_000 });
+  expect(goalRequestCount).toBe(1);
 });
 
 

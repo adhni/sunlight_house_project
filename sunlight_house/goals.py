@@ -7,7 +7,7 @@ from typing import Literal
 import numpy as np
 
 from .analysis import point_in_polygon, room_sun_vector
-from .config import SimulationConfig, window_on_wall
+from .config import COMPASS_OPTIONS, SimulationConfig, window_on_wall
 from .geometry import patches_for_windows
 from .solar import generate_day_positions
 
@@ -92,6 +92,16 @@ def _window_wall(window) -> str:
         (1.0, 0.0, 0.0): "east",
         (-1.0, 0.0, 0.0): "west",
     }[normal]
+
+
+def _movement_direction_label(config: SimulationConfig, wall: str, delta: float) -> str:
+    if wall in {"north", "south"}:
+        local_bearing = 90.0 if delta > 0.0 else 270.0
+    else:
+        local_bearing = 0.0 if delta > 0.0 else 180.0
+    world_bearing = (config.window_facing_deg + local_bearing) % 360.0
+    compass_labels = [label for label, _angle in COMPASS_OPTIONS]
+    return compass_labels[int(round(world_bearing / 45.0)) % len(compass_labels)]
 
 
 def _window_rows(config: SimulationConfig) -> list[dict[str, object]]:
@@ -303,16 +313,18 @@ def _suggestion_candidates(
             actual_delta = next_span - span
             if abs(actual_delta) < 0.1:
                 continue
-            direction = (
-                ("east" if actual_delta > 0 else "west")
-                if wall in {"north", "south"}
-                else ("north" if actual_delta > 0 else "south")
-            )
+            direction = _movement_direction_label(config, wall, actual_delta)
+            wall_label = {
+                "north": "front",
+                "east": "right",
+                "south": "back",
+                "west": "left",
+            }[wall]
             variant = _replace_window(config, index, span=next_span, sill=sill, width=width)
             candidates.append(
                 {
                     "config": variant,
-                    "title": f"Move {name} {abs(actual_delta):.2f} m {direction}",
+                    "title": f"Move {name} {abs(actual_delta):.2f} m {direction} along the {wall_label} wall",
                     "change_type": "position",
                     "tradeoff": "Keeps the opening size, but changes where its direct beam lands.",
                     "apply": {"windows": _window_rows(variant)},

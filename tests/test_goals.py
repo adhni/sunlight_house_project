@@ -5,7 +5,7 @@ from dataclasses import replace
 from datetime import date
 
 from sunlight_house.config import Location, default_melbourne_scenario
-from sunlight_house.goals import GOAL_DEFINITIONS, evaluate_probe, goal_studio_payload
+from sunlight_house.goals import GOAL_DEFINITIONS, _movement_direction_label, evaluate_probe, goal_studio_payload
 
 
 class GoalStudioTests(unittest.TestCase):
@@ -54,6 +54,17 @@ class GoalStudioTests(unittest.TestCase):
 
         self.assertEqual(winter["probe"]["date"], "2025-12-21")
         self.assertEqual(summer["probe"]["date"], "2025-06-21")
+
+    def test_window_movement_direction_uses_selected_room_bearing(self) -> None:
+        north_facing = replace(self.config, window_facing_label="N")
+        northeast_facing = replace(self.config, window_facing_label="NE")
+
+        self.assertEqual(_movement_direction_label(north_facing, "north", 0.35), "E")
+        self.assertEqual(_movement_direction_label(north_facing, "north", -0.35), "W")
+        self.assertEqual(_movement_direction_label(northeast_facing, "north", 0.35), "SE")
+        self.assertEqual(_movement_direction_label(northeast_facing, "north", -0.35), "NW")
+        self.assertEqual(_movement_direction_label(northeast_facing, "east", 0.35), "NE")
+        self.assertEqual(_movement_direction_label(northeast_facing, "east", -0.35), "SW")
 
 
 if __name__ == "__main__":
