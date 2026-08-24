@@ -63,6 +63,7 @@
                 <button id="result-tab-room-3d" type="button" role="tab" aria-controls="result-panel-room-3d" aria-selected="false" tabindex="-1" class="chip-button" data-result-tab="room-3d">3D room</button>
                 <button id="result-tab-sunlight-map" type="button" role="tab" aria-controls="result-panel-sunlight-map" aria-selected="false" tabindex="-1" class="chip-button" data-result-tab="sunlight-map">Today</button>
                 <button id="result-tab-long-range" type="button" role="tab" aria-controls="result-panel-long-range" aria-selected="false" tabindex="-1" class="chip-button" data-result-tab="long-range">Year estimate</button>
+                <button id="result-tab-goal-studio" type="button" role="tab" aria-controls="result-panel-goal-studio" aria-selected="false" tabindex="-1" class="chip-button" data-result-tab="goal-studio">Goal studio</button>
                 <button id="result-tab-outdoor-year" type="button" role="tab" aria-controls="result-panel-outdoor-year" aria-selected="false" tabindex="-1" class="chip-button" data-result-tab="outdoor-year">Outdoor context</button>
               </div>
               <div class="result-status-row">
@@ -180,6 +181,7 @@
               <div class="room3d-scene-legend" aria-label="3D scene legend">
                 <span class="room3d-legend-sun">Direct sun on floor</span>
                 <span class="room3d-legend-selected">Selected window + its sun</span>
+                <span class="room3d-legend-goal">Goal zone</span>
                 <span class="room3d-legend-blocker">Shade blocker</span>
                 <span class="room3d-legend-context">1 m grid + scale objects</span>
               </div>
@@ -358,6 +360,109 @@
               <p id="long-range-exposure-caption" class="angle-caption room-caption">
                 Estimated direct sun exposure time across longer periods.
               </p>
+            </div>
+
+            <div id="result-panel-goal-studio" class="result-view goal-studio" role="tabpanel" aria-labelledby="result-tab-goal-studio" data-result-panel="goal-studio">
+              <div class="goal-studio-header">
+                <div>
+                  <p class="section-kicker">Design around a place</p>
+                  <h2>Sunlight Goal Studio</h2>
+                  <p class="angle-caption">Choose what this part of the room should do. The model measures that zone, then tests small explainable changes.</p>
+                </div>
+                <button id="goal-evaluate-button" type="button" class="chip-button">Evaluate goal</button>
+              </div>
+
+              <div class="goal-preset-picker" role="group" aria-label="Sunlight goal">
+                <button type="button" class="goal-preset-button is-active" data-goal-preset="winter_warmth" aria-pressed="true">
+                  <strong>Winter warmth</strong><span>Seek useful winter sun</span>
+                </button>
+                <button type="button" class="goal-preset-button" data-goal-preset="summer_protection" aria-pressed="false">
+                  <strong>Summer protection</strong><span>Limit hot-period direct sun</span>
+                </button>
+                <button type="button" class="goal-preset-button" data-goal-preset="morning_sun" aria-pressed="false">
+                  <strong>Morning sun</strong><span>Seek sun before midday</span>
+                </button>
+                <button type="button" class="goal-preset-button" data-goal-preset="screen_protection" aria-pressed="false">
+                  <strong>Screen protection</strong><span>Avoid direct sun at a desk</span>
+                </button>
+              </div>
+
+              <div class="goal-studio-layout">
+                <section class="goal-probe-panel" aria-labelledby="goal-probe-heading">
+                  <div class="goal-panel-heading">
+                    <div>
+                      <span class="section-kicker">1 · Pick a zone</span>
+                      <h3 id="goal-probe-heading">Where should the goal apply?</h3>
+                    </div>
+                    <output id="goal-probe-readout">Room centre</output>
+                  </div>
+                  <div id="goal-probe-map" class="goal-probe-map" tabindex="0" aria-label="Click the floor or use arrow keys to move the sunlight probe"></div>
+                  <div class="goal-zone-size">
+                    <span class="explorer-label">Zone size</span>
+                    <div class="chip-row" role="group" aria-label="Probe zone size">
+                      <button type="button" class="chip-button chip-button-soft" data-goal-zone-size="0.5" aria-pressed="false">Spot · 0.5 m</button>
+                      <button type="button" class="chip-button chip-button-soft is-active" data-goal-zone-size="0.8" aria-pressed="true">Seat · 0.8 m</button>
+                      <button type="button" class="chip-button chip-button-soft" data-goal-zone-size="1.2" aria-pressed="false">Area · 1.2 m</button>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="goal-reading-panel" aria-labelledby="goal-reading-heading">
+                  <div class="goal-panel-heading">
+                    <div>
+                      <span class="section-kicker">2 · Read the result</span>
+                      <h3 id="goal-reading-heading">Zone result</h3>
+                    </div>
+                    <span id="goal-studio-status" class="update-status" data-state="idle" role="status">Open this view to evaluate.</span>
+                  </div>
+                  <div id="goal-reading-empty" class="goal-reading-empty">Choose a goal and floor zone to see its direct-sun timeline.</div>
+                  <div id="goal-reading-content" hidden>
+                    <div class="goal-score-row">
+                      <div id="goal-score-ring" class="goal-score-ring" style="--goal-score: 0">
+                        <strong id="goal-score-value">0</strong><span>/ 100</span>
+                      </div>
+                      <div>
+                        <span id="goal-met-badge" class="status-chip status-chip-off">Not evaluated</span>
+                        <h3 id="goal-question">Goal result</h3>
+                        <p id="goal-target-copy" class="angle-caption"></p>
+                      </div>
+                    </div>
+                    <div class="goal-metric-grid">
+                      <article class="metric-card"><span class="metric-label">Direct sun in zone</span><strong id="goal-direct-hours">0.0 h</strong></article>
+                      <article class="metric-card"><span class="metric-label">First → last</span><strong id="goal-time-range">None</strong></article>
+                      <article class="metric-card"><span class="metric-label">Reference day</span><strong id="goal-reference-date">—</strong></article>
+                    </div>
+                    <div class="goal-timeline-section">
+                      <span class="explorer-label">Direct-sun timeline</span>
+                      <div id="goal-timeline" class="goal-timeline" aria-label="Direct sunlight timeline"></div>
+                      <div id="goal-intervals" class="goal-intervals"></div>
+                    </div>
+                    <div class="goal-window-sources">
+                      <span class="explorer-label">What causes this result?</span>
+                      <div id="goal-window-contributions"></div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <section class="goal-suggestions" aria-labelledby="goal-suggestions-heading">
+                <div class="goal-panel-heading">
+                  <div>
+                    <span class="section-kicker">3 · Explore a change</span>
+                    <h3 id="goal-suggestions-heading">Measured suggestions</h3>
+                  </div>
+                  <span id="goal-tested-count" class="angle-caption"></span>
+                </div>
+                <div id="goal-suggestion-list" class="goal-suggestion-list">
+                  <div class="goal-reading-empty">Suggestions appear after the zone is evaluated.</div>
+                </div>
+              </section>
+
+              <details class="subtle-details goal-method-details">
+                <summary>How this is calculated and what it leaves out</summary>
+                <p id="goal-method-copy"></p>
+                <p id="goal-scope-copy"></p>
+              </details>
             </div>
 
             <div id="result-panel-outdoor-year" class="result-view" role="tabpanel" aria-labelledby="result-tab-outdoor-year" data-result-panel="outdoor-year">

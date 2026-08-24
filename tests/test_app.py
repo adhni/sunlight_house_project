@@ -92,6 +92,49 @@ class AppTests(unittest.TestCase):
         self.assertFalse(payload["scene"]["furniture"]["affects_sunlight"])
         self.assertIn("source_center_xyz", payload["snapshot"]["patches"][0])
 
+    def test_goal_studio_api_returns_probe_timeline_and_explainable_suggestions(self) -> None:
+        response = self.client.get(
+            "/api/goal-studio",
+            query_string={
+                "goal": "winter_warmth",
+                "probe_x": "2.0",
+                "probe_y": "2.5",
+                "probe_size": "0.8",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["goal"]["key"], "winter_warmth")
+        self.assertEqual(payload["probe"]["date"], "2025-06-21")
+        self.assertEqual(payload["probe"]["zone"]["sample_count"], 9)
+        self.assertIn("direct_sun_hours", payload["probe"])
+        self.assertTrue(payload["probe"]["timeline"])
+        self.assertGreater(payload["tested_change_count"], 0)
+        for suggestion in payload["suggestions"]:
+            self.assertGreater(suggestion["improvement_hours"], 0)
+            self.assertIn("reason", suggestion)
+            self.assertIn("tradeoff", suggestion)
+            self.assertIn("apply", suggestion)
+
+    def test_goal_studio_uses_selected_day_for_morning_goal(self) -> None:
+        response = self.client.get(
+            "/api/goal-studio",
+            query_string={"goal": "morning_sun", "selected_date": "2025-04-04"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["probe"]["date"], "2025-04-04")
+
+    def test_goal_studio_rejects_unknown_goal_and_out_of_room_probe(self) -> None:
+        invalid_goal = self.client.get("/api/goal-studio", query_string={"goal": "perfect_room"})
+        invalid_probe = self.client.get("/api/goal-studio", query_string={"probe_x": "999"})
+
+        self.assertEqual(invalid_goal.status_code, 400)
+        self.assertIn("Goal must be", invalid_goal.get_json()["error"])
+        self.assertEqual(invalid_probe.status_code, 400)
+        self.assertIn("Probe X", invalid_probe.get_json()["error"])
+
     def test_scene_details_scale_to_the_current_room(self) -> None:
         values = default_form_values()
         config, _moment = build_config_and_moment(values | {"room_width": "8", "room_depth": "6"})
