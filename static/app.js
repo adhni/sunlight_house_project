@@ -44,6 +44,15 @@
   const resultTabButtons = document.querySelectorAll("[data-result-tab]");
   const resultPanels = document.querySelectorAll("[data-result-panel]");
   const periodViewButtons = document.querySelectorAll("[data-period-view]");
+  const goalPresetButtons = document.querySelectorAll("[data-goal-preset]");
+  const goalZoneSizeButtons = document.querySelectorAll("[data-goal-zone-size]");
+  const goalEvaluateButton = document.getElementById("goal-evaluate-button");
+  const goalProbeMap = document.getElementById("goal-probe-map");
+  const goalProbeReadout = document.getElementById("goal-probe-readout");
+  const goalStudioStatus = document.getElementById("goal-studio-status");
+  const goalReadingEmpty = document.getElementById("goal-reading-empty");
+  const goalReadingContent = document.getElementById("goal-reading-content");
+  const goalSuggestionList = document.getElementById("goal-suggestion-list");
 
   const customLocationPanel = document.getElementById("custom-location-panel");
   const customLocationToggle = document.getElementById("custom-location-toggle");
@@ -130,10 +139,22 @@
   let activeLongRangePeriod = "year";
   let longRangePayload = null;
   let longRangeQuery = "";
+  let activeGoalKey = "winter_warmth";
+  let goalProbe = {
+    x: initialData.room.width / 2,
+    y: initialData.room.depth / 2,
+    size: Math.min(0.8, initialData.room.width, initialData.room.depth),
+  };
+  let goalStudioPayload = null;
+  let goalStudioQuery = "";
+  let latestGoalStudioRequestId = 0;
+  let activeGoalStudioController = null;
+  let goalProbeKeyboardTimer = null;
   let currentPayload = initialData;
   let baselinePayload = null;
   const defaultUpdateMessage = "Map is up to date.";
   const MAX_WINDOWS = 10;
+  const GOAL_PROBE_KEY_DEBOUNCE_MS = 300;
   const baselineStorageKey = "sunlight-house-baseline";
   const environmentReferenceRadiusKm = 50;
   let environmentByHour = new Map();
@@ -1310,6 +1331,7 @@
             onUnavailable: pauseRoom3dAnimation,
           });
           room3dViewer.update(currentPayload);
+          room3dViewer.setProbe?.(goalProbe);
           room3dViewer.setSelectedFurniture(selectedFurnitureId, false);
           room3dViewer.setSelectedWindow(windowRows[activeWindowIndex]?.name);
           return room3dViewer;
@@ -2758,8 +2780,10 @@
 
   function updateSnapshotDom(payload) {
     currentPayload = payload;
+    goalStudioPayload = null;
     syncFurnitureFromScene(payload.scene?.furniture);
     room3dViewer?.update(payload);
+    room3dViewer?.setProbe?.(goalProbe);
     room3dViewer?.setSelectedFurniture(selectedFurnitureId, false);
     room3dViewer?.setSelectedWindow(windowRows[activeWindowIndex]?.name);
     const snapshot = payload.snapshot;
@@ -2793,6 +2817,7 @@
       : "No direct sun");
 
     setHtml("room-snapshot-svg", createRoomSvg(payload));
+    renderGoalProbeMap();
     wireRoomWindowDrag();
     wireRoomWindowResize();
     if (windowEditHint) {
@@ -2909,6 +2934,260 @@
     });
   }
 
+  function setGoalStudioStatus(message, state = "idle") {
+    if (!goalStudioStatus) return;
+    goalStudioStatus.textContent = message;
+    goalStudioStatus.dataset.state = state;
+  }
+
+  function clampGoalProbeToRoom() {
+    if (!currentPayload?.room) return;
+    const { width, depth } = currentPayload.room;
+    goalProbe.x = clamp(Number(goalProbe.x), 0, width);
+    goalProbe.y = clamp(Number(goalProbe.y), 0, depth);
+    goalProbe.size = clamp(Number(goalProbe.size), Math.min(0.1, width, depth), Math.min(width, depth));
+  }
+
+  function updateGoalProbeReadout() {
+    if (!goalProbeReadout) return;
+    goalProbeReadout.textContent = `${goalProbe.x.toFixed(2)} m × ${goalProbe.y.toFixed(2)} m · ${goalProbe.size.toFixed(1)} m zone`;
+  }
+
+  function createGoalProbeSvg(payload) {
+    const width = Number(payload.room.width);
+    const depth = Number(payload.room.depth);
+    const pad = 0.48;
+    const half = goalProbe.size / 2;
+    const minX = Math.max(0, goalProbe.x - half);
+    const maxX = Math.min(width, goalProbe.x + half);
+    const minY = Math.max(0, goalProbe.y - half);
+    const maxY = Math.min(depth, goalProbe.y + half);
+    const windows = payload.windows.map((window) => {
+      const [start, end] = window.wall_segment_xy;
+      return `<line x1="${start[0]}" y1="${depth - start[1]}" x2="${end[0]}" y2="${depth - end[1]}" stroke="#2b627a" stroke-width="0.14" stroke-linecap="round"></line>`;
+    }).join("");
+    return `
+      <svg viewBox="${-pad} ${-pad} ${width + pad * 2} ${depth + pad * 2}" role="img" aria-label="Room floor with selected goal zone at ${goalProbe.x.toFixed(2)}, ${goalProbe.y.toFixed(2)} metres">
+        <rect data-goal-floor="true" x="0" y="0" width="${width}" height="${depth}" rx="0.04" fill="#fffdf8" stroke="#1f2732" stroke-width="0.06"></rect>
+        <g pointer-events="none">
+          <path d="M ${width / 2} 0 V ${depth} M 0 ${depth / 2} H ${width}" stroke="rgba(43,98,122,0.12)" stroke-width="0.025" stroke-dasharray="0.08 0.08"></path>
+          <rect x="${minX}" y="${depth - maxY}" width="${maxX - minX}" height="${maxY - minY}" rx="0.08" fill="rgba(109,75,184,0.19)" stroke="#6d4bb8" stroke-width="0.07"></rect>
+          <circle cx="${goalProbe.x}" cy="${depth - goalProbe.y}" r="0.13" fill="#6d4bb8" stroke="#fffdf8" stroke-width="0.045"></circle>
+          ${windows}
+          <text x="${goalProbe.x}" y="${depth - goalProbe.y - Math.min(half + 0.12, 0.65)}" font-size="0.17" text-anchor="middle" fill="#553995">Goal zone</text>
+        </g>
+      </svg>
+    `;
+  }
+
+  function renderGoalProbeMap() {
+    if (!goalProbeMap || !currentPayload) return;
+    clampGoalProbeToRoom();
+    goalProbeMap.innerHTML = createGoalProbeSvg(currentPayload);
+    updateGoalProbeReadout();
+    room3dViewer?.setProbe?.(goalProbe);
+  }
+
+  function moveGoalProbeFromPointer(event) {
+    const svg = goalProbeMap?.querySelector("svg");
+    if (!svg || !currentPayload?.room) return;
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return;
+    const local = point.matrixTransform(matrix.inverse());
+    if (local.x < 0 || local.x > currentPayload.room.width || local.y < 0 || local.y > currentPayload.room.depth) return;
+    goalProbe.x = clamp(local.x, 0, currentPayload.room.width);
+    goalProbe.y = clamp(currentPayload.room.depth - local.y, 0, currentPayload.room.depth);
+    goalStudioPayload = null;
+    clearTimeout(goalProbeKeyboardTimer);
+    goalProbeKeyboardTimer = null;
+    renderGoalProbeMap();
+    fetchGoalStudio(true);
+  }
+
+  function scheduleKeyboardProbeEvaluation() {
+    clearTimeout(goalProbeKeyboardTimer);
+    setGoalStudioStatus("Probe moved. Evaluating after you finish moving it...", "draft");
+    goalProbeKeyboardTimer = setTimeout(() => {
+      goalProbeKeyboardTimer = null;
+      fetchGoalStudio(true);
+    }, GOAL_PROBE_KEY_DEBOUNCE_MS);
+  }
+
+  function moveGoalProbeFromKeyboard(event) {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key) || !currentPayload?.room) return;
+    event.preventDefault();
+    const step = event.shiftKey ? 0.5 : 0.1;
+    if (event.key === "ArrowLeft") goalProbe.x -= step;
+    if (event.key === "ArrowRight") goalProbe.x += step;
+    if (event.key === "ArrowUp") goalProbe.y += step;
+    if (event.key === "ArrowDown") goalProbe.y -= step;
+    clampGoalProbeToRoom();
+    goalStudioPayload = null;
+    renderGoalProbeMap();
+    scheduleKeyboardProbeEvaluation();
+  }
+
+  function clockMinutes(value) {
+    if (!value) return 0;
+    const [hours, minutes] = value.split(":").map(Number);
+    return hours * 60 + minutes;
+  }
+
+  function renderGoalTimeline(payload) {
+    const timeline = document.getElementById("goal-timeline");
+    const intervals = document.getElementById("goal-intervals");
+    if (!timeline || !intervals) return;
+    const start = Number(payload.probe.window_start);
+    const end = Number(payload.probe.window_end);
+    const span = Math.max(end - start, 1);
+    const segments = payload.probe.intervals.map((interval) => {
+      const left = clamp((clockMinutes(interval.start) - start) / span * 100, 0, 100);
+      const right = clamp((clockMinutes(interval.end) - start) / span * 100, 0, 100);
+      const opacity = 0.42 + Number(interval.average_coverage) * 0.52;
+      return `<span class="goal-timeline-sun" style="left:${left}%;width:${Math.max(right - left, 0.8)}%;opacity:${opacity}" title="${escapeHtml(interval.start)} to ${escapeHtml(interval.end)}"></span>`;
+    }).join("");
+    const startLabel = `${String(Math.floor(start / 60)).padStart(2, "0")}:00`;
+    const endLabel = `${String(Math.floor(end / 60)).padStart(2, "0")}:00`;
+    timeline.innerHTML = `<div class="goal-timeline-track">${segments || '<span class="goal-timeline-none">No direct sun in this period</span>'}</div><div class="goal-timeline-axis"><span>${startLabel}</span><span>${endLabel}</span></div>`;
+    intervals.innerHTML = payload.probe.intervals.length
+      ? payload.probe.intervals.map((interval) => `<span>${escapeHtml(interval.start)}–${escapeHtml(interval.end)} · ${Math.round(Number(interval.average_coverage) * 100)}% avg zone coverage</span>`).join("")
+      : "<span>No direct beam reaches the sampled zone.</span>";
+  }
+
+  function renderGoalWindowContributions(payload) {
+    const container = document.getElementById("goal-window-contributions");
+    if (!container) return;
+    const contributions = payload.probe.window_contributions;
+    if (!contributions.length) {
+      container.innerHTML = '<p class="angle-caption">No window sends direct sun to this zone in the evaluated period.</p>';
+      return;
+    }
+    const maxHours = Math.max(...contributions.map((item) => Number(item.hours)), 0.01);
+    container.innerHTML = contributions.map((item) => {
+      const width = Number(item.hours) / maxHours * 100;
+      return `<div class="goal-source-row"><span>${escapeHtml(item.window_name.replace(/_/g, " "))}</span><div><i style="width:${width}%"></i></div><strong>${Number(item.hours).toFixed(2)} h</strong></div>`;
+    }).join("");
+  }
+
+  function applyGoalSuggestion(suggestion) {
+    if (Array.isArray(suggestion?.apply?.windows)) {
+      renderWindowBuilderFromRows(suggestion.apply.windows);
+      syncWindowsJsonFromEditor();
+      goalStudioPayload = null;
+      scheduleRefresh(`Applied “${suggestion.title}”. Updating model...`);
+      return;
+    }
+    if (typeof suggestion?.apply?.eaves_enabled === "boolean") {
+      const input = form.querySelector('[name="scene_eaves_enabled"]');
+      if (!input) return;
+      input.value = suggestion.apply.eaves_enabled ? "1" : "0";
+      goalStudioPayload = null;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+
+  function renderGoalSuggestions(payload) {
+    if (!goalSuggestionList) return;
+    setText("goal-tested-count", `${payload.tested_change_count} small one-at-a-time changes tested`);
+    if (!payload.suggestions.length) {
+      goalSuggestionList.innerHTML = `<div class="goal-reading-empty">${payload.probe.goal_met
+        ? "This goal is already met at the selected zone. No tested small change improved it further."
+        : "No tested one-step change improved this goal by a meaningful amount. Try another zone or review a larger design move."
+      }</div>`;
+      return;
+    }
+    goalSuggestionList.innerHTML = payload.suggestions.map((suggestion, index) => `
+      <article class="goal-suggestion-card">
+        <div class="goal-suggestion-rank">${index + 1}</div>
+        <div class="goal-suggestion-copy">
+          <h4>${escapeHtml(suggestion.title)}</h4>
+          <p>${escapeHtml(suggestion.reason)}</p>
+          <small>${escapeHtml(suggestion.tradeoff)}</small>
+        </div>
+        <div class="goal-suggestion-result">
+          <span class="metric-label">Projected</span>
+          <strong>${Number(suggestion.projected_hours).toFixed(2)} h</strong>
+          <span>Score ${Math.round(Number(suggestion.projected_score))}</span>
+          <button type="button" class="chip-button chip-button-soft" data-apply-goal-suggestion="${index}">Apply</button>
+        </div>
+      </article>
+    `).join("");
+    goalSuggestionList.querySelectorAll("[data-apply-goal-suggestion]").forEach((button) => {
+      button.addEventListener("click", () => applyGoalSuggestion(payload.suggestions[Number(button.dataset.applyGoalSuggestion)]));
+    });
+  }
+
+  function renderGoalStudio(payload) {
+    goalReadingEmpty.hidden = true;
+    goalReadingContent.hidden = false;
+    const score = clamp(Number(payload.probe.score), 0, 100);
+    const scoreRing = document.getElementById("goal-score-ring");
+    scoreRing?.style.setProperty("--goal-score", score.toFixed(1));
+    setText("goal-score-value", String(Math.round(score)));
+    const badge = document.getElementById("goal-met-badge");
+    if (badge) {
+      badge.textContent = payload.probe.goal_met ? "Goal met" : "Goal not met yet";
+      badge.classList.toggle("status-chip-active", payload.probe.goal_met);
+      badge.classList.toggle("status-chip-off", !payload.probe.goal_met);
+    }
+    setText("goal-question", payload.goal.question);
+    setText("goal-target-copy", payload.goal.target_copy);
+    setText("goal-direct-hours", `${Number(payload.probe.direct_sun_hours).toFixed(2)} h`);
+    setText("goal-time-range", payload.probe.first_sun ? `${payload.probe.first_sun} → ${payload.probe.last_sun}` : "No direct sun");
+    setText("goal-reference-date", payload.probe.date_label);
+    setText("goal-method-copy", payload.method);
+    setText("goal-scope-copy", payload.scope_note);
+    renderGoalTimeline(payload);
+    renderGoalWindowContributions(payload);
+    renderGoalSuggestions(payload);
+    renderGoalProbeMap();
+    setGoalStudioStatus(`${payload.goal.label} evaluated.`, "idle");
+  }
+
+  function goalStudioQueryString() {
+    const params = new URLSearchParams(currentQueryString({ includeVisualSceneDetails: false }));
+    params.set("goal", activeGoalKey);
+    params.set("probe_x", goalProbe.x.toFixed(4));
+    params.set("probe_y", goalProbe.y.toFixed(4));
+    params.set("probe_size", goalProbe.size.toFixed(4));
+    return params.toString();
+  }
+
+  async function fetchGoalStudio(force = false) {
+    if (!currentPayload || !goalProbeMap) return;
+    clampGoalProbeToRoom();
+    renderGoalProbeMap();
+    const query = goalStudioQueryString();
+    if (!force && goalStudioPayload && goalStudioQuery === query) {
+      renderGoalStudio(goalStudioPayload);
+      return;
+    }
+    latestGoalStudioRequestId += 1;
+    const requestId = latestGoalStudioRequestId;
+    activeGoalStudioController?.abort();
+    activeGoalStudioController = new AbortController();
+    goalEvaluateButton.disabled = true;
+    setGoalStudioStatus("Evaluating the zone and testing small changes...", "pending");
+    try {
+      const response = await fetch(`/api/goal-studio?${query}`, { signal: activeGoalStudioController.signal });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Goal evaluation failed.");
+      if (requestId !== latestGoalStudioRequestId) return;
+      goalStudioPayload = payload;
+      goalStudioQuery = query;
+      renderGoalStudio(payload);
+    } catch (error) {
+      if (error.name === "AbortError") return;
+      console.error(error);
+      setGoalStudioStatus(error.message || "Could not evaluate this goal.", "error");
+    } finally {
+      if (requestId === latestGoalStudioRequestId) goalEvaluateButton.disabled = false;
+    }
+  }
+
   async function refreshSnapshot() {
     latestRequestId += 1;
     const requestId = latestRequestId;
@@ -2937,6 +3216,9 @@
         updateSnapshotDom(payload);
         if (activeResultTab === "long-range") {
           await fetchLongRangeExposure(true);
+        } else if (activeResultTab === "goal-studio") {
+          await fetchGoalStudio(true);
+          setUpdateStatus(defaultUpdateMessage, "idle");
         } else {
           setUpdateStatus(defaultUpdateMessage, "idle");
         }
@@ -3183,6 +3465,10 @@
     if (selectedTab === "long-range") {
       fetchLongRangeExposure();
     }
+    if (selectedTab === "goal-studio") {
+      renderGoalProbeMap();
+      fetchGoalStudio();
+    }
     if (selectedTab === "outdoor-year") {
       const selectedMonth = parseInt(selectedDateInput.value.slice(5, 7), 10) - 1;
       if (Number.isFinite(selectedMonth)) {
@@ -3209,6 +3495,45 @@
       activateResultTab(nextButton.dataset.resultTab, { focus: true });
     });
   });
+
+  goalPresetButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      clearTimeout(goalProbeKeyboardTimer);
+      goalProbeKeyboardTimer = null;
+      activeGoalKey = button.dataset.goalPreset;
+      goalPresetButtons.forEach((item) => {
+        const active = item === button;
+        item.classList.toggle("is-active", active);
+        item.setAttribute("aria-pressed", String(active));
+      });
+      goalStudioPayload = null;
+      fetchGoalStudio(true);
+    });
+  });
+
+  goalZoneSizeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      clearTimeout(goalProbeKeyboardTimer);
+      goalProbeKeyboardTimer = null;
+      goalProbe.size = Math.min(Number(button.dataset.goalZoneSize), currentPayload.room.width, currentPayload.room.depth);
+      goalZoneSizeButtons.forEach((item) => {
+        const active = item === button;
+        item.classList.toggle("is-active", active);
+        item.setAttribute("aria-pressed", String(active));
+      });
+      goalStudioPayload = null;
+      renderGoalProbeMap();
+      fetchGoalStudio(true);
+    });
+  });
+
+  goalEvaluateButton?.addEventListener("click", () => {
+    clearTimeout(goalProbeKeyboardTimer);
+    goalProbeKeyboardTimer = null;
+    fetchGoalStudio(true);
+  });
+  goalProbeMap?.addEventListener("click", moveGoalProbeFromPointer);
+  goalProbeMap?.addEventListener("keydown", moveGoalProbeFromKeyboard);
 
   outdoorYearMetricButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -3585,8 +3910,10 @@
   });
   window.addEventListener("beforeunload", () => {
     pauseRoom3dAnimation();
+    clearTimeout(goalProbeKeyboardTimer);
     dayAnimationController?.abort();
     activeSceneController?.abort();
+    activeGoalStudioController?.abort();
     room3dViewer?.destroy();
   }, { once: true });
 })();

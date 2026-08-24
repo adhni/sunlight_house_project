@@ -21,6 +21,7 @@ The current app is designed around editable wall windows on a rectangular room. 
 - renders an interactive, orbitable 3D room with live window and sunlight geometry
 - estimates daily direct-sun-hours exposure across the floor
 - estimates yearly and seasonal floor exposure using representative-day sampling
+- evaluates a chosen floor zone against a sunlight goal and tests bounded, explainable design changes
 - imports one rectangular room and nearby windows from an IFC file
 - exposes the model through a Flask web UI suitable for local use or Render deployment
 
@@ -98,6 +99,8 @@ The app currently includes:
 - mobile-first 3D interaction with explicit touch activation, scroll-safe viewing, 44 px window targets, an in-view window edit action, model-first ordering, and progressively disclosed display/furniture tools
 - a `Direct Sun Hours Today` floor map with legend, stats, and in-chart tooltip
 - a `Yearly / Seasonal` floor map with `Year`, `Winter`, `Spring`, `Summer`, and `Fall`
+- a `Goal studio` for winter warmth, summer protection, morning sun, or screen protection at a movable floor zone
+- ranked one-change suggestions with projected zone hours, a stated trade-off, and an `Apply` action
 - an advanced IFC room/window import workflow
 - a frontend-only baseline compare tool using `localStorage`
 
@@ -128,6 +131,19 @@ Season labels are hemisphere-aware:
   - fall: `Mar-May`
 
 Long-range maps should be treated as estimated planning views, not engineering-grade annual simulations.
+
+## Goal Studio Logic
+
+Goal Studio keeps the question local and visible: pick a floor zone, then choose a goal. Winter and summer goals use the hemisphere-aware solstice; morning and screen goals use the selected date.
+
+- the zone contains `9` evenly spaced sample points
+- samples are evaluated every `20` minutes during the goal's stated time window
+- direct-sun hours are coverage-weighted, so one hour across one third of the zone counts as `0.33 h`
+- suggestions move, resize, or raise/lower one window, or toggle the existing fixed-depth roof eaves
+- every candidate changes one property while keeping the remaining model fixed
+- only improvements of at least `0.05` coverage-weighted hours are shown
+
+The goal score and suggestions compare direct beam sunlight only. They are not thermal-comfort, energy, diffuse-daylight, glare-probability, structural, or cost calculations.
 
 ## CLI Demo
 
@@ -165,6 +181,7 @@ sunlight_house_project/
     ├── analysis.py
     ├── config.py
     ├── geometry.py
+    ├── goals.py
     ├── ifc_import.py
     ├── insights.py
     ├── plotting.py

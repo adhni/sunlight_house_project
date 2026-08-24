@@ -19,6 +19,7 @@ const COLORS = {
   furnitureAccent: 0x8b6a54,
   furnitureWood: 0x9a744f,
   externalObstruction: 0x8f857c,
+  goalProbe: 0x6d4bb8,
 };
 
 const FACING_DEGREES = {
@@ -834,6 +835,7 @@ class Room3DViewer {
     this.contentGroup = new THREE.Group();
     this.floorGroup = new THREE.Group();
     this.floorGridGroup = new THREE.Group();
+    this.probeGroup = new THREE.Group();
     this.wallGroup = new THREE.Group();
     this.windowGroup = new THREE.Group();
     this.doorGroup = new THREE.Group();
@@ -848,6 +850,7 @@ class Room3DViewer {
     this.contentGroup.add(
       this.floorGroup,
       this.floorGridGroup,
+      this.probeGroup,
       this.wallGroup,
       this.windowGroup,
       this.doorGroup,
@@ -938,6 +941,7 @@ class Room3DViewer {
     const room = payload.room;
     replaceGroupContents(this.floorGroup);
     replaceGroupContents(this.floorGridGroup);
+    replaceGroupContents(this.probeGroup);
     replaceGroupContents(this.wallGroup);
     replaceGroupContents(this.windowGroup);
     replaceGroupContents(this.doorGroup);
@@ -960,6 +964,7 @@ class Room3DViewer {
     floor.position.y = -0.025;
     this.floorGroup.add(floor);
     this.floorGridGroup.add(makeFloorGrid(room));
+    if (this.probe) this.setProbe(this.probe);
 
     const thickness = Math.max(Math.min(room.width, room.depth) * 0.022, 0.045);
     const sceneDetails = payload.scene || {};
@@ -1079,6 +1084,57 @@ class Room3DViewer {
     );
     this.needsRender = true;
     this.updateDebugState();
+  }
+
+  setProbe(probe) {
+    if (this.destroyed) return;
+    this.probe = probe ? { ...probe } : null;
+    replaceGroupContents(this.probeGroup);
+    const room = this.payload?.room;
+    if (!room || !probe) {
+      this.container.dataset.goalProbeVisible = "false";
+      this.needsRender = true;
+      return;
+    }
+    const x = THREE.MathUtils.clamp(Number(probe.x), 0, room.width);
+    const y = THREE.MathUtils.clamp(Number(probe.y), 0, room.depth);
+    const size = THREE.MathUtils.clamp(Number(probe.size), 0.05, Math.min(room.width, room.depth));
+    const minX = Math.max(0, x - size / 2);
+    const maxX = Math.min(room.width, x + size / 2);
+    const minY = Math.max(0, y - size / 2);
+    const maxY = Math.min(room.depth, y + size / 2);
+    const center = appPointToThree([(minX + maxX) / 2, (minY + maxY) / 2, 0.018], room);
+    const geometry = new THREE.PlaneGeometry(maxX - minX, maxY - minY);
+    const material = new THREE.MeshBasicMaterial({
+      color: COLORS.goalProbe,
+      transparent: true,
+      opacity: 0.2,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const zone = new THREE.Mesh(geometry, material);
+    zone.rotation.x = -Math.PI / 2;
+    zone.position.copy(center);
+    zone.renderOrder = 8;
+    const edge = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geometry),
+      new THREE.LineBasicMaterial({ color: COLORS.goalProbe, transparent: true, opacity: 0.95 }),
+    );
+    edge.rotation.copy(zone.rotation);
+    edge.position.copy(center);
+    edge.renderOrder = 9;
+    const marker = new THREE.Mesh(
+      new THREE.RingGeometry(Math.min(size * 0.12, 0.09), Math.min(size * 0.12, 0.09) + 0.025, 32),
+      new THREE.MeshBasicMaterial({ color: COLORS.goalProbe, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    marker.rotation.x = -Math.PI / 2;
+    marker.position.copy(appPointToThree([x, y, 0.025], room));
+    marker.renderOrder = 10;
+    this.probeGroup.add(zone, edge, marker);
+    this.container.dataset.goalProbeVisible = "true";
+    this.container.dataset.goalProbePosition = `${x.toFixed(3)},${y.toFixed(3)}`;
+    this.container.dataset.goalProbeSize = size.toFixed(3);
+    this.needsRender = true;
   }
 
   updateFurniture(furnitureData, { preserveSelection = true } = {}) {

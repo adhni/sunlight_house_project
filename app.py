@@ -59,6 +59,7 @@ from sunlight_house.config import (
     window_on_wall,
 )
 from sunlight_house.geometry import ObstructionBox, Room, Window
+from sunlight_house.goals import goal_studio_payload
 from sunlight_house.ifc_import import IfcImportError, import_ifc_room
 from sunlight_house.insights import summarize_direct_sun
 
@@ -215,6 +216,50 @@ def create_app() -> Flask:
             config.room.depth,
             config.room.height,
         )
+        return jsonify(payload)
+
+    @app.get("/api/goal-studio")
+    def api_goal_studio():
+        defaults = default_form_values()
+        raw_values = defaults | {key: value for key, value in request.args.items() if value != ""}
+
+        try:
+            config, selected_moment = build_config_and_moment(raw_values)
+            probe_x = parse_bounded_float(
+                request.args.get("probe_x", str(config.room.width / 2.0)),
+                "Probe X",
+                0.0,
+                config.room.width,
+            )
+            probe_y = parse_bounded_float(
+                request.args.get("probe_y", str(config.room.depth / 2.0)),
+                "Probe Y",
+                0.0,
+                config.room.depth,
+            )
+            max_probe_size = min(config.room.width, config.room.depth)
+            probe_size = parse_bounded_float(
+                request.args.get("probe_size", str(min(0.8, max_probe_size))),
+                "Probe size",
+                0.0,
+                max_probe_size,
+                exclusive_min=True,
+            )
+            eaves_enabled = raw_values.get("scene_eaves_enabled", "0") == "1"
+            alternate_values = raw_values | {"scene_eaves_enabled": "0" if eaves_enabled else "1"}
+            alternate_config, _alternate_moment = build_config_and_moment(alternate_values)
+            payload = goal_studio_payload(
+                config,
+                selected_moment.date(),
+                goal_key=request.args.get("goal", "winter_warmth"),
+                x=probe_x,
+                y=probe_y,
+                size=probe_size,
+                eaves_variant=(alternate_config, not eaves_enabled),
+            )
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
         return jsonify(payload)
 
     @app.post("/api/import-ifc")
