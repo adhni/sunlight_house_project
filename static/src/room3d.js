@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { parallelBeamSegments, sunlightAppearance } from "./sunlight3d.mjs";
 
 const COLORS = {
   floor: 0xf8f1e5,
@@ -67,6 +68,25 @@ function replaceGroupContents(group) {
     group.remove(child);
     disposeObject(child);
   }
+}
+
+function addShadowCasters(source, target) {
+  source.updateWorldMatrix(true, true);
+  source.traverse((object) => {
+    if (!object.isMesh) return;
+    // These meshes stay visible to the shadow pass even when display walls hide.
+    // They write neither colour nor depth into the camera's view.
+    const caster = new THREE.Mesh(object.geometry.clone(), new THREE.MeshBasicMaterial({
+      colorWrite: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      shadowSide: THREE.DoubleSide,
+    }));
+    caster.matrixAutoUpdate = false;
+    caster.matrix.copy(object.matrixWorld);
+    caster.castShadow = true;
+    target.add(caster);
+  });
 }
 
 function appPointToThree(point, room) {
@@ -348,46 +368,47 @@ function makeFloorGrid(room) {
   return grid;
 }
 
-function makeBeam(windowData, patch, room) {
-  const source = appPointToThree(patch.source_center_xyz || windowData.center_xyz, room);
-  const floorPoints = patch.polygon_xy.map((point) => new THREE.Vector3(
-    Number(point[0]) - room.width / 2,
-    0.006,
-    room.depth / 2 - Number(point[1]),
-  ));
+function makeBeam(windowData, patch, room, sunVector) {
+  const segments = parallelBeamSegments(windowData, patch, sunVector);
+  if (!segments.length) return null;
+  const sources = segments.map(({ source }) => appPointToThree(source, room));
+  const floorPoints = segments.map(({ target }) => appPointToThree(target, room));
   const vertices = [];
   floorPoints.forEach((point, index) => {
-    const next = floorPoints[(index + 1) % floorPoints.length];
-    vertices.push(...source.toArray(), ...point.toArray(), ...next.toArray());
+    const nextIndex = (index + 1) % floorPoints.length;
+    const next = floorPoints[nextIndex];
+    const source = sources[index];
+    const nextSource = sources[nextIndex];
+    vertices.push(
+      ...source.toArray(), ...point.toArray(), ...next.toArray(),
+      ...source.toArray(), ...next.toArray(), ...nextSource.toArray(),
+    );
   });
-  const fanGeometry = new THREE.BufferGeometry();
-  fanGeometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-  fanGeometry.computeVertexNormals();
+  const beamGeometry = new THREE.BufferGeometry();
+  beamGeometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  beamGeometry.computeVertexNormals();
   const intensity = Math.max(0, Math.min(1, Number(patch.intensity) || 0));
-  const fan = new THREE.Mesh(
-    fanGeometry,
+  const volume = new THREE.Mesh(
+    beamGeometry,
     new THREE.MeshBasicMaterial({
       color: COLORS.sunlight,
       transparent: true,
-      opacity: 0.09 + intensity * 0.14,
+      opacity: 0.035 + intensity * 0.055,
       side: THREE.DoubleSide,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     }),
   );
-  fan.renderOrder = 3;
-  fan.userData = {
+  volume.renderOrder = 3;
+  volume.userData = {
     kind: "sunlight-volume",
     windowName: patch.window_name,
-    baseOpacity: fan.material.opacity,
+    baseOpacity: volume.material.opacity,
   };
 
-  const centroid = floorPoints.reduce((total, point) => total.add(point), new THREE.Vector3())
-    .multiplyScalar(1 / floorPoints.length);
-  const radius = Math.max(Math.min(room.width, room.depth) * 0.005, 0.009);
-  const ray = new THREE.Mesh(
-    new THREE.TubeGeometry(new THREE.LineCurve3(source, centroid), 1, radius, 6, false),
-    new THREE.MeshBasicMaterial({
+  const ray = new THREE.LineSegments(
+    new THREE.BufferGeometry().setFromPoints(sources.flatMap((source, index) => [source, floorPoints[index]])),
+    new THREE.LineBasicMaterial({
       color: COLORS.sunlightEdge,
       transparent: true,
       opacity: 0.42 + intensity * 0.32,
@@ -401,7 +422,7 @@ function makeBeam(windowData, patch, room) {
     baseOpacity: ray.material.opacity,
   };
   const group = new THREE.Group();
-  group.add(fan, ray);
+  group.add(volume, ray);
   group.userData = { kind: "sunlight-beam-group", windowName: patch.window_name };
   return group;
 }
@@ -729,6 +750,7 @@ class Room3DViewer {
     wallsButton,
     roofButton,
     contextButton,
+    beamsButton,
     onWindowSelect,
     onFurnitureSelect,
     onFurnitureChange,
@@ -743,6 +765,7 @@ class Room3DViewer {
     this.wallsButton = wallsButton;
     this.roofButton = roofButton;
     this.contextButton = contextButton;
+    this.beamsButton = beamsButton;
     this.onWindowSelect = onWindowSelect;
     this.onFurnitureSelect = onFurnitureSelect;
     this.onFurnitureChange = onFurnitureChange;
@@ -754,6 +777,7 @@ class Room3DViewer {
     this.wallsVisible = true;
     this.roofVisible = false;
     this.contextVisible = true;
+    this.beamsVisible = false;
     this.inViewport = true;
     this.isTouchDevice = Boolean(window.matchMedia?.("(any-pointer: coarse)").matches);
     this.primaryPointerIsCoarse = Boolean(window.matchMedia?.("(pointer: coarse)").matches);
@@ -782,7 +806,9 @@ class Room3DViewer {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.shadowMap.enabled = false;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.domElement.tabIndex = 0;
     this.renderer.domElement.setAttribute("aria-label", "Orbitable 3D room model. Select a window or its sunlight to trace the floor result.");
     this.renderer.domElement.setAttribute("aria-describedby", "room3d-interaction-hint room3d-keyboard-help");
@@ -846,6 +872,7 @@ class Room3DViewer {
     this.eaveGroup = new THREE.Group();
     this.roofGroup = new THREE.Group();
     this.sunlightGroup = new THREE.Group();
+    this.shadowGroup = new THREE.Group();
     this.orientationGroup = new THREE.Group();
     this.contentGroup.add(
       this.floorGroup,
@@ -861,13 +888,18 @@ class Room3DViewer {
       this.eaveGroup,
       this.roofGroup,
       this.sunlightGroup,
+      this.shadowGroup,
       this.orientationGroup,
     );
     this.scene.add(this.contentGroup);
-    this.scene.add(new THREE.HemisphereLight(0xfffbf2, 0x64727a, 2.5));
-    const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
-    keyLight.position.set(5, 9, -7);
-    this.scene.add(keyLight);
+    this.skyLight = new THREE.HemisphereLight(0xfffbf2, 0x64727a, 1.25);
+    this.sunLight = new THREE.DirectionalLight(0xffffff, 0);
+    this.sunLight.castShadow = true;
+    this.sunLight.shadow.mapSize.setScalar(this.isTouchDevice ? 1024 : 2048);
+    this.sunLight.shadow.bias = -0.0001;
+    this.sunLight.shadow.normalBias = 0.008;
+    this.sunLight.shadow.radius = 2;
+    this.scene.add(this.skyLight, this.sunLight, this.sunLight.target);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -882,11 +914,13 @@ class Room3DViewer {
     this.onToggleWalls = () => this.toggleWalls();
     this.onToggleRoof = () => this.toggleRoof();
     this.onToggleContext = () => this.toggleContext();
+    this.onToggleBeams = () => this.toggleBeams();
     this.onToggleTouchInteraction = () => this.setTouchInteraction(!this.container.classList.contains("is-touch-interacting"));
     this.cameraButtons.forEach((button) => button.addEventListener("click", this.onCameraPreset));
     wallsButton?.addEventListener("click", this.onToggleWalls);
     roofButton?.addEventListener("click", this.onToggleRoof);
     contextButton?.addEventListener("click", this.onToggleContext);
+    beamsButton?.addEventListener("click", this.onToggleBeams);
     this.touchToggle.addEventListener("click", this.onToggleTouchInteraction);
 
     this.container.dataset.viewerState = "ready";
@@ -952,6 +986,7 @@ class Room3DViewer {
     replaceGroupContents(this.eaveGroup);
     replaceGroupContents(this.roofGroup);
     replaceGroupContents(this.sunlightGroup);
+    replaceGroupContents(this.shadowGroup);
     replaceGroupContents(this.orientationGroup);
     this.clearLabels();
     this.windowVisuals.clear();
@@ -992,6 +1027,21 @@ class Room3DViewer {
     this.eaveGroup.add(roofDetails.eaveGroup);
     this.roofGroup.visible = this.roofVisible;
     const furniture = this.updateFurniture(sceneDetails.furniture, { preserveSelection: true });
+
+    // Doors remain closed in the light-blocking shell even when context hides.
+    [this.wallGroup, this.doorGroup, this.internalWallGroup, this.eaveGroup, this.externalObstructionGroup]
+      .forEach((group) => addShadowCasters(group, this.shadowGroup));
+    // A cutaway ceiling must still prevent sunlight entering through the roof.
+    const ceiling = new THREE.Mesh(new THREE.BoxGeometry(room.width, 0.04, room.depth));
+    ceiling.position.y = room.height + 0.02;
+    addShadowCasters(ceiling, this.shadowGroup);
+    disposeObject(ceiling);
+    const shadowBounds = new THREE.Box3().setFromObject(this.shadowGroup);
+    this.shadowCenter = shadowBounds.getCenter(new THREE.Vector3());
+    this.shadowRadius = Math.max(shadowBounds.getSize(new THREE.Vector3()).length() / 2, 1) * 1.05;
+    this.contentGroup.traverse((object) => {
+      if (object.isMesh && object.material.isMeshStandardMaterial) object.receiveShadow = true;
+    });
 
     payload.windows.forEach((windowData, index) => {
       const visual = makeWindow(windowData, room);
@@ -1145,6 +1195,9 @@ class Room3DViewer {
     replaceGroupContents(this.furnitureSelectionGroup);
     this.furnitureVisuals.clear();
     const furniture = makeFurniture(furnitureData, room);
+    furniture.group.traverse((object) => {
+      if (object.isMesh) object.receiveShadow = true;
+    });
     this.furnitureGroup.add(furniture.group);
     this.furnitureItems = furniture.items.map((item) => ({ ...item }));
     furniture.group.children.forEach((root) => this.furnitureVisuals.set(root.userData.furnitureId, root));
@@ -1195,6 +1248,7 @@ class Room3DViewer {
   updateSunlightFrame(snapshot, selectedMoment, { updateStatus = true } = {}) {
     if (this.destroyed || !this.payload || !snapshot?.patches) return;
     this.currentSnapshot = snapshot;
+    this.updateSolarLighting(snapshot);
     replaceGroupContents(this.sunlightGroup);
     const room = this.payload.room;
     const windowsByName = new Map(this.payload.windows.map((windowData) => [windowData.name, windowData]));
@@ -1202,7 +1256,11 @@ class Room3DViewer {
       this.sunlightGroup.add(makePatch(patch, room));
       const windowData = windowsByName.get(patch.window_name);
       if (windowData && patch.polygon_xy.length) {
-        this.sunlightGroup.add(makeBeam(windowData, patch, room));
+        const beam = makeBeam(windowData, patch, room, snapshot.room_vector);
+        if (beam) {
+          beam.visible = this.beamsVisible;
+          this.sunlightGroup.add(beam);
+        }
       }
     });
     this.updateWindowSunStates();
@@ -1211,6 +1269,7 @@ class Room3DViewer {
     this.sunlightUpdateCount += 1;
     this.container.dataset.sunlightUpdateCount = String(this.sunlightUpdateCount);
     this.container.dataset.patchCount = String(snapshot.patches.length);
+    this.container.dataset.beamsVisible = String(this.beamsVisible);
     if (selectedMoment) this.container.dataset.selectedMoment = selectedMoment;
     if (updateStatus) {
       const time = String(selectedMoment || "").slice(11, 16) || "this time";
@@ -1223,6 +1282,31 @@ class Room3DViewer {
         `At ${time}, ${result}.`,
       );
     }
+  }
+
+  updateSolarLighting(snapshot) {
+    const appearance = sunlightAppearance(snapshot.room_vector);
+    this.sunLight.intensity = appearance.sunIntensity;
+    this.skyLight.intensity = appearance.ambientIntensity;
+    this.sunLight.color.setHex(0xffb36b).lerp(new THREE.Color(0xfffaf0), appearance.sunWarmth);
+    this.skyLight.color.setHex(0x8197be).lerp(new THREE.Color(0xfffbf2), appearance.daylight);
+    this.scene.background.setHex(0x182334).lerp(new THREE.Color(0xf3eadc), appearance.daylight);
+    if (appearance.direction && this.shadowCenter) {
+      const [x, y, z] = appearance.direction;
+      const direction = new THREE.Vector3(x, z, -y);
+      this.sunLight.target.position.copy(this.shadowCenter);
+      this.sunLight.position.copy(this.shadowCenter).addScaledVector(direction, this.shadowRadius * 2);
+      const camera = this.sunLight.shadow.camera;
+      camera.left = camera.bottom = -this.shadowRadius;
+      camera.right = camera.top = this.shadowRadius;
+      camera.near = 0.01;
+      camera.far = this.shadowRadius * 4;
+      camera.updateProjectionMatrix();
+      this.container.dataset.sunDirection = direction.toArray().map((value) => value.toFixed(5)).join(",");
+    }
+    this.renderer.shadowMap.needsUpdate = true;
+    this.container.dataset.sunIntensity = this.sunLight.intensity.toFixed(4);
+    this.container.dataset.ambientIntensity = this.skyLight.intensity.toFixed(4);
   }
 
   addWindowLabel(windowData, center, index, count) {
@@ -1658,6 +1742,18 @@ class Room3DViewer {
     this.updateLabels();
   }
 
+  toggleBeams() {
+    if (this.destroyed) return;
+    this.beamsVisible = !this.beamsVisible;
+    this.beamsButton?.setAttribute("aria-pressed", String(this.beamsVisible));
+    if (this.beamsButton) this.beamsButton.textContent = this.beamsVisible ? "Sunbeams on" : "Sunbeams off";
+    this.sunlightGroup.children.forEach((group) => {
+      if (group.userData.kind === "sunlight-beam-group") group.visible = this.beamsVisible;
+    });
+    this.container.dataset.beamsVisible = String(this.beamsVisible);
+    this.needsRender = true;
+  }
+
   toggleContext() {
     if (this.destroyed) return;
     if (this.arrangeFurniture && this.contextVisible) {
@@ -1878,6 +1974,7 @@ class Room3DViewer {
     this.wallsButton?.removeEventListener("click", this.onToggleWalls);
     this.roofButton?.removeEventListener("click", this.onToggleRoof);
     this.contextButton?.removeEventListener("click", this.onToggleContext);
+    this.beamsButton?.removeEventListener("click", this.onToggleBeams);
     this.touchToggle.removeEventListener("click", this.onToggleTouchInteraction);
     this.controls.removeEventListener("change", this.onControlsChange);
     this.renderer.domElement.removeEventListener("webglcontextlost", this.onContextLost);
@@ -1891,6 +1988,7 @@ class Room3DViewer {
     this.clearLabels();
     disposeObject(this.contentGroup);
     this.controls.dispose();
+    this.sunLight.shadow.dispose();
     this.renderer.dispose();
     this.destroyed = true;
     this.container.dataset.viewerDestroyed = "true";

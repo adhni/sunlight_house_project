@@ -96,6 +96,8 @@ The app currently includes:
 - a lazy-loaded `3D room` view with real window openings, a plain-language current-sun reading, per-window sunlight tracing, compass/front indicators, a 1 m scale grid, host-aware cutaway walls, orbit, bounded zoom/pan, and camera reset
 - optional 3D details: an exterior door, sunlight-blocking internal divider and roof eaves, outside fence/building presets, and scale furniture
 - cached 3D day playback with a time scrubber plus morning, solar-noon, and evening presets
+- sun-driven 3D lighting with warmer low-angle light, dim nighttime ambient light, and shadows that remain intact when walls or the roof are cut away
+- optional parallel sunbeams under `Display → Sunbeams`; the floor overlays remain visible when beams are off
 - mobile-first 3D interaction with explicit touch activation, scroll-safe viewing, 44 px window targets, an in-view window edit action, model-first ordering, and progressively disclosed display/furniture tools
 - a `Direct Sun Hours Today` floor map with legend, stats, and in-chart tooltip
 - a `Yearly / Seasonal` floor map with `Year`, `Winter`, `Spring`, `Summer`, and `Fall`
@@ -212,6 +214,16 @@ npm install
 npx playwright install chromium
 PYTHON=./.venv/bin/python npm run test:browser
 ```
+
+The 3D sunlight geometry and day/night lighting helpers also have focused tests:
+
+```bash
+npm run test:3d
+```
+
+3D material lighting and shadow maps are visual approximations. The labelled floor
+overlays and sunlight-hour results continue to come from the Python model. Furniture
+receives light and architectural shadows but does not cast sunlight-blocking shadows.
 
 ## Render Deployment
 

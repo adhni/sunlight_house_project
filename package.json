@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "build:3d": "esbuild static/src/room3d.js --bundle --format=esm --minify --outfile=static/room3d.bundle.js",
+    "test:3d": "node --test tests/room3d-lighting.test.mjs",
     "test:browser": "npm run build:3d && playwright test"
   },
   "devDependencies": {
