@@ -17,18 +17,23 @@ async function dragBy(page, locator, deltaX, deltaY) {
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.locator('[data-result-tab="current"]').click();
   await expect(page.locator("#room-window-source")).toBeVisible();
   expect(await page.locator("#simulation-form").evaluate((form) => form.checkValidity())).toBe(true);
 });
 
 test("keeps the core editor visible at a laptop viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.locator('[data-result-tab="room-3d"]').click();
   const shell = await page.locator(".page-shell").boundingBox();
   const editor = await page.locator(".selected-window-card").boundingBox();
 
   expect(shell).not.toBeNull();
   expect(editor).not.toBeNull();
-  expect(shell.width).toBeLessThanOrEqual(1089);
-  expect(editor.y + editor.height).toBeLessThanOrEqual(1200);
+  expect(shell.width).toBeGreaterThan(1200);
+  const timeline = await page.locator("#room3d-animation-controls").boundingBox();
+  expect(timeline.y + timeline.height).toBeLessThanOrEqual(768);
+  expect(editor.y + editor.height).toBeLessThanOrEqual(768);
 });
 
 test("window marker stays on top and dragging persists through refresh", async ({ page }) => {
@@ -64,7 +69,8 @@ test("resize handles update and persist the selected window width", async ({ pag
 });
 
 test("tabs, window selection, and room facing remain interactive", async ({ page }) => {
-  for (const tabName of ["sunlight-map", "long-range", "outdoor-year", "current"]) {
+  await page.locator("#mode-exposure").click();
+  for (const tabName of ["sunlight-map", "long-range"]) {
     const tab = page.locator(`[data-result-tab="${tabName}"]`);
     await tab.click();
     await expect(tab).toHaveAttribute("aria-pressed", "true");
@@ -72,6 +78,7 @@ test("tabs, window selection, and room facing remain interactive", async ({ page
     await expect(page.locator(`[data-result-panel="${tabName}"]`)).toHaveAttribute("aria-hidden", "false");
   }
 
+  await page.locator("#mode-room").click();
   const currentTab = page.locator('[data-result-tab="current"]');
   await currentTab.focus();
   await currentTab.press("ArrowRight");
@@ -82,6 +89,7 @@ test("tabs, window selection, and room facing remain interactive", async ({ page
   await expect(page.locator("#selected-window-wall")).toHaveValue("east");
   await expect(page.locator("#window-position-label")).toContainText("depth axis");
 
+  await page.locator('.inspector-tabs [data-inspector="room"]').click();
   await page.locator('[data-window-facing="E"]').click();
   await waitForPreview(page);
   await expect(page.locator("#window-facing-input")).toHaveValue("E");

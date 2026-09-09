@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 async function open3dRoom(page) {
+  await page.locator("#mode-room").click();
   await page.locator('[data-result-tab="room-3d"]').click();
   const viewer = page.locator("#room3d-container");
   await expect(viewer).toHaveAttribute("data-viewer-state", "ready");
@@ -27,21 +28,17 @@ async function openDisplayOptions(page) {
 }
 
 async function openFurnitureTools(page) {
-  const details = page.locator(".furniture-tools");
-  if (await details.getAttribute("open") === null) {
-    await details.locator("summary").click();
-  }
+  await page.locator('.inspector-tabs [data-inspector="furniture"]').click();
 }
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#room-window-source")).toBeVisible();
+  await expect(page.locator("#room3d-container")).toHaveAttribute("data-viewer-state", "ready");
 });
 
-test("lazy-loads the current room and sunlight in WebGL", async ({ page }) => {
+test("opens the current room and sunlight in WebGL by default", async ({ page }) => {
   const viewer = page.locator("#room3d-container");
-  await expect(viewer).toHaveAttribute("data-viewer-state", "idle");
-  await expect(viewer.locator("canvas")).toHaveCount(0);
+  await expect(viewer).toHaveAttribute("data-viewer-state", "ready");
 
   await open3dRoom(page);
 
@@ -108,13 +105,16 @@ test("updates visual architecture without resetting the camera", async ({ page }
   await dragCanvas(page, viewer.locator("canvas"), 85, -20);
   await expect.poll(() => viewer.getAttribute("data-camera-position")).not.toBe(defaultCamera);
 
+  await page.locator('.inspector-tabs [data-inspector="room"]').click();
   await page.locator(".scene-details > summary").click();
+  await openFurnitureTools(page);
   await page.locator('select[name="scene_furniture_preset"]').selectOption("dining");
   await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
   await expect(viewer).toHaveAttribute("data-furniture-preset", "dining");
   await expect(viewer).toHaveAttribute("data-furniture-count", "5");
   await expect(viewer).not.toHaveAttribute("data-camera-position", defaultCamera);
 
+  await page.locator('.inspector-tabs [data-inspector="room"]').click();
   await page.locator('select[name="scene_door_enabled"]').selectOption("0");
   await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
   await expect(viewer).toHaveAttribute("data-door-count", "0");
@@ -153,6 +153,7 @@ test("adds, edits, duplicates, deletes, undoes, and restores furniture", async (
     if (new URL(request.url()).pathname === "/api/snapshot") snapshotRequests.push(request.url());
   });
   const patchCount = await viewer.getAttribute("data-patch-count");
+  await openFurnitureTools(page);
   await page.locator("#furniture-add-button").click();
   await expect(page.locator("#furniture-arrange-button")).toHaveAttribute("aria-pressed", "true");
   await page.locator('[data-add-furniture="chair"]').click();
@@ -231,10 +232,13 @@ test("keeps a local furniture edit when an older scene response arrives", async 
 
   const viewer = await open3dRoom(page);
   await openFurnitureTools(page);
+  await page.locator('.inspector-tabs [data-inspector="room"]').click();
   await page.locator(".scene-details > summary").click();
+  await openFurnitureTools(page);
   await page.locator('select[name="scene_furniture_preset"]').selectOption("dining");
   await sceneRequestStarted;
 
+  await openFurnitureTools(page);
   await page.locator("#furniture-add-button").click();
   await page.locator('[data-add-furniture="chair"]').click();
   await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
@@ -260,10 +264,13 @@ test("preserves a concurrent door change when furniture changes", async ({ page 
 
   const viewer = await open3dRoom(page);
   await openFurnitureTools(page);
+  await page.locator('.inspector-tabs [data-inspector="room"]').click();
   await page.locator(".scene-details > summary").click();
+  await page.locator('.inspector-tabs [data-inspector="room"]').click();
   await page.locator('select[name="scene_door_enabled"]').selectOption("0");
   await sceneRequestStarted;
 
+  await openFurnitureTools(page);
   await page.locator("#furniture-add-button").click();
   await page.locator('[data-add-furniture="chair"]').click();
   await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
@@ -291,10 +298,12 @@ test("preserves concurrent sunlight scene changes when furniture changes", async
 
   const viewer = await open3dRoom(page);
   await openFurnitureTools(page);
+  await page.locator('.inspector-tabs [data-inspector="room"]').click();
   await page.locator(".scene-details > summary").click();
   await page.locator('select[name="scene_external_obstruction"]').selectOption("building");
   await snapshotRequestStarted;
 
+  await openFurnitureTools(page);
   await page.locator("#furniture-add-button").click();
   await page.locator('[data-add-furniture="chair"]').click();
   await expect(viewer).toHaveAttribute("data-furniture-preset", "custom");
@@ -316,6 +325,7 @@ test("adds an exterior blocker through the full sunlight refresh path", async ({
     if (path.startsWith("/api/")) requests.push(path);
   });
 
+  await page.locator('.inspector-tabs [data-inspector="room"]').click();
   await page.locator(".scene-details > summary").click();
   await page.locator('select[name="scene_external_obstruction"]').selectOption("building");
   await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
@@ -334,11 +344,14 @@ test("uses the lightweight scene endpoint while the year estimate is active", as
     if (path.startsWith("/api/")) requests.push(path);
   });
 
+  await page.locator("#mode-exposure").click();
   await page.locator('[data-result-tab="long-range"]').click();
   await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
   expect(requests.filter((path) => path === "/api/long-range-exposure")).toHaveLength(1);
 
+  await page.locator('.inspector-tabs [data-inspector="room"]').click();
   await page.locator(".scene-details > summary").click();
+  await openFurnitureTools(page);
   await page.locator('select[name="scene_furniture_preset"]').selectOption("dining");
   await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
 
@@ -546,7 +559,8 @@ test("pauses rendering while the active viewer is offscreen", async ({ page }) =
   await viewer.scrollIntoViewIfNeeded();
   await expect(viewer).toHaveAttribute("data-rendering", "true");
 
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  // Provide scroll space now that the workspace fits on a single screen.
+  await page.evaluate(() => { document.body.style.paddingBottom = "1000px"; window.scrollTo(0, document.body.scrollHeight); });
   await expect(viewer).toHaveAttribute("data-rendering", "false");
 
   await viewer.scrollIntoViewIfNeeded();
@@ -611,7 +625,7 @@ test("keeps the camera while live room dimensions update", async ({ page }) => {
   const defaultCamera = await viewer.getAttribute("data-camera-position");
   await dragCanvas(page, viewer.locator("canvas"), -90, 20);
 
-  await page.locator(".geometry-details > summary").click();
+  await page.locator('.inspector-tabs [data-inspector="room"]').click();
   const depthInput = page.locator('input[name="room_depth"]');
   await depthInput.fill("5.5");
   await depthInput.press("Tab");

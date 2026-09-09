@@ -33,7 +33,7 @@ test("offers touch activation when a touchscreen is not the primary pointer", as
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#room-window-source")).toBeVisible();
+  await expect(page.locator("#room3d-container")).toHaveAttribute("data-viewer-state", "ready");
   await page.locator('[data-result-tab="room-3d"]').click();
 
   const viewer = page.locator("#room3d-container");

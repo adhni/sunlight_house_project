@@ -8,7 +8,7 @@ test.use({
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#room-window-source")).toBeVisible();
+  await expect(page.locator("#room3d-container")).toHaveAttribute("data-viewer-state", "ready");
 });
 
 test("brings the model forward and keeps playback below it", async ({ page }) => {
@@ -17,12 +17,12 @@ test("brings the model forward and keeps playback below it", async ({ page }) =>
   await expect(viewer).toHaveAttribute("data-viewer-state", "ready");
   await expect(viewer.locator("canvas")).toBeVisible();
 
-  await expect.poll(async () => (await viewer.boundingBox())?.y ?? 9999).toBeLessThan(180);
+  await expect.poll(async () => (await viewer.boundingBox())?.y ?? 9999).toBeLessThan(390);
   const viewerBox = await viewer.boundingBox();
   const readingBox = await page.locator("#room3d-reading").boundingBox();
   const animationBox = await page.locator("#room3d-animation-controls").boundingBox();
   expect(readingBox.y).toBeGreaterThan(viewerBox.y + viewerBox.height);
-  expect(animationBox.y).toBeGreaterThan(readingBox.y + readingBox.height);
+  expect(readingBox.y).toBeGreaterThanOrEqual(animationBox.y + animationBox.height);
   expect(animationBox.y).toBeGreaterThan(viewerBox.y + viewerBox.height);
   await expect(page.locator(".furniture-tools")).not.toHaveAttribute("open", "");
   await expect(page.locator("#room3d-reading-state")).toContainText("direct sun reaches the floor");
@@ -54,7 +54,8 @@ test("opens touch interaction automatically while arranging furniture", async ({
   await page.locator('[data-result-tab="room-3d"]').click();
   const viewer = page.locator("#room3d-container");
   await expect(viewer).toHaveAttribute("data-viewer-state", "ready");
-  await page.locator(".furniture-tools > summary").click();
+  await page.locator("#edit-room-button").click();
+  await page.locator('.inspector-tabs [data-inspector="furniture"]').click();
   await page.locator("#furniture-arrange-button").click();
 
   await expect(viewer).toHaveAttribute("data-arrange-mode", "true");
@@ -93,7 +94,10 @@ test("keeps labels separate and offers an in-view edit action", async ({ page })
   await labels.nth(1).click();
   await expect(viewer).toHaveAttribute("data-selected-window", "side_window");
   const editButton = page.locator("#room3d-edit-selected-window");
-  await expect(editButton).toBeVisible();
+  await expect(page.locator("#inspector-dialog")).toBeVisible();
+  await expect(page.locator("#selected-window-wall")).toHaveValue("east");
+  await page.locator('[data-close-dialog="inspector-dialog"]').click();
+  await expect(labels.nth(1)).toBeFocused();
   await editButton.click();
   await expect(page.locator("#selected-window-wall")).toBeFocused();
   await expect.poll(async () => {

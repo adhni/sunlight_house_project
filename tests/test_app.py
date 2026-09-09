@@ -306,7 +306,8 @@ class AppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         page = response.get_data(as_text=True)
         self.assertIn("Outdoor conditions", page)
-        self.assertIn("Outdoor context", page)
+        self.assertIn("Outdoor reference", page)
+        self.assertIn("2025 historical data", page)
         self.assertIn("environmentData.js", page)
 
     def test_index_handles_room_dimensions_that_do_not_fit_default_windows(self) -> None:

@@ -1,0 +1,263 @@
+<dialog id="location-dialog" class="workspace-dialog" aria-labelledby="location-dialog-title"><div class="dialog-heading"><h2 id="location-dialog-title">Location</h2><button type="button" class="quiet-button" data-close-dialog="location-dialog" aria-label="Close location">Close</button></div><div class="dialog-content"><section class="control-group">
+                <span class="explorer-label">Where Is The Room?</span>
+                <div class="chip-row" id="location-chip-row">
+                  {% for preset_key, preset in location_presets.items() %}
+                  <button
+                    type="button"
+                    class="chip-button {% if form_values.location_preset == preset_key %}is-active{% endif %}"
+                    data-location-preset="{{ preset_key }}"
+                  >
+                    {{ preset.name.split(',')[0] }}
+                  </button>
+                  {% endfor %}
+                  <button
+                    type="button"
+                    id="custom-location-toggle"
+                    class="chip-button chip-button-soft {% if form_values.location_preset == 'custom' %}is-active{% endif %}"
+                    data-location-preset="custom"
+                  >
+                    Custom
+                  </button>
+                </div>
+              </section><details id="custom-location-panel" class="subtle-details" {% if form_values.location_preset == 'custom' %}open{% endif %}>
+                <summary>Custom location</summary>
+                <div class="custom-location-fields">
+                  <p class="field-help">Click the map or drag the marker to place the room. Use manual coordinates only when you need a precise point.</p>
+                  <div id="location-map" class="location-map location-map-compact" aria-label="Location map"></div>
+                  <div class="field-row">
+                    <label>
+                      <span>Latitude</span>
+                      <input id="latitude-input" type="number" min="-90" max="90" step="0.0001" name="latitude" value="{{ form_values.latitude }}">
+                    </label>
+                    <label>
+                      <span>Longitude</span>
+                      <input id="longitude-input" type="number" min="-180" max="180" step="0.0001" name="longitude" value="{{ form_values.longitude }}">
+                    </label>
+                  </div>
+                  <details class="subtle-details custom-location-advanced">
+                    <summary>Manual timezone</summary>
+                    <div class="advanced-fields">
+                      <label>
+                        <span>Timezone</span>
+                        <input type="text" name="timezone_name" value="{{ form_values.timezone_name }}">
+                      </label>
+                    </div>
+                  </details>
+                </div>
+              </details><div class="reference-heading"><h3>Outdoor reference</h3><span class="example-badge">2025 historical data</span></div><article id="outdoor-conditions-card" class="outdoor-conditions-card">
+                  <div class="outdoor-card-header">
+                    <div>
+                      <span id="outdoor-location-label" class="explorer-label">Melbourne 2025</span>
+                      <h3>Outdoor conditions</h3>
+                    </div>
+                    <span id="outdoor-conditions-status" class="outdoor-status">Sample</span>
+                  </div>
+                  <div class="outdoor-metrics">
+                    <span>Temperature: <strong id="outdoor-temp">--</strong></span>
+                    <span>UV Index: <strong id="outdoor-uv">--</strong></span>
+                    <span>Sun strength: <strong id="outdoor-strength">--</strong></span>
+                  </div>
+                  <p id="outdoor-interpretation" class="outdoor-interpretation">Loading outdoor sample...</p>
+                </article><details class="reference-details"><summary>Explore the reference year</summary><div id="result-panel-outdoor-year" class="outdoor-reference-view">
+              <section class="outdoor-year-view">
+                <div class="outdoor-year-header">
+                  <div>
+                    <p class="section-kicker">Outdoor Reference</p>
+                    <h2>Outdoor Conditions Through The Year</h2>
+                  </div>
+                  <span id="outdoor-year-source" class="outdoor-status">Loading</span>
+                </div>
+
+                <div class="chip-row outdoor-year-metric-row">
+                  <button type="button" class="chip-button is-active" data-outdoor-year-metric="uv">Midday UV</button>
+                  <button type="button" class="chip-button" data-outdoor-year-metric="solar">Sun strength</button>
+                  <button type="button" class="chip-button" data-outdoor-year-metric="temp">Temperature</button>
+                </div>
+
+                <div class="outdoor-year-summary">
+                  <article class="metric-card">
+                    <span class="metric-label">Warmest Month</span>
+                    <strong id="outdoor-year-warmest">--</strong>
+                  </article>
+                  <article class="metric-card">
+                    <span class="metric-label">Peak UV Month</span>
+                    <strong id="outdoor-year-peak-uv">--</strong>
+                  </article>
+                  <article class="metric-card">
+                    <span class="metric-label">Strongest Sun Month</span>
+                    <strong id="outdoor-year-peak-sun">--</strong>
+                  </article>
+                </div>
+
+                <div class="outdoor-year-layout">
+                  <section class="outdoor-year-chart-card">
+                    <div class="outdoor-chart-heading">
+                      <span id="outdoor-year-chart-label" class="explorer-label">Midday UV</span>
+                      <strong id="outdoor-year-chart-value">--</strong>
+                    </div>
+                    <div id="outdoor-year-chart" class="outdoor-year-chart" aria-label="Monthly outdoor conditions chart"></div>
+                  </section>
+
+                  <aside class="outdoor-month-detail">
+                    <span class="explorer-label">Selected Month</span>
+                    <h3 id="outdoor-year-month-name">--</h3>
+                    <div class="outdoor-month-grid">
+                      <span>Avg temp <strong id="outdoor-year-month-temp">--</strong></span>
+                      <span>Midday UV <strong id="outdoor-year-month-uv">--</strong></span>
+                      <span>Midday sun <strong id="outdoor-year-month-solar">--</strong></span>
+                      <span>Strength <strong id="outdoor-year-month-strength">--</strong></span>
+                    </div>
+                    <p id="outdoor-year-caption" class="angle-caption">
+                      Monthly values use the loaded 2025 outdoor reference data.
+                    </p>
+                  </aside>
+                </div>
+              </section>
+            </div></details></div></dialog>
+<dialog id="compare-dialog" class="workspace-dialog" aria-labelledby="compare-dialog-title"><div class="dialog-heading"><h2 id="compare-dialog-title">Compare designs</h2><button type="button" class="quiet-button" data-close-dialog="compare-dialog" aria-label="Close compare designs">Close</button></div><div class="dialog-content"><p class="dialog-intro">Save the current design as a baseline, make a change, then compare its sunlight results. Baselines are stored in this browser.</p><details class="subtle-details result-tools-details" open>
+              <summary>Compare against baseline</summary>
+              <section class="baseline-result-panel">
+                <div class="baseline-panel-header">
+                  <div class="chip-row baseline-actions">
+                    <button id="save-baseline-button" type="button" class="chip-button chip-button-soft">Save as baseline</button>
+                    <button id="clear-baseline-button" type="button" class="chip-button chip-button-soft">Clear baseline</button>
+                  </div>
+                </div>
+                <div id="baseline-empty-state" class="baseline-empty-state">
+                  Save the current scenario as a baseline to compare changes.
+                </div>
+                <details id="baseline-details" class="subtle-details baseline-details" hidden>
+                  <summary>Baseline vs Current</summary>
+                  <div id="baseline-comparison-panel" class="baseline-comparison-panel">
+                    <div class="baseline-grid baseline-grid-header">
+                      <span class="metric-label">Metric</span>
+                      <span class="metric-label">Baseline</span>
+                      <span class="metric-label">Current</span>
+                      <span class="metric-label">Delta</span>
+                    </div>
+                    <div class="baseline-grid">
+                      <span class="baseline-metric-name">Selected moment</span>
+                      <strong id="baseline-selected-moment-baseline">-</strong>
+                      <strong id="baseline-selected-moment-current">-</strong>
+                      <strong id="baseline-selected-moment-delta">-</strong>
+                    </div>
+                    <div class="baseline-grid">
+                      <span class="baseline-metric-name">Daily peak intensity</span>
+                      <strong id="baseline-peak-intensity-baseline">-</strong>
+                      <strong id="baseline-peak-intensity-current">-</strong>
+                      <strong id="baseline-peak-intensity-delta">-</strong>
+                    </div>
+                    <div class="baseline-grid">
+                      <span class="baseline-metric-name">Room with any sun</span>
+                      <strong id="baseline-sunlit-fraction-baseline">-</strong>
+                      <strong id="baseline-sunlit-fraction-current">-</strong>
+                      <strong id="baseline-sunlit-fraction-delta">-</strong>
+                    </div>
+                    <div class="baseline-grid">
+                      <span class="baseline-metric-name">Peak sunlit cell</span>
+                      <strong id="baseline-peak-hours-baseline">-</strong>
+                      <strong id="baseline-peak-hours-current">-</strong>
+                      <strong id="baseline-peak-hours-delta">-</strong>
+                    </div>
+                  </div>
+                </details>
+              </section>
+            </details></div></dialog>
+<dialog id="calculation-dialog" class="workspace-dialog" aria-labelledby="calculation-dialog-title"><div class="dialog-heading"><h2 id="calculation-dialog-title">Calculation details</h2><button type="button" class="quiet-button" data-close-dialog="calculation-dialog" aria-label="Close calculation details">Close</button></div><div class="dialog-content"><dl>
+                  <div>
+                    <dt>Sun position</dt>
+                    <dd id="room3d-reading-sun">Calculating…</dd>
+                  </div>
+                  <div>
+                    <dt>Floor sunlight</dt>
+                    <dd id="room3d-reading-floor">Calculating…</dd>
+                  </div>
+                  <div class="room3d-reading-selected">
+                    <dt id="room3d-reading-selected-label">Selected window</dt>
+                    <dd id="room3d-reading-selected">Calculating…</dd>
+                  </div>
+                  <div>
+                    <dt>Shading included</dt>
+                    <dd id="room3d-reading-blockers">Calculating…</dd>
+                  </div>
+                </dl><p class="room3d-scope-note">Furniture and the door are visual scale guides only; they do not shade the sunlight result.</p><details class="subtle-details control-group current-moment-details" open>
+                <summary>
+                  <span class="section-kicker">Current Moment</span>
+                  <strong id="selected-moment-label">{{ snapshot.moment.strftime('%d %b %Y %H:%M %Z') }}</strong>
+                </summary>
+                <div class="current-moment-content">
+                  <div class="metric-grid metric-grid-compact">
+                    <article class="metric-card">
+                      <span class="metric-label">Elevation</span>
+                      <strong id="live-elevation">{{ "%.2f"|format(snapshot.position.elevation_deg) }} deg</strong>
+                    </article>
+                    <article class="metric-card">
+                      <span class="metric-label">Azimuth</span>
+                      <strong id="live-azimuth">{{ "%.2f"|format(snapshot.position.azimuth_deg) }} deg</strong>
+                    </article>
+                    <article class="metric-card">
+                      <span class="metric-label">Sun reaches floor</span>
+                      <strong id="live-entry">{{ "Yes — reaches floor" if snapshot.entered_direct_sun else "No floor patch" }}</strong>
+                    </article>
+                    <article class="metric-card">
+                      <span class="metric-label">Strongest Window</span>
+                      <strong id="live-strongest">
+                        {{ strongest_window or "None" }} {% if strongest_window %}({{ "%.3f"|format(strongest_intensity) }}){% endif %}
+                      </strong>
+                    </article>
+                  </div>
+                  <div class="vector-card vector-card-compact">
+                    <span class="metric-label">Sun Vector</span>
+                    <strong id="live-vector">({{ "%.3f"|format(snapshot.vector[0]) }}, {{ "%.3f"|format(snapshot.vector[1]) }}, {{ "%.3f"|format(snapshot.vector[2]) }})</strong>
+                    <span class="metric-label">Peak window factor</span>
+                    <strong id="live-daily-peak">
+                      {% if daily.peak_time %}
+                      {{ "%.3f"|format(daily.peak_intensity) }} at {{ daily.peak_time.strftime('%H:%M %Z') }}
+                      {% else %}
+                      No direct sun
+                      {% endif %}
+                    </strong>
+                  </div>
+                </div>
+              </details><section class="summary-card summary-card-{{ initial_snapshot_payload.summary.tone }}">
+              <div class="summary-card-header">
+                <div>
+                  <p class="section-kicker">Summary</p>
+                  <h3 id="sun-summary-headline">{{ initial_snapshot_payload.summary.headline }}</h3>
+                </div>
+                <span id="sun-summary-tone" class="summary-tone">{{ initial_snapshot_payload.summary.tone|replace('_', ' ') }}</span>
+              </div>
+              <p id="sun-summary-supporting" class="summary-copy">{{ initial_snapshot_payload.summary.supporting_text }}</p>
+              <p id="sun-summary-moment" class="summary-copy summary-copy-secondary">{{ initial_snapshot_payload.summary.moment_text }}</p>
+              <div class="summary-metrics" aria-label="Sunlight summary metrics">
+                <article class="summary-metric">
+                  <span class="metric-label">Peak floor cell</span>
+                  <strong id="summary-peak-hours">{{ "%.1f"|format(initial_snapshot_payload.daily.exposure_grid.peak_hours) }} h</strong>
+                </article>
+                <article class="summary-metric">
+                  <span class="metric-label">Strongest window time</span>
+                  <strong id="summary-peak-time">{% if initial_snapshot_payload.daily.peak_time %}{{ initial_snapshot_payload.daily.peak_time[11:16] }}{% else %}--{% endif %}</strong>
+                </article>
+                <article class="summary-metric">
+                  <span class="metric-label">Room with any sun</span>
+                  <strong id="summary-sunlit-fraction">{{ (initial_snapshot_payload.daily.exposure_grid.sunlit_fraction * 100)|round|int }}%</strong>
+                </article>
+              </div>
+              <p class="summary-assumptions">Direct sun only · furniture and blinds are excluded from shading.</p>
+            </section><div class="room3d-footer">
+                <p id="room3d-status" class="angle-caption" role="status">Open this tab to load the 3D room.</p>
+                <p id="room3d-keyboard-help" class="angle-caption">Keyboard: arrows orbit · Shift + arrows pan · +/− zoom. In Arrange mode, arrows move the selected item, Q/E rotate, Delete removes.</p>
+              </div></div></dialog>
+<dialog id="import-dialog" class="workspace-dialog" aria-labelledby="import-dialog-title"><div class="dialog-heading"><h2 id="import-dialog-title">Import room (IFC)</h2><button type="button" class="quiet-button" data-close-dialog="import-dialog" aria-label="Close import room (ifc)">Close</button></div><div class="dialog-content"><details class="subtle-details control-group ifc-import-group" open>
+                <summary>
+                  <span class="section-kicker">Advanced</span>
+                  <strong>Import an IFC room</strong>
+                </summary>
+                <p class="window-builder-copy">Import one rectangular room and nearby windows, then verify its bearing.</p>
+                <div class="ifc-import-row">
+                  <input id="ifc-file-input" type="file" accept=".ifc">
+                  <button id="ifc-import-button" type="button" class="chip-button chip-button-soft">Import</button>
+                </div>
+                <p id="ifc-import-status" class="field-help" role="status"></p>
+              </details></div></dialog>
+<dialog id="inspector-dialog" class="workspace-dialog inspector-dialog" aria-label="Room editor"></dialog>

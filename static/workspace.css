@@ -1,0 +1,276 @@
+/* SunRoom Astra: a quiet, responsive workspace around the room. */
+.sunroom-app {
+  --ink: #263b38; --muted: #61716b; --accent: #176b62; --accent-soft: #e7f1ed;
+  --line: #dde2dc; --panel: #fff; --page: #f7f8f4; --selection: #705bc2;
+  color: var(--ink); background: var(--page); font-family: 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px; line-height: 1.5; margin: 0;
+}
+.sunroom-app * { box-sizing: border-box; }
+.sunroom-app [hidden] { display: none !important; }
+.sunroom-app button, .sunroom-app input, .sunroom-app select { font: inherit; }
+.sunroom-app button, .sunroom-app summary, .sunroom-app input, .sunroom-app select { -webkit-tap-highlight-color: transparent; }
+.sunroom-app :focus-visible { outline: 3px solid #7258b9; outline-offset: 3px; }
+.sunroom-app button:disabled { cursor: default; opacity: .45; }
+.sunroom-app .page-shell { width: min(100% - 64px, 1536px); max-width: none; margin: 0 auto; padding: 0 0 24px; }
+.sunroom-app .workspace-form { display: block; }
+.app-header { height: 78px; display: flex; align-items: center; gap: 30px; border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 18px; font-weight: 650; letter-spacing: -.6px; text-decoration: none; white-space: nowrap; }
+.brand-mark { color: #ba8c37; font-size: 36px; line-height: 1; transform: rotate(-35deg); }
+.brand-edition { font-weight: 400; color: var(--muted); }
+.header-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.sunroom-app .quiet-button, .sunroom-app .location-button { border: 0; background: transparent; color: var(--ink); border-radius: 6px; min-height: 44px; padding: 8px 12px; font-size: 13px; font-weight: 500; cursor: pointer; }
+.sunroom-app .quiet-button:hover, .sunroom-app .location-button:hover { background: #e9ede6; }
+.location-button { display: flex; align-items: center; gap: 9px; min-width: 0; max-width: 380px; }
+#workspace-location { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.location-dot { width: 7px; height: 7px; background: var(--accent); border-radius: 50%; flex: none; }
+.workspace-menu { position: relative; z-index: 20; }
+.workspace-menu summary { list-style: none; display: flex; align-items: center; gap: 10px; }
+.workspace-menu summary::-webkit-details-marker { display: none; }
+.menu-items { position: absolute; top: 48px; right: 0; min-width: 220px; padding: 6px; border: 1px solid var(--line); background: #fff; border-radius: 10px; box-shadow: 0 12px 30px #263b3814; }
+.menu-items button { display: block; padding: 12px; border: 0; background: transparent; text-align: left; width: 100%; cursor: pointer; color: var(--ink); }
+.menu-items button:hover { background: var(--page); }
+.workspace-navigation { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 68px; }
+.primary-tabs { display: flex; gap: 26px; align-self: stretch; }
+.primary-tabs button { border: 0; border-bottom: 2px solid transparent; padding: 0 2px; color: var(--muted); background: transparent; cursor: pointer; min-height: 44px; font-weight: 500; }
+.primary-tabs button[aria-selected=true] { color: var(--accent); border-bottom-color: var(--accent); }
+.workspace-status { display: flex; align-items: center; gap: 4px; }
+.sunroom-app .update-status { font-size: 12px; color: var(--muted); border: 0; padding: 0; background: transparent; max-width: 320px; text-align: right; }
+.sunroom-app .update-status[data-state=loading], .sunroom-app .update-status[data-state=pending] { color: #876426; }
+.sunroom-app .update-status[data-state=error], .field-error { color: #a03f35; }
+.sunroom-app .workspace-grid-main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; margin: 20px 0 0; }
+.sunroom-app .room-workspace { min-width: 0; padding: 0; background: transparent; border: 0; box-shadow: none; }
+.workspace-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.sunroom-app .section-kicker { text-transform: none; color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: .15px; margin: 0 0 4px; }
+.sunroom-app h1 { font-size: 27px; line-height: 1.25; letter-spacing: -.8px; margin: 0; font-weight: 550; }
+.sunroom-app h2 { font-size: 20px; font-weight: 550; letter-spacing: -.4px; }
+.sunroom-app h3 { font-size: 17px; font-weight: 550; }
+#edit-room-button { display: none; }
+.view-bar { display: flex; justify-content: space-between; gap: 12px; align-items: center; min-height: 44px; margin-bottom: 10px; }
+.view-tabs { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: #eef1eb; flex: none; }
+.sunroom-app .chip-button { padding: 8px 12px; min-height: 40px; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 7px; box-shadow: none; font-size: 12px; line-height: 1.4; font-weight: 500; white-space: normal; }
+.sunroom-app .chip-button:hover { background: #e7ede6; border-color: #b2c3b9; }
+.sunroom-app .chip-button.is-active, .sunroom-app .chip-button[aria-pressed=true] { color: #155a52; background: var(--accent-soft); border-color: #b1c9bc; }
+.sunroom-app .view-tabs .chip-button { border: 0; min-height: 34px; padding: 5px 14px; }
+.sunroom-app .view-tabs .chip-button.is-active { background: white; box-shadow: 0 1px 3px #263b3812; color: var(--ink); }
+.sunroom-app .room3d-toolbar, .sunroom-app .room3d-control-group { flex-direction: row; align-items: center; gap: 6px; }
+.sunroom-app .room3d-control-label { display: none; }
+.sunroom-app .room3d-actions { gap: 4px; }
+.sunroom-app .room3d-actions .chip-button { border-color: transparent; padding: 8px; }
+.sunroom-app .room3d-display-options summary { display: flex; align-items: center; cursor: pointer; min-height: 40px; }
+.sunroom-app .room3d-display-actions { z-index: 25; background: white; border: 1px solid var(--line); border-radius: 8px; padding: 8px; box-shadow: 0 8px 24px #263b3812; }
+.sunroom-app .room3d-stage { border: 1px solid #e1e4dc; border-radius: 12px; background: #eef1ea; overflow: hidden; box-shadow: none; }
+.sunroom-app .room3d-container { height: clamp(340px, calc(100svh - 443px), 630px); min-height: 0; background: #eef1ea; }
+.sunroom-app .room3d-container canvas { border-radius: 0; }
+.sunroom-app .room3d-status { background: #fffef0e6; font-size: 12px; padding: 9px 12px; border-radius: 7px; }
+.sunroom-app .room3d-window-label { border-radius: 6px; padding: 6px 9px; font-size: 11px; min-height: 36px; box-shadow: 0 2px 8px #263b3810; }
+.sunroom-app .room3d-window-label.is-selected { border-color: var(--selection); background: #f1ecfc; color: #58449b; }
+.sunroom-app .room3d-interaction-hint { font-size: 11px; margin: 0 0 7px; color: var(--muted); min-height: 0; }
+.sunroom-app .room3d-scene-legend { padding: 8px 10px; gap: 12px; font-size: 10px; border: 0; background: transparent; }
+.sunroom-app .room3d-selection-bar { padding: 8px 12px; border-radius: 0; border: 0; border-bottom: 1px solid var(--line); background: white; font-size: 12px; }
+.sunroom-app .room3d-selection-bar .chip-button { min-height: 32px; }
+.sunroom-app .workspace-timeline { margin: 12px 0 0; padding: 12px 16px 8px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.timeline-heading, .timeline-foot, .timeline-date { display: flex; align-items: center; gap: 10px; }
+.timeline-heading, .timeline-foot { justify-content: space-between; }
+.timeline-heading > .quiet-button { min-height: 32px; font-size: 11px; }
+.timeline-date label { font-size: 11px; color: var(--muted); }
+.sunroom-app .timeline-date input { width: 134px; padding: 3px 6px; height: 32px; min-height: 32px; border: 0; background: transparent; font-size: 12px; color: var(--ink); }
+.example-badge { color: #746240; background: #f6f0e2; border-radius: 4px; padding: 3px 6px; font-size: 10px; white-space: nowrap; }
+.timeline-track { display: grid; grid-template-columns: 82px minmax(0, 1fr) 84px; align-items: center; gap: 18px; margin-top: 6px; }
+.play-button { min-height: 40px; border: 0; border-radius: 7px; color: white; background: var(--accent); cursor: pointer; font-size: 12px !important; }
+.play-button[aria-pressed=true] { background: #43574b; }
+.timeline-range { position: relative; min-width: 0; padding: 0 0 13px; }
+.sunroom-app input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; min-height: 24px; padding: 0; margin: 0; }
+.sunroom-app .daylight-markers { height: 14px; margin: 0; position: relative; font-size: 9px; color: var(--muted); }
+.sunroom-app .daylight-marker { position: absolute; white-space: nowrap; transform: translateX(-50%); top: 0; }
+.sunroom-app .timeline-clock input { width: 84px; min-height: 38px; padding: 6px; font-size: 13px; font-variant-numeric: tabular-nums; background: var(--page); border: 1px solid var(--line); border-radius: 6px; }
+.timeline-foot { font-size: 10px; color: var(--muted); margin-top: 0; }
+.timeline-presets { display: flex; gap: 4px; }
+.sunroom-app .timeline-presets button { font-size: 10px; min-height: 32px; padding: 4px 7px; color: var(--muted); }
+.sunroom-app .timeline-presets button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent); }
+.sunroom-app .room3d-reading { border: 0; padding: 14px 0 4px; background: transparent; box-shadow: none; margin: 0; display: block; }
+.sunroom-app .room3d-reading-lead { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sunroom-app .room3d-reading-lead:before { content: ''; width: 7px; height: 7px; background: #bd9348; border-radius: 50%; flex: none; }
+.sunroom-app .room3d-reading-lead .section-kicker, #room3d-reading-room { display: none; }
+.sunroom-app #room3d-reading-state { font-size: 13px; font-weight: 500; }
+.workspace-caption { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 10px; }
+.sunroom-app .workspace-caption button { font-size: 10px; min-height: 30px; padding: 4px 0 4px 10px; color: var(--muted); }
+.sunroom-app .workspace-sidebar { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: block; min-width: 0; }
+.inspector-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.inspector-heading h2 { margin: 0; font-size: 19px; }
+.inspector-close { display: none; }
+.inspector-tabs { display: flex; border-bottom: 1px solid var(--line); gap: 12px; margin-bottom: 20px; }
+.inspector-tabs button { padding: 6px 0 10px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); min-height: 44px; font-size: 12px; cursor: pointer; }
+.inspector-tabs button[aria-pressed=true] { border-bottom-color: var(--accent); color: var(--accent); }
+.sunroom-app .workspace-sidebar .control-group { padding: 0; margin: 0 0 16px; border: 0; background: transparent; }
+.sunroom-app .workspace-sidebar label { font-size: 12px; font-weight: 500; color: var(--ink); gap: 5px; }
+.sunroom-app .workspace-sidebar input:not([type=hidden]):not([type=range]), .sunroom-app .workspace-sidebar select { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fbfcfa; color: var(--ink); font-size: 13px; }
+.sunroom-app .workspace-sidebar .field-grid, .sunroom-app .workspace-sidebar .selected-window-grid, .sunroom-app .workspace-sidebar .geometry-inputs { gap: 12px; }
+.sunroom-app .workspace-sidebar .field-help, .sunroom-app .workspace-sidebar .angle-caption { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.sunroom-app .selected-window-card { background: transparent; border: 0; padding: 0; box-shadow: none; }
+.sunroom-app .selected-window-card h3 { font-size: 14px; }
+.sunroom-app .selected-window-card .section-kicker { display: none; }
+.sunroom-app .window-builder-header { gap: 8px; }
+.sunroom-app .window-builder-header h3 { font-size: 14px; }
+.sunroom-app .window-builder-header p, #window-editor-copy { display: none; }
+.sunroom-app .window-builder-header .chip-button { font-size: 11px; padding: 7px 8px; }
+.sunroom-app .window-builder-list { margin-bottom: 12px; }
+.sunroom-app .subtle-details summary { color: var(--ink); font-size: 12px; min-height: 40px; }
+.sunroom-app .scene-details { border-top: 1px solid var(--line) !important; padding-top: 10px !important; }
+.inspector-note { display: flex; gap: 8px; border-top: 1px solid var(--line); margin-top: 16px; padding-top: 14px; font-size: 11px; line-height: 1.6; color: var(--muted); }
+.inspector-note p { margin: 0; }
+.sunroom-app .back-to-room { padding-left: 0; font-size: 11px; color: var(--accent); }
+.sunroom-app .furniture-tools { margin: 12px 0 0; padding: 0; border: 0; background: transparent; }
+.sunroom-app .furniture-tools > summary { display: none; }
+.sunroom-app .furniture-toolbar { flex-wrap: wrap; gap: 6px; }
+.sunroom-app .furniture-selection-fields { grid-template-columns: 1fr 1fr; }
+.field-error { display: block; font-size: 11px; font-weight: 400; line-height: 1.5; margin: 4px 0 0; }
+.sunroom-app input[aria-invalid=true] { border-color: #a03f35 !important; }
+.workspace-dialog { width: min(700px, calc(100% - 40px)); max-height: min(850px, calc(100svh - 64px)); border: 1px solid var(--line); padding: 0; border-radius: 14px; color: var(--ink); box-shadow: 0 24px 90px #172e3333; background: var(--page); overflow: auto; }
+.workspace-dialog::backdrop { background: #20363266; backdrop-filter: blur(3px); }
+.dialog-heading { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--page); border-bottom: 1px solid var(--line); }
+.dialog-heading h2 { margin: 0; }
+.dialog-content { padding: 24px; }
+.dialog-content > .subtle-details { margin: 0; }
+.dialog-content > .result-tools-details > summary, .dialog-content > .ifc-import-group > summary { display: none; }
+.dialog-content .control-group { margin-bottom: 24px; }
+.dialog-intro { margin-top: 0; color: var(--muted); }
+.reference-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px; }
+.sunroom-app .outdoor-conditions-card { padding: 16px; background: white; border: 1px solid var(--line); box-shadow: none; }
+.sunroom-app .room-snapshot-large { height: clamp(380px, calc(100svh - 430px), 620px); min-height: 0; background: #eef1ea; border-radius: 12px; }
+.sunroom-app .room-snapshot-large svg { height: 100%; }
+.sunroom-app #result-panel-current .geometry-readout, .sunroom-app #result-panel-current .snapshot-facts, #room-angle-caption { display: none; }
+.sunroom-app .drag-hint { font-size: 11px; }
+.sunroom-app .exposure-map-panel, .sunroom-app .goal-studio-panel, .sunroom-app .long-range-panel { background: white; border: 1px solid var(--line); border-radius: 12px; padding: 20px; box-shadow: none; }
+.sunroom-app .goal-studio-layout { gap: 20px; }
+.sunroom-app .goal-card, .sunroom-app .goal-suggestion-card { border-radius: 8px; background: #fafbf8; box-shadow: none; }
+.sunroom-app .workspace-form[data-mode=improve] .view-bar { display: none; }
+.sunroom-app .workspace-form:not([data-mode=room]) .timeline-track, .sunroom-app .workspace-form:not([data-mode=room]) .timeline-foot, .sunroom-app .workspace-form:not([data-mode=room]) .room3d-reading { display: none; }
+.skip-link { position: fixed; left: 16px; top: -80px; z-index: 100; background: #fff; padding: 12px 18px; color: var(--accent); border-radius: 6px; }
+.skip-link:focus { top: 10px; }
+@media (min-width: 981px) and (max-height: 850px) {
+  .app-header { height: 64px; }
+  .workspace-navigation { min-height: 54px; }
+  .sunroom-app .workspace-grid-main { margin-top: 16px; }
+  .sunroom-app .room3d-container { height: max(300px, calc(100svh - 443px)); }
+}
+@media (max-width: 1200px) {
+  .sunroom-app .page-shell { width: calc(100% - 40px); }
+  .sunroom-app .workspace-grid-main { gap: 18px; grid-template-columns: minmax(0,1fr) 300px; }
+  .app-header { gap: 16px; }
+  .sunroom-app .room3d-actions .chip-button { padding: 6px; font-size: 11px; }
+  .sunroom-app .room3d-toolbar { gap: 4px; }
+}
+@media (max-width: 980px) {
+  .sunroom-app .workspace-grid-main { grid-template-columns: minmax(0,1fr); }
+  #inspector-slot { display: none; }
+  #edit-room-button { display: block; }
+  .inspector-close { display: block; }
+  .inspector-dialog { position: fixed; top: auto; bottom: 0; margin: 0 auto; width: min(580px, 100%); max-height: 88svh; border-radius: 18px 18px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+  .sunroom-app .inspector-dialog .workspace-sidebar { border: 0; border-radius: 0; padding: 20px 24px; }
+  .sunroom-app .room3d-container { height: clamp(350px, 48svh, 560px); }
+  .sunroom-app .room3d-window-label { min-height: 44px; }
+  .sunroom-app .chip-button, .sunroom-app .view-tabs .chip-button, .sunroom-app .room3d-display-options summary { min-height: 44px; }
+  .sunroom-app .timeline-presets button, .sunroom-app .timeline-heading > .quiet-button { min-height: 44px; }
+}
+@media (max-width: 600px) {
+  .sunroom-app .page-shell { width: calc(100% - 28px); padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .app-header { height: auto; min-height: 96px; display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 8px 0; }
+  .brand { font-size: 16px; }
+  .brand-mark { font-size: 30px; }
+  .location-button { grid-row: 2; grid-column: 1 / -1; justify-self: start; padding-left: 0 !important; max-width: 100%; }
+  .header-actions { gap: 0; margin: 0; grid-column: 2; grid-row: 1; }
+  .sunroom-app .header-actions .quiet-button { font-size: 11px; padding: 6px; }
+  #design-undo-button { position: absolute; right: 14px; top: 53px; }
+  .location-button { max-width: calc(100% - 90px); }
+  .workspace-navigation { display: block; min-height: 0; }
+  .primary-tabs { justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--line); }
+  .primary-tabs button { min-height: 52px; font-size: 13px; }
+  .workspace-status { justify-content: flex-end; min-height: 28px; }
+  .sunroom-app .update-status { font-size: 10px; max-width: 100%; }
+  .sunroom-app .workspace-grid-main { margin-top: 4px; }
+  .workspace-heading { margin-bottom: 12px; gap: 8px; }
+  .sunroom-app .workspace-heading .section-kicker { font-size: 10px; }
+  .sunroom-app h1 { font-size: 23px; }
+  .view-bar { flex-wrap: wrap; gap: 7px; }
+  .sunroom-app .room3d-toolbar { flex: 1; justify-content: flex-end; }
+  .sunroom-app .room3d-control-group { display: none; }
+  .sunroom-app .room3d-container { height: 350px; }
+  .sunroom-app .room3d-interaction-hint { font-size: 10px; }
+  .sunroom-app .room3d-scene-legend { display: none; }
+  .sunroom-app .workspace-timeline { padding: 10px; }
+  .timeline-date { gap: 4px; flex-wrap: wrap; }
+  .timeline-date label { display: none; }
+  .timeline-date .example-badge { font-size: 9px; }
+  .sunroom-app .timeline-heading > .quiet-button { font-size: 10px; padding: 4px; max-width: 65px; }
+  .timeline-track { grid-template-columns: 66px minmax(0,1fr) 78px; gap: 10px; }
+  .sunroom-app .timeline-clock input { width: 78px; }
+  .timeline-foot { align-items: center; flex-wrap: wrap; gap: 0; }
+  .sunroom-app .timeline-presets button { font-size: 9px; padding: 4px; }
+  .sunroom-app #time-scrubber-reference { font-size: 9px; }
+  .sunroom-app #room3d-reading-state { font-size: 12px; }
+  .workspace-caption { font-size: 9px; }
+  .workspace-dialog { width: calc(100% - 20px); max-height: calc(100svh - 24px); }
+  .inspector-dialog { width: 100%; max-height: 88svh; }
+  .dialog-heading { padding: 10px 16px; }
+  .dialog-content { padding: 16px; }
+  .sunroom-app .room-snapshot-large { height: 360px; }
+  .sunroom-app .exposure-map-panel, .sunroom-app .goal-studio-panel, .sunroom-app .long-range-panel { padding: 12px; }
+  .reference-heading { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sunroom-app *, .sunroom-app *::before, .sunroom-app *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+.sunroom-app .sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
+.sunroom-app .room3d-container { margin-top: 0; border-radius: 12px; }
+.sunroom-app .room3d-container canvas { min-height: 0; }
+.sunroom-app .room3d-edit-selected-window { display: none; }
+.sunroom-app .workspace-sidebar label span { text-transform: none; letter-spacing: 0; }
+.sunroom-app .workspace-sidebar .scene-details .field-row-3 { grid-template-columns: 1fr 1fr; }
+.sunroom-app .workspace-sidebar .explorer-label { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.sunroom-app .workspace-sidebar .field-row-4 { grid-template-columns: 1fr 1fr; }
+.sunroom-app .room3d-reading-lead:before { display: none; }
+@media (max-width: 600px) {
+  .sunroom-app .window-builder-header { display: flex; align-items: center; }
+  .sunroom-app .window-builder-header .chip-button { width: auto; }
+  .sunroom-app .inspector-dialog { top: auto; bottom: 0; margin-bottom: 0; }
+  .sunroom-app .room3d-edit-selected-window { display: block; margin: 8px 0 0; }
+  .sunroom-app .room3d-toolbar .room3d-actions { gap: 2px; }
+}
+.sunroom-app .room3d-scene-legend { margin: 0; min-height: 28px; }
+.sunroom-app .timeline-range { padding-bottom: 0; }
+.sunroom-app .timeline-foot { margin-top: 2px; }
+.sunroom-app .workspace-timeline { padding-top: 8px; }
+@media (min-width: 981px) and (max-height: 850px) {
+  .sunroom-app .workspace-heading { margin-bottom: 8px; }
+  .sunroom-app .room3d-interaction-hint { display: none; }
+  .sunroom-app .inspector-note { margin-top: 8px; padding-top: 10px; }
+  .sunroom-app .inspector-tabs { margin-bottom: 12px; }
+  .sunroom-app .workspace-sidebar { padding: 16px; }
+  .sunroom-app .room3d-reading { padding-top: 8px; }
+}
+.mobile-camera-control { display: none; }
+.sunroom-app .workspace-form:not([data-mode=room]) .workspace-timeline { margin: 0 0 16px; }
+.sunroom-app .goal-studio-header { align-items: center; margin-bottom: 16px; }
+.sunroom-app .goal-studio-header p { margin: 0; font-size: 13px; }
+.sunroom-app .goal-probe-panel, .sunroom-app .goal-reading-panel, .sunroom-app .goal-suggestions { background: #fff; border-radius: 10px; }
+.sunroom-app .goal-preset-button { border-radius: 9px; padding: 12px; }
+.sunroom-app .goal-preset-button.is-active { border-color: #93b8a9; background: var(--accent-soft); }
+.sunroom-app .goal-probe-map { background: #eff1e9; border-radius: 8px; }
+.sunroom-app .goal-panel-heading { flex-wrap: wrap; gap: 6px; }
+.sunroom-app .goal-panel-heading output { font-size: 11px; font-weight: 500; }
+@media (min-width: 1100px) {
+  .sunroom-app .goal-studio-layout { grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); align-items: start; }
+  .sunroom-app .goal-metric-grid { grid-template-columns: 1fr; }
+  .sunroom-app .goal-metric-grid .metric-card { display: flex; align-items: center; justify-content: space-between; }
+  .sunroom-app .goal-score-ring { width: 76px; height: 76px; min-width: 76px; }
+}
+@media (max-width: 600px) {
+  .mobile-camera-control { display: block; }
+  .sunroom-app .mobile-camera-control select { border: 1px solid var(--line); border-radius: 7px; color: var(--ink); width: 98px; min-height: 44px; font-size: 10px; padding: 5px; background: transparent; }
+  .sunroom-app .room3d-toolbar { gap: 5px; }
+  .sunroom-app .daylight-markers { display: flex; justify-content: space-between; height: auto; margin-top: 3px; }
+  .sunroom-app .daylight-marker { position: static; transform: none; font-size: 8px; white-space: normal; line-height: 1.3; }
+  .sunroom-app .daylight-marker::before { display: none; }
+  .sunroom-app .timeline-foot { margin-top: 10px; }
+  .sunroom-app #time-scrubber-reference { width: 100%; }
+}
