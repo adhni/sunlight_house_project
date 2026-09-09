@@ -94,6 +94,7 @@
   const room3dWallsButton = document.getElementById("room3d-toggle-walls");
   const room3dRoofButton = document.getElementById("room3d-toggle-roof");
   const room3dContextButton = document.getElementById("room3d-toggle-context");
+  const room3dBeamsButton = document.getElementById("room3d-toggle-beams");
   const room3dEditSelectedWindowButton = document.getElementById("room3d-edit-selected-window");
   const sceneDetailInputs = document.querySelectorAll("[data-scene-detail]");
   const room3dAnimationControls = document.getElementById("room3d-animation-controls");
@@ -1325,6 +1326,7 @@
             wallsButton: room3dWallsButton,
             roofButton: room3dRoofButton,
             contextButton: room3dContextButton,
+            beamsButton: room3dBeamsButton,
             onWindowSelect: selectWindowFrom3d,
             onFurnitureSelect: setSelectedFurniture,
             onFurnitureChange: handleFurnitureChange,
