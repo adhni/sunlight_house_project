@@ -144,7 +144,7 @@
 .sunroom-app .goal-studio-layout { gap: 20px; }
 .sunroom-app .goal-card, .sunroom-app .goal-suggestion-card { border-radius: 8px; background: #fafbf8; box-shadow: none; }
 .sunroom-app .workspace-form[data-mode=improve] .view-bar { display: none; }
-.sunroom-app .workspace-form[data-mode=improve] .timeline-track, .sunroom-app .workspace-form[data-mode=improve] .timeline-foot, .sunroom-app .workspace-form:not([data-mode=room]) .room3d-reading { display: none; }
+.sunroom-app .workspace-form:not([data-mode=room]) .timeline-track, .sunroom-app .workspace-form:not([data-mode=room]) .timeline-foot, .sunroom-app .workspace-form:not([data-mode=room]) .room3d-reading { display: none; }
 .skip-link { position: fixed; left: 16px; top: -80px; z-index: 100; background: #fff; padding: 12px 18px; color: var(--accent); border-radius: 6px; }
 .skip-link:focus { top: 10px; }
 @media (min-width: 981px) and (max-height: 850px) {

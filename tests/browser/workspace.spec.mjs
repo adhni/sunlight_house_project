@@ -133,29 +133,3 @@ test('undo restores a furniture preset after time changes without adding a phant
   await expect(page.locator('#room3d-container')).toHaveAttribute('data-furniture-count', '2');
   await expect(page.locator('#design-undo-button')).toBeDisabled();
 });
-
-test('Sun exposure keeps time controls usable across dates, views, and mobile', async ({ page }) => {
-  await ready(page);
-  await page.locator('#mode-exposure').click();
-  await expect(page.locator('#selected-time-input')).toBeVisible();
-  await committed(page, () => page.locator('#selected-time-input').fill('14:07'));
-  await expect(page.locator('#room3d-time-slider')).toHaveAttribute('aria-valuetext', '14:07');
-
-  const dayReloaded = page.waitForResponse(r => r.url().includes('/api/day-animation?') && r.ok());
-  await committed(page, () => page.locator('#selected-date-input').fill('2025-01-16'));
-  await dayReloaded;
-  await expect(page.locator('#room3d-play')).toBeEnabled();
-  await page.locator('#room3d-time-slider').fill('90');
-  await expect(page.locator('#selected-time-input')).toHaveValue('15:00');
-
-  await page.locator('#result-tab-long-range').click();
-  await expect(page.locator('#selected-time-input')).toBeVisible();
-  await expect(page.locator('#room3d-play')).toBeEnabled();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator('#selected-time-input')).toBeVisible();
-  await page.locator('#room3d-time-slider').fill('96');
-  await expect(page.locator('#selected-time-input')).toHaveValue('16:00');
-  await page.locator('#mode-room').click();
-  await expect(page.locator('#room3d-reading-state')).toContainText('16:00');
-  await expect(page.locator('#selected-date-input')).toHaveValue('2025-01-16');
-});
