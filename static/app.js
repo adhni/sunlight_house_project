@@ -1614,7 +1614,7 @@
       dayAnimationKey = "";
       setDayAnimationEnabled(false);
       setDayAnimationStatus("Room changed · reload the day to continue.", "idle");
-      if (["room-3d", "current"].includes(activeResultTab)) ensureDayAnimation();
+      if (["room-3d", "current", "sunlight-map", "long-range"].includes(activeResultTab)) ensureDayAnimation();
       return;
     }
     if (dayAnimationPayload) {
@@ -3548,7 +3548,7 @@
     if (focus) activeButton.focus();
     workspace?.setView(selectedTab);
     setRoom3dActive(selectedTab === "room-3d");
-    if (selectedTab === "current") ensureDayAnimation();
+    if (["current", "sunlight-map", "long-range"].includes(selectedTab)) ensureDayAnimation();
     if (selectedTab === "long-range") {
       fetchLongRangeExposure();
     }
