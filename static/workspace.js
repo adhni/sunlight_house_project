@@ -6,7 +6,7 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
   const mobile = window.matchMedia('(max-width: 980px)');
   const primaryTabs = [...document.querySelectorAll('[data-workspace-mode]')];
   const remembered = { room: 'room-3d', exposure: 'sunlight-map', improve: 'goal-studio' };
-  const titles = { room: ['Explore your room', 'See your space in a different light'], exposure: ['Follow the sunlight', 'From a single day to the changing seasons'], improve: ['Find a better balance', 'Explore changes for the way you live'] };
+  const titles = { room: ['Explore your room', 'Sunlight at your selected time'], exposure: ['Follow the sunlight', 'Total direct sunlight over a day or season'], improve: ['Find a better balance', 'Explore changes for the way you live'] };
   let selectedInspector = 'window';
   const dialogTriggers = new Map();
   function openDialog(id, trigger = document.activeElement) {
@@ -32,7 +32,7 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
   document.querySelectorAll('[data-open-dialog]').forEach(button => button.addEventListener('click', () => openDialog(button.dataset.openDialog, button)));
   document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEventListener('click', () => document.getElementById(button.dataset.closeDialog).close()));
   function placeInspector() {
-    if (mobile.matches) inspectorDialog.append(inspector);
+    if (mobile.matches || form.dataset.mode === 'improve') inspectorDialog.append(inspector);
     else {
       if (inspectorDialog.open) inspectorDialog.close();
       document.getElementById('inspector-slot').append(inspector);
@@ -46,7 +46,7 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
     document.querySelectorAll('[data-inspector]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.inspector === kind)));
     document.getElementById('inspector-title').textContent = { room: 'Room settings', window: 'Window details', furniture: 'Arrange furniture' }[kind];
     if (kind === 'furniture') inspector.querySelector('.furniture-tools').open = true;
-    if (open && mobile.matches) openDialog('inspector-dialog');
+    if (open && (mobile.matches || form.dataset.mode === 'improve')) openDialog('inspector-dialog');
   }
   document.querySelectorAll('[data-inspector]').forEach(button => button.addEventListener('click', () => showInspector(button.dataset.inspector)));
   document.querySelector('[data-open-inspector]').addEventListener('click', () => showInspector());
@@ -56,6 +56,7 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
     remembered[mode] = view;
     form.dataset.mode = mode;
     form.dataset.view = view;
+    placeInspector();
     const timeline = document.getElementById('room3d-animation-controls');
     if (mode === 'room') document.getElementById('room3d-reading').before(timeline);
     else document.querySelector('.view-bar').after(timeline);
@@ -66,6 +67,15 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
     });
     document.querySelectorAll('[data-view-group]').forEach(button => { button.hidden = button.dataset.viewGroup !== mode; });
     document.querySelector('.room3d-toolbar').hidden = view !== 'room-3d';
+    const description = document.getElementById('view-description');
+    description.hidden = mode !== 'exposure';
+    description.textContent = view === 'long-range'
+      ? 'Each colour shows the estimated total hours of direct sunlight over the selected season or year. For a particular hour, open Room.'
+      : 'Each colour shows the total hours of direct sunlight across the selected day. For a particular hour, open Room.';
+    const periodLabel = document.querySelector('.timeline-date label');
+    periodLabel.textContent = mode === 'improve' ? 'Reference date' : 'Date';
+    document.getElementById('set-now-button').textContent = mode === 'room' ? 'Use current time' : "Use today's date";
+
     document.getElementById('workspace-content').setAttribute('aria-labelledby', `mode-${mode}`);
     document.getElementById('workspace-title').textContent = titles[mode][0];
     document.getElementById('workspace-kicker').textContent = titles[mode][1];

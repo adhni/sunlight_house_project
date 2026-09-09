@@ -1,4 +1,4 @@
-**SunRoom Astra — UI redesign plan**
+**SunRoom — UI redesign plan**
 
 Status: implemented on `codex/sunroom-ui-redesign`. The implementation uses local system fonts; user testing and cross-browser evaluation remain follow-up work. Primary audience assumption: homeowners exploring sunlight in a room, with deeper controls for technically confident users. The intended feel is a calm architectural workspace: the room is prominent, controls are precise, and the result is easy to understand.
 
@@ -26,7 +26,7 @@ Room should eventually open in 3D with a fast 2D preview while loading, and a wo
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
-│ SunRoom Astra       Melbourne ▾                 Compare       More ▾ │
+│ SunRoom       Melbourne ▾                 Compare       More ▾ │
 ├─────────────────────────────────────────────────────────────────────┤
 │ Room       Sun exposure       Improve                               │
 ├───────────────────────────────────────────────┬─────────────────────┤
@@ -67,7 +67,7 @@ Use a single inspector: show room dimensions, orientation, and an object list wh
 
 Use warm off-white for the page, white or pale stone for working surfaces, and charcoal text. Retain teal for controls, amber for sunlight, and violet for selected scene objects. Give these colors consistent roles; pair color with text, outlines, or patterns.
 
-Replace the large hero with a compact SunRoom Astra wordmark and workspace header. Reduce nested cards, pill-shaped navigation, heavy shadows, and background gradients. Use clear dividers, modest 8–12 px corner radii, and stronger spacing to organize the page. Reserve shadows for floating menus and sheets.
+Replace the large hero with a compact SunRoom wordmark and workspace header. Reduce nested cards, pill-shaped navigation, heavy shadows, and background gradients. Use clear dividers, modest 8–12 px corner radii, and stronger spacing to organize the page. Reserve shadows for floating menus and sheets.
 
 Use one reliably loaded sans-serif family, preferably the IBM Plex Sans already named in the stylesheet, with regular, medium, and semibold weights. Start with 16 px body text, 13–14 px supporting labels, and 24–28 px page headings. Use sentence case instead of widespread uppercase labels. Keep numbers aligned and units attached to their fields. Make icon-only controls secondary and give them accessible names.
 

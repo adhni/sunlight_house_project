@@ -145,7 +145,7 @@
                   <div class="goal-panel-heading">
                     <div>
                       <span class="section-kicker">1 · Pick a zone</span>
-                      <h3 id="goal-probe-heading">Where should the goal apply?</h3>
+                      <h3 id="goal-probe-heading">Choose a spot</h3>
                     </div>
                     <output id="goal-probe-readout">Room centre</output>
                   </div>
@@ -164,7 +164,7 @@
                   <div class="goal-panel-heading">
                     <div>
                       <span class="section-kicker">2 · Read the result</span>
-                      <h3 id="goal-reading-heading">Zone result</h3>
+                      <h3 id="goal-reading-heading">Sunlight at this spot</h3>
                     </div>
                     <span id="goal-studio-status" class="update-status" data-state="idle" role="status">Open this view to evaluate.</span>
                   </div>
@@ -188,12 +188,13 @@
                     <div class="goal-timeline-section">
                       <span class="explorer-label">Direct-sun timeline</span>
                       <div id="goal-timeline" class="goal-timeline" aria-label="Direct sunlight timeline"></div>
+
+                    </div>
+                    <details class="goal-window-sources goal-result-details">
+                      <summary>Timing and window details</summary>
                       <div id="goal-intervals" class="goal-intervals"></div>
-                    </div>
-                    <div class="goal-window-sources">
-                      <span class="explorer-label">What causes this result?</span>
                       <div id="goal-window-contributions"></div>
-                    </div>
+                    </details>
                   </div>
                 </section>
               </div>
@@ -202,7 +203,7 @@
                 <div class="goal-panel-heading">
                   <div>
                     <span class="section-kicker">3 · Explore a change</span>
-                    <h3 id="goal-suggestions-heading">Measured suggestions</h3>
+                    <h3 id="goal-suggestions-heading">Changes to try</h3>
                   </div>
                   <span id="goal-tested-count" class="angle-caption"></span>
                 </div>

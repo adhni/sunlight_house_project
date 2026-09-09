@@ -1,6 +1,6 @@
-# SunRoom Astra
+# SunRoom
 
-SunRoom Astra is a compact Python project for exploring direct sunlight inside a simple rectangular room.
+SunRoom is a compact Python project for exploring direct sunlight inside a simple rectangular room.
 
 Public live app: https://sunlight-house-project.onrender.com/
 
@@ -40,6 +40,9 @@ Default room and window values:
 
 The workspace has three destinations: **Room** (3D and 2D plan), **Sun exposure**
 (today and seasons/year), and **Improve** (sunlight goals and measured suggestions).
+Room shows sunlight at one moment; exposure maps show accumulated hours across the
+selected period. Improve keeps the goal and result in focus, with room editing in a
+dialog and expandable timing/window details.
 A shared timeline supports exact typed times, ten-minute playback, and time presets.
 The Room / Windows / Furniture editor sits beside the model on desktop and opens as
 a focused sheet on mobile. Selecting a window opens its details.

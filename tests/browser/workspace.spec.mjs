@@ -133,3 +133,22 @@ test('undo restores a furniture preset after time changes without adding a phant
   await expect(page.locator('#room3d-container')).toHaveAttribute('data-furniture-count', '2');
   await expect(page.locator('#design-undo-button')).toBeDisabled();
 });
+
+test('Improve keeps room editing available in a dialog and restores the desktop sidebar', async ({ page }) => {
+  await ready(page);
+  await page.locator('#mode-exposure').click();
+  await expect(page.locator('#view-description')).toContainText('total hours');
+  await expect(page.locator('#selected-time-input')).toBeHidden();
+  await page.locator('#mode-improve').click();
+  await expect(page.locator('#inspector-slot')).toBeHidden();
+  await page.locator('#edit-room-button').click();
+  await expect(page.locator('#inspector-dialog #inspector')).toBeVisible();
+  await page.locator('.inspector-tabs [data-inspector=room]').click();
+  await expect(page.locator('[name=room_width]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#edit-room-button')).toBeFocused();
+  await page.locator('#mode-room').click();
+  await expect(page.locator('#inspector-slot #inspector')).toBeVisible();
+  await expect(page.locator('#inspector')).toHaveCount(1);
+  await expect(page.locator('#selected-time-input')).toBeVisible();
+});

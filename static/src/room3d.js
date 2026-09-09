@@ -1720,7 +1720,7 @@ class Room3DViewer {
           }
         }
       }
-      this.camera.position.copy(this.controls.target).addScaledVector(direction, distance * 1.16);
+      this.camera.position.copy(this.controls.target).addScaledVector(direction, distance * 1.03);
     }
     this.camera.lookAt(this.controls.target);
     this.controls.update();

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SunRoom Astra — Explore your light</title>
+    <title>SunRoom — Explore your light</title>
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -17,7 +17,7 @@
     <a href="#workspace-content" class="skip-link">Skip to workspace</a>
     <div class="page-shell">
       <form method="get" id="simulation-form" class="workspace-form" data-mode="room">
-        <header class="app-header"><a class="brand" href="/" aria-label="SunRoom Astra home"><span class="brand-mark" aria-hidden="true">◒</span><span>SunRoom <span class="brand-edition">Astra</span></span></a><button id="location-button" type="button" class="location-button" data-open-dialog="location-dialog"><span class="location-dot" aria-hidden="true"></span><span id="workspace-location">{{ form_values.location_name }}</span><span aria-hidden="true">⌄</span></button><div class="header-actions"><button id="design-undo-button" type="button" class="quiet-button" disabled>Undo design</button><button type="button" class="quiet-button" data-open-dialog="compare-dialog">Compare</button><details class="workspace-menu"><summary class="quiet-button">More <span aria-hidden="true">⌄</span></summary><div class="menu-items"><button type="button" data-open-dialog="import-dialog">Import room (IFC)</button><button type="button" data-open-dialog="calculation-dialog">Calculation details</button></div></details></div></header>
+        <header class="app-header"><a class="brand" href="/" aria-label="SunRoom home"><span class="brand-mark" aria-hidden="true">◒</span><span>SunRoom</span></a><button id="location-button" type="button" class="location-button" data-open-dialog="location-dialog"><span class="location-dot" aria-hidden="true"></span><span id="workspace-location">{{ form_values.location_name }}</span><span aria-hidden="true">⌄</span></button><div class="header-actions"><button id="design-undo-button" type="button" class="quiet-button" disabled>Undo design</button><button type="button" class="quiet-button" data-open-dialog="compare-dialog">Compare</button><details class="workspace-menu"><summary class="quiet-button">More <span aria-hidden="true">⌄</span></summary><div class="menu-items"><button type="button" data-open-dialog="import-dialog">Import room (IFC)</button><button type="button" data-open-dialog="calculation-dialog">Calculation details</button></div></details></div></header>
         {% if error %}<section class="alert" role="alert">{{ error }}</section>{% endif %}
         <input type="hidden" id="windows-json-input" name="windows_json" value="{{ form_values.windows_json }}"><input type="hidden" id="furniture-json-input" name="scene_furniture_json" value="{{ form_values.scene_furniture_json }}" data-scene-detail><input type="hidden" name="day_step_minutes" value="{{ form_values.day_step_minutes }}"><input type="hidden" name="year_step_hours" value="{{ form_values.year_step_hours }}">
         <input type="hidden" name="location_name" value="{{ form_values.location_name }}"><input type="hidden" id="year-input" name="year" value="{{ form_values.year }}"><input type="hidden" id="location-preset-input" name="location_preset" value="{{ form_values.location_preset }}"><input type="hidden" id="window-facing-input" name="window_facing" value="{{ form_values.window_facing }}">
