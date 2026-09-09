@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 
 async function openGoalStudio(page) {
-  await page.locator('[data-result-tab="goal-studio"]').click();
+  await page.locator("#mode-improve").click();
   await expect(page.locator('[data-result-panel="goal-studio"]')).toHaveAttribute("aria-hidden", "false");
   await expect(page.locator("#goal-studio-status")).toContainText("evaluated", { timeout: 25_000 });
 }
@@ -10,7 +10,7 @@ async function openGoalStudio(page) {
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#room-window-source")).toBeVisible();
+  await expect(page.locator("#room3d-container")).toHaveAttribute("data-viewer-state", "ready");
 });
 
 
@@ -59,9 +59,14 @@ test("switches goals, applies a measured suggestion, and carries the probe into 
   const eavesAfter = await page.locator('[name="scene_eaves_enabled"]').inputValue();
   expect(windowsAfter !== windowsBefore || eavesAfter !== eavesBefore).toBe(true);
 
+  await page.locator("#mode-room").click();
   await page.locator('[data-result-tab="room-3d"]').click();
   const viewer = page.locator("#room3d-container");
   await expect(viewer).toHaveAttribute("data-viewer-state", "ready");
   await expect(viewer).toHaveAttribute("data-goal-probe-visible", "true");
   await expect(viewer).toHaveAttribute("data-goal-probe-position", /\d+\.\d{3},\d+\.\d{3}/);
+  await page.locator("#design-undo-button").click();
+  await expect(page.locator("#update-status")).toHaveAttribute("data-state", "idle");
+  expect(JSON.parse(await page.locator('[name="windows_json"]').inputValue())).toEqual(JSON.parse(windowsBefore));
+  await expect(page.locator('[name="scene_eaves_enabled"]')).toHaveValue(eavesBefore);
 });

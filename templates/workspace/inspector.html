@@ -1,0 +1,209 @@
+<aside id="inspector" class="workspace-sidebar" aria-label="Room editor">
+  <div class="inspector-heading"><div><span class="section-kicker">Your design</span><h2 id="inspector-title">Window details</h2></div><button type="button" class="quiet-button inspector-close" data-close-dialog="inspector-dialog" aria-label="Close room editor">Close</button></div>
+  <div class="inspector-tabs" role="group" aria-label="Edit object">
+    <button type="button" data-inspector="room" aria-pressed="false">Room</button>
+    <button type="button" data-inspector="window" aria-pressed="true">Windows</button>
+    <button type="button" data-inspector="furniture" aria-pressed="false">Furniture</button>
+  </div>
+  <div class="inspector-pane" data-inspector-pane="room" hidden><details class="subtle-details control-group geometry-details" open>
+                <summary>
+                  <span class="section-kicker">Geometry</span>
+                  <strong>Room Geometry</strong>
+                </summary>
+                <div class="geometry-details-body">
+                  <section class="nested-control-group">
+                    <span class="explorer-label">How Big Is The Room?</span>
+                    <div class="field-row field-row-3">
+                      <label>
+                        <span>Width (m)</span>
+                        <input type="number" min="0.1" step="any" name="room_width" value="{{ form_values.room_width }}">
+                      </label>
+                      <label>
+                        <span>Depth (m)</span>
+                        <input type="number" min="0.1" step="any" name="room_depth" value="{{ form_values.room_depth }}">
+                      </label>
+                      <label>
+                        <span>Ceiling (m)</span>
+                        <input type="number" min="0.1" step="any" name="room_height" value="{{ form_values.room_height }}">
+                      </label>
+                    </div>
+                  </section>
+                </div>
+              </details><section class="control-group">
+                <span class="explorer-label">Which way does the room front wall face?</span>
+                <div class="chip-row" id="window-facing-chip-row">
+                  {% for facing in compass_options %}
+                  <button
+                    type="button"
+                    class="chip-button {% if form_values.window_facing == facing %}is-active{% endif %}"
+                    data-window-facing="{{ facing }}"
+                  >
+                    {{ facing }}
+                  </button>
+                  {% endfor %}
+                </div>
+              </section><details class="subtle-details control-group scene-details">
+                <summary>
+                  <span class="section-kicker">Building</span>
+                  <strong>Shade &amp; architecture</strong>
+                </summary>
+                <div class="geometry-details-body scene-details-body">
+                  <p class="field-help">Eaves, the divider and outside obstructions shade the simulation. Doors and furniture remain visual scale references.</p>
+                  <div class="field-row field-row-2">
+                    <label>
+                      <span>Exterior door</span>
+                      <select name="scene_door_enabled" data-scene-detail>
+                        <option value="1" {% if form_values.scene_door_enabled == '1' %}selected{% endif %}>Show</option>
+                        <option value="0" {% if form_values.scene_door_enabled == '0' %}selected{% endif %}>Hide</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Door wall</span>
+                      <select name="scene_door_wall" data-scene-detail>
+                        <option value="north" {% if form_values.scene_door_wall == 'north' %}selected{% endif %}>Front wall</option>
+                        <option value="east" {% if form_values.scene_door_wall == 'east' %}selected{% endif %}>Right wall</option>
+                        <option value="south" {% if form_values.scene_door_wall == 'south' %}selected{% endif %}>Back wall</option>
+                        <option value="west" {% if form_values.scene_door_wall == 'west' %}selected{% endif %}>Left wall</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="field-row field-row-3">
+                    <label>
+                      <span>Internal divider</span>
+                      <select name="scene_partition_enabled" data-scene-detail data-sunlight-effect>
+                        <option value="1" {% if form_values.scene_partition_enabled == '1' %}selected{% endif %}>Included</option>
+                        <option value="0" {% if form_values.scene_partition_enabled == '0' %}selected{% endif %}>Not included</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Roof eaves</span>
+                      <select name="scene_eaves_enabled" data-scene-detail data-sunlight-effect>
+                        <option value="1" {% if form_values.scene_eaves_enabled == '1' %}selected{% endif %}>Included</option>
+                        <option value="0" {% if form_values.scene_eaves_enabled == '0' %}selected{% endif %}>Not included</option>
+                      </select>
+                    </label>
+
+                  </div>
+                  <div class="field-row field-row-2">
+                    <label>
+                      <span>Outside obstruction</span>
+                      <select name="scene_external_obstruction" data-scene-detail data-sunlight-effect>
+                        <option value="none" {% if form_values.scene_external_obstruction == 'none' %}selected{% endif %}>None</option>
+                        <option value="fence" {% if form_values.scene_external_obstruction == 'fence' %}selected{% endif %}>Low fence</option>
+                        <option value="building" {% if form_values.scene_external_obstruction == 'building' %}selected{% endif %}>Nearby building</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Obstruction side</span>
+                      <select name="scene_external_wall" data-scene-detail data-sunlight-effect>
+                        <option value="north" {% if form_values.scene_external_wall == 'north' %}selected{% endif %}>Front wall</option>
+                        <option value="east" {% if form_values.scene_external_wall == 'east' %}selected{% endif %}>Right wall</option>
+                        <option value="south" {% if form_values.scene_external_wall == 'south' %}selected{% endif %}>Back wall</option>
+                        <option value="west" {% if form_values.scene_external_wall == 'west' %}selected{% endif %}>Left wall</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+              </details></div>
+  <div class="inspector-pane" data-inspector-pane="window"><section class="control-group">
+                <div class="window-builder-header">
+                  <div>
+                    <span id="window-editor-title" class="explorer-label">Window 1</span>
+                    <p id="window-editor-copy" class="window-builder-copy">Compass direction is derived from the selected room facing.</p>
+                  </div>
+                  <button id="add-window-row-button" type="button" class="chip-button chip-button-soft">+ Add window</button>
+                </div>
+
+                <div class="window-selector-bar">
+                  <div id="window-rows-builder" class="window-selector" aria-label="Window selector"></div>
+                </div>
+
+                <div class="selected-window-card">
+                  <label>
+                    <span>Wall</span>
+                    <select id="selected-window-wall">
+                      <option value="north">Front wall</option>
+                      <option value="east">Right wall</option>
+                      <option value="south">Back wall</option>
+                      <option value="west">Left wall</option>
+                    </select>
+                  </label>
+                  <p id="selected-window-facing-copy" class="field-help">This window faces {{ form_values.window_facing }}.</p>
+                  <div class="field-row field-row-4">
+                    <label>
+                        <span id="window-position-label">Position along wall (m)</span>
+                        <input type="number" min="0.01" step="any" name="window_span_center" value="{{ form_values.window_span_center }}">
+                    </label>
+                    <label>
+                      <span>Sill (m)</span>
+                        <input type="number" min="0" step="any" name="window_sill_height" value="{{ form_values.window_sill_height }}">
+                    </label>
+                    <label>
+                      <span>Width (m)</span>
+                        <input type="number" min="0.01" step="any" name="window_width" value="{{ form_values.window_width }}">
+                    </label>
+                    <label>
+                      <span>Height (m)</span>
+                        <input type="number" min="0.01" step="any" name="window_height" value="{{ form_values.window_height }}">
+                    </label>
+                  </div>
+                  <button id="remove-window-button" type="button" class="chip-button chip-button-soft">Remove this window</button>
+                </div>
+              </section><button type="button" class="quiet-button back-to-room" data-inspector="room">← Back to room settings</button></div>
+  <div class="inspector-pane" data-inspector-pane="furniture" hidden><p class="field-help">Arrange your space. Furniture is a visual guide and does not shade the sunlight calculation.</p><label>
+                      <span>Furniture layout</span>
+                      <select id="scene-furniture-preset" name="scene_furniture_preset" data-scene-detail>
+                        <option value="none" {% if form_values.scene_furniture_preset == 'none' %}selected{% endif %}>None</option>
+                        <option value="living" {% if form_values.scene_furniture_preset == 'living' %}selected{% endif %}>Living room</option>
+                        <option value="dining" {% if form_values.scene_furniture_preset == 'dining' %}selected{% endif %}>Dining</option>
+                        <option value="bedroom" {% if form_values.scene_furniture_preset == 'bedroom' %}selected{% endif %}>Bedroom</option>
+                        <option value="custom" {% if form_values.scene_furniture_preset == 'custom' %}selected{% endif %}>Custom</option>
+                      </select>
+                    </label><details class="furniture-tools">
+                <summary>
+                  <span>
+                    <strong>Furniture layout</strong>
+                    <small>Optional visual scale context</small>
+                  </span>
+                </summary>
+                <div class="furniture-tools-body" aria-label="Furniture editor">
+                  <div class="chip-row furniture-toolbar">
+                    <button id="furniture-arrange-button" type="button" class="chip-button" aria-pressed="false">Arrange furniture</button>
+                    <button id="furniture-add-button" type="button" class="chip-button chip-button-soft" aria-expanded="false" aria-controls="furniture-palette">Add furniture</button>
+                    <button id="furniture-undo-button" type="button" class="chip-button chip-button-soft" disabled>Undo</button>
+                  </div>
+                  <div id="furniture-palette" class="furniture-palette" hidden>
+                    <span class="explorer-label">Choose an item</span>
+                    <div class="chip-row">
+                      <button type="button" class="chip-button chip-button-soft" data-add-furniture="sofa">Sofa</button>
+                      <button type="button" class="chip-button chip-button-soft" data-add-furniture="chair">Chair</button>
+                      <button type="button" class="chip-button chip-button-soft" data-add-furniture="table">Table</button>
+                      <button type="button" class="chip-button chip-button-soft" data-add-furniture="bed">Bed</button>
+                    </div>
+                  </div>
+                  <div id="furniture-selection-editor" class="furniture-selection-editor" hidden>
+                    <div class="furniture-editor-heading">
+                      <div>
+                        <span class="section-kicker">Selected furniture</span>
+                        <strong id="furniture-selection-title">Furniture</strong>
+                      </div>
+                      <span id="furniture-save-status" class="angle-caption" role="status">Saved in this browser</span>
+                    </div>
+                    <div class="furniture-fields">
+                      <label><span>Left / right (m)</span><input id="furniture-x-input" type="number" min="0" step="0.05"></label>
+                      <label><span>Front / back (m)</span><input id="furniture-y-input" type="number" min="0" step="0.05"></label>
+                      <label><span>Rotation (°)</span><input id="furniture-rotation-input" type="number" step="15"></label>
+                      <label><span>Size</span><input id="furniture-scale-input" type="number" min="0.5" max="1.5" step="0.05"></label>
+                    </div>
+                    <div class="chip-row furniture-item-actions">
+                      <button type="button" class="chip-button chip-button-soft" data-furniture-action="rotate-left" aria-label="Rotate selected furniture left 15 degrees">↶ 15°</button>
+                      <button type="button" class="chip-button chip-button-soft" data-furniture-action="rotate-right" aria-label="Rotate selected furniture right 15 degrees">↷ 15°</button>
+                      <button type="button" class="chip-button chip-button-soft" data-furniture-action="duplicate">Duplicate</button>
+                      <button type="button" class="chip-button chip-button-soft furniture-delete" data-furniture-action="delete">Delete</button>
+                    </div>
+                  </div>
+                </div>
+              </details></div>
+  <p id="design-error" class="field-error" role="alert" hidden></p>
+  <div class="inspector-note"><span aria-hidden="true">↗</span><p>Changes update the room preview.<br>Explore a different time to see their effect.</p></div>
+</aside>

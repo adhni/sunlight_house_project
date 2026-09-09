@@ -801,7 +801,7 @@ class Room3DViewer {
     this.pointerStart = null;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xf3eadc);
+    this.scene.background = new THREE.Color(0xeff1e9);
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.05, 200);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -953,9 +953,11 @@ class Room3DViewer {
     if (this.destroyed) return;
     const width = Math.max(this.container.clientWidth, 1);
     const height = Math.max(this.container.clientHeight, 1);
+    const aspectChanged = Math.abs(this.camera.aspect - width / height) > 0.01;
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
+    if (aspectChanged && this.payload && ["perspective", "top", "front"].includes(this.activeCameraPreset)) this.setCameraPreset(this.activeCameraPreset);
     this.needsRender = true;
     this.updateLabels();
   }
@@ -1290,7 +1292,7 @@ class Room3DViewer {
     this.skyLight.intensity = appearance.ambientIntensity;
     this.sunLight.color.setHex(0xffb36b).lerp(new THREE.Color(0xfffaf0), appearance.sunWarmth);
     this.skyLight.color.setHex(0x8197be).lerp(new THREE.Color(0xfffbf2), appearance.daylight);
-    this.scene.background.setHex(0x182334).lerp(new THREE.Color(0xf3eadc), appearance.daylight);
+    this.scene.background.setHex(0x182334).lerp(new THREE.Color(0xeff1e9), appearance.daylight);
     if (appearance.direction && this.shadowCenter) {
       const [x, y, z] = appearance.direction;
       const direction = new THREE.Vector3(x, z, -y);
@@ -1680,14 +1682,14 @@ class Room3DViewer {
   setCameraPreset(preset) {
     if (this.destroyed || !this.payload) return;
     const room = this.payload.room;
-    const scale = Math.max(room.width, room.depth, room.height, 1);
     const dampingWasEnabled = this.controls.enableDamping;
     this.controls.enableDamping = false;
     // Flush and clear any pending orbit/pan momentum before placing an exact preset.
     this.controls.update();
     this.camera.up.set(0, 1, 0);
     if (preset === "top") {
-      const distance = scale * 2.2;
+      const tangent = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+      const distance = Math.max(room.depth, room.width / Math.max(this.camera.aspect, 0.1)) / (2 * tangent) * 1.3 + room.height * 0.8;
       this.controls.target.set(0, room.height * 0.2, 0);
       // A tiny southern offset keeps OrbitControls stable while screen-up remains north (-Z).
       this.camera.position.set(0, this.controls.target.y + distance, distance * 0.0005);
@@ -1702,7 +1704,23 @@ class Room3DViewer {
       preset = "perspective";
       this.controls.target.set(0, room.height * 0.42, 0);
       // Start opposite the default north/east windows so their real wall openings are visible.
-      this.camera.position.set(-scale * 1.18, scale * 0.92, scale * 1.28);
+      const direction = new THREE.Vector3(-1.18, 0.92, 1.28).normalize();
+      this.camera.position.copy(this.controls.target).add(direction);
+      this.camera.lookAt(this.controls.target);
+      const inverseRotation = this.camera.quaternion.clone().invert();
+      const tangent = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+      const eave = this.payload.scene?.roof?.eaves_enabled ? this.payload.scene.roof.eave_depth : 0.1;
+      let distance = 0;
+      for (const x of [-room.width / 2 - eave, room.width / 2 + eave]) {
+        for (const y of [0, room.height + 0.15]) {
+          for (const z of [-room.depth / 2 - eave, room.depth / 2 + eave]) {
+            const corner = new THREE.Vector3(x, y, z).sub(this.controls.target).applyQuaternion(inverseRotation);
+            distance = Math.max(distance, corner.z + Math.abs(corner.y) / tangent,
+              corner.z + Math.abs(corner.x) / (tangent * Math.max(this.camera.aspect, 0.1)));
+          }
+        }
+      }
+      this.camera.position.copy(this.controls.target).addScaledVector(direction, distance * 1.03);
     }
     this.camera.lookAt(this.controls.target);
     this.controls.update();

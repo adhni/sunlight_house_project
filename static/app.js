@@ -137,6 +137,9 @@
   let latestLongRangeRequestId = 0;
   let activeLongRangeController = null;
   let activeResultTab = "current";
+  let workspace = null;
+  let designHistory = [];
+  let lastDesign = null;
   let activeLongRangePeriod = "year";
   let longRangePayload = null;
   let longRangeQuery = "";
@@ -153,7 +156,7 @@
   let goalProbeKeyboardTimer = null;
   let currentPayload = initialData;
   let baselinePayload = null;
-  const defaultUpdateMessage = "Map is up to date.";
+  const defaultUpdateMessage = "Preview up to date";
   const MAX_WINDOWS = 10;
   const GOAL_PROBE_KEY_DEBOUNCE_MS = 300;
   const baselineStorageKey = "sunlight-house-baseline";
@@ -1176,6 +1179,7 @@
     selectedFurnitureId = item?.id || null;
     room3dViewer?.setSelectedFurniture(selectedFurnitureId, false);
     updateFurnitureEditor();
+    if (item) workspace?.showInspector("furniture");
   }
 
   function syncFurnitureFromScene(furniture, { persist = true } = {}) {
@@ -1238,6 +1242,7 @@
     furnitureUndoButton.disabled = furnitureHistory.length === 0;
     updateFurnitureEditor();
     persistFurniture();
+    recordDesignChange();
     setUpdateStatus(`Furniture ${reason} saved.`, "idle");
   }
 
@@ -1330,7 +1335,7 @@
             onWindowSelect: selectWindowFrom3d,
             onFurnitureSelect: setSelectedFurniture,
             onFurnitureChange: handleFurnitureChange,
-            onUnavailable: pauseRoom3dAnimation,
+            onUnavailable: () => { pauseRoom3dAnimation(); activateResultTab("current"); setUpdateStatus("3D unavailable · showing the 2D plan", "idle"); },
           });
           room3dViewer.update(currentPayload);
           room3dViewer.setProbe?.(goalProbe);
@@ -1346,7 +1351,9 @@
           fallbackMessage.className = "room3d-fallback";
           fallbackMessage.textContent = "3D is unavailable in this browser. The 2D views still work normally.";
           room3dContainer.append(fallbackMessage);
-          setRoom3dStatus("3D is unavailable; use the Current or Sunlight map views.");
+          setRoom3dStatus("3D is unavailable; the 2D plan is ready.");
+          if (activeResultTab === "room-3d") activateResultTab("current");
+          setUpdateStatus("3D unavailable · showing the 2D plan", "idle");
           return null;
         });
     }
@@ -1373,7 +1380,7 @@
 
   function setDayAnimationEnabled(enabled) {
     if (room3dPlayButton) room3dPlayButton.disabled = !enabled;
-    if (room3dTimeSlider) room3dTimeSlider.disabled = !enabled;
+    if (room3dTimeSlider) room3dTimeSlider.disabled = false;
     room3dPresetButtons.forEach((button) => {
       button.disabled = !enabled;
     });
@@ -1437,13 +1444,13 @@
     const frame = payload?.frames?.[index];
     if (room3dTimeSlider) {
       room3dTimeSlider.value = String(index);
-      room3dTimeSlider.setAttribute("aria-valuetext", frame?.selected_moment.slice(11, 16) || "Unavailable");
+      room3dTimeSlider.setAttribute("aria-valuetext", selectedTimeInput.value || "Unavailable");
     }
-    if (room3dTimeReadout && frame) room3dTimeReadout.textContent = frame.selected_moment.slice(11, 16);
+    if (room3dTimeReadout) room3dTimeReadout.textContent = selectedTimeInput.value;
     room3dPresetButtons.forEach((button) => {
       const preset = payload?.presets?.[button.dataset.room3dTimePreset];
       if (preset) button.textContent = preset.label;
-      const isActive = preset?.index === index;
+      const isActive = preset?.index === index && frame?.selected_moment.slice(11, 16) === selectedTimeInput.value;
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-pressed", String(isActive));
     });
@@ -1469,7 +1476,7 @@
   }
 
   async function ensureDayAnimation() {
-    if (!room3dViewer || !room3dContainer || room3dViewer.destroyed) return null;
+    if (!isReadyToRefresh()) return null;
     const key = currentDayAnimationKey();
     if (dayAnimationPayload && dayAnimationKey === key) {
       dayAnimationIndex = nearestAnimationFrameIndex();
@@ -1501,6 +1508,7 @@
       if (error.name === "AbortError") return null;
       console.error(error);
       setDayAnimationStatus("Could not load the day animation.", "error");
+      setUpdateStatus("Day playback could not load. You can still choose a time.", "error");
       return null;
     }
   }
@@ -1606,7 +1614,7 @@
       dayAnimationKey = "";
       setDayAnimationEnabled(false);
       setDayAnimationStatus("Room changed · reload the day to continue.", "idle");
-      if (activeResultTab === "room-3d") ensureDayAnimation();
+      if (["room-3d", "current"].includes(activeResultTab)) ensureDayAnimation();
       return;
     }
     if (dayAnimationPayload) {
@@ -1922,12 +1930,13 @@
 
   function selectWindowFrom3d(windowName) {
     const nextIndex = windowRows.findIndex((row) => row.name === windowName);
-    if (nextIndex < 0 || nextIndex === activeWindowIndex) {
+    if (nextIndex < 0) {
       return;
     }
     persistActiveWindowEditor();
     activeWindowIndex = nextIndex;
     renderWindowEditor();
+    workspace?.showInspector("window");
     setUpdateStatus(`Window ${nextIndex + 1} selected.`, "idle");
   }
 
@@ -2140,6 +2149,7 @@
     }
     updateStatus.textContent = message;
     updateStatus.dataset.state = state;
+    workspace?.status(state);
   }
 
   function formatSelectedMoment(payload) {
@@ -2330,11 +2340,82 @@
     return true;
   }
 
+
+  // Undo concerns design only: moving through time or switching views does not add entries.
+  function captureDesign() {
+    const names = ["room_width", "room_depth", "room_height", "window_facing", "windows_json",
+      ...Array.from(sceneDetailInputs, input => input.name)];
+    return Object.fromEntries(names.map(name => [name, form.elements.namedItem(name).value]));
+  }
+
+  function recordDesignChange() {
+    if (!lastDesign) return;
+    const next = captureDesign();
+    if (JSON.stringify(next) === JSON.stringify(lastDesign)) return;
+    designHistory.push(lastDesign);
+    if (designHistory.length > 30) designHistory.shift();
+    lastDesign = next;
+    document.getElementById("design-undo-button").disabled = false;
+  }
+
+  function normalizeDesignHistory(requestedDesign) {
+    // Server-created furniture presets can normalize JSON without being a new user edit.
+    if (lastDesign && JSON.stringify(lastDesign) === JSON.stringify(requestedDesign)) {
+      lastDesign = { ...lastDesign, scene_furniture_json: furnitureJsonInput.value,
+        scene_furniture_preset: furniturePresetInput.value };
+    }
+  }
+
+  function undoDesign() {
+    // Include a valid edit still awaiting the debounce, so Undo never skips it.
+    if (isReadyToRefresh()) { syncWindowsJsonFromEditor(); recordDesignChange(); }
+    const previous = designHistory.pop();
+    if (!previous) return;
+    activeSnapshotController?.abort();
+    activeSceneController?.abort();
+    latestSceneRequestId += 1;
+    markFurnitureRevision();
+    Object.entries(previous).forEach(([name, value]) => { form.elements.namedItem(name).value = value; });
+    lastDesign = previous;
+    renderWindowBuilderFromTextarea();
+    setActiveButtons(windowFacingButtons, "windowFacing", windowFacingInput.value);
+    const items = JSON.parse(previous.scene_furniture_json || "[]");
+    syncFurnitureFromScene({ preset: previous.scene_furniture_preset, items: Array.isArray(items) ? items : items.items || [] });
+    furnitureHistory = [];
+    furnitureUndoButton.disabled = true;
+    lastDesign = captureDesign();
+    document.getElementById("design-undo-button").disabled = designHistory.length === 0;
+    form.querySelectorAll('[aria-invalid="true"]').forEach(input => workspace?.setFieldError(input, ""));
+    scheduleRefresh("Restoring design…");
+  }
+
+  function validateWindowFit() {
+    const row = windowRows[activeWindowIndex];
+    if (!row) return true;
+    const span = Number(["north", "south"].includes(row.wall) ? roomWidthInput.value : roomDepthInput.value);
+    const width = Number(windowWidthInput.value);
+    const centre = Number(windowSpanCenterInput.value);
+    const sill = Number(windowSillHeightInput.value);
+    const height = Number(windowHeightInput.value);
+    const errors = [
+      [windowWidthInput, width > span ? `Use a width of ${span} m or less.` : ""],
+      [windowSpanCenterInput, centre - width / 2 < 0 || centre + width / 2 > span ? `Keep the window between ${ (width / 2).toFixed(2)} and ${(span - width / 2).toFixed(2)} m along this wall.` : ""],
+      [windowHeightInput, sill + height > Number(roomHeightInput.value) ? "The sill plus window height must fit below the ceiling." : ""],
+    ];
+    errors.forEach(([input, message]) => workspace?.setFieldError(input, message));
+    if (errors.some(([, message]) => message)) {
+      setUpdateStatus("Check the window measurements · last preview shown", "draft");
+      return false;
+    }
+    return true;
+  }
+
   function scheduleRefresh(message = "Changes pending...") {
     if (!isReadyToRefresh()) {
       setUpdateStatus("Finish the current field to update.", "draft");
       return;
     }
+    if (!validateWindowFit()) return;
     pauseRoom3dAnimation();
     syncWindowsJsonFromEditor();
     setUpdateStatus(message, "pending");
@@ -2863,6 +2944,7 @@
       `${Math.round(payload.daily.exposure_grid.sunlit_fraction * 100)}% of the room gets some direct sun today. Darker cells mean more direct sun exposure time. Peak floor cell exposure: ${payload.daily.exposure_grid.peak_hours.toFixed(1)} h.`
     );
     syncDayAnimationAfterSnapshot();
+    workspace?.update(payload);
     renderBaselineComparison();
   }
 
@@ -3191,6 +3273,9 @@
   }
 
   async function refreshSnapshot() {
+    if (!isReadyToRefresh() || !validateWindowFit()) return;
+    recordDesignChange();
+    const requestedDesign = captureDesign();
     latestRequestId += 1;
     const requestId = latestRequestId;
     const sceneRequestId = latestSceneRequestId;
@@ -3216,6 +3301,7 @@
         }
         payload.scene = preserveNewerFurniture(payload.scene, furnitureRevision);
         updateSnapshotDom(payload);
+        normalizeDesignHistory(requestedDesign);
         if (activeResultTab === "long-range") {
           await fetchLongRangeExposure(true);
         } else if (activeResultTab === "goal-studio") {
@@ -3230,7 +3316,12 @@
         return;
       }
       console.error(error);
-      setUpdateStatus("Could not update preview.", "error");
+      if (requestId !== latestRequestId) return;
+      const message = `Could not update preview. ${error.message}`;
+      setUpdateStatus(message, "error");
+      const errorNote = document.getElementById("design-error");
+      errorNote.textContent = "Your last valid preview is still shown. " + error.message;
+      errorNote.hidden = false;
     } finally {
       if (requestId === latestRequestId) {
         setPendingState(false);
@@ -3245,6 +3336,8 @@
     }
     pauseRoom3dAnimation();
     const query = currentQueryString();
+    recordDesignChange();
+    const requestedDesign = captureDesign();
     latestSceneRequestId += 1;
     const requestId = latestSceneRequestId;
     const furnitureRevision = latestFurnitureRevision;
@@ -3263,6 +3356,7 @@
         const scene = preserveNewerFurniture(payload.scene, furnitureRevision);
         currentPayload = { ...currentPayload, scene };
         syncFurnitureFromScene(scene?.furniture);
+        normalizeDesignHistory(requestedDesign);
         room3dViewer?.update(currentPayload);
         room3dViewer?.setSelectedFurniture(selectedFurnitureId, false);
         room3dViewer?.setSelectedWindow(windowRows[activeWindowIndex]?.name);
@@ -3273,7 +3367,7 @@
         return;
       }
       console.error(error);
-      setUpdateStatus("Could not update 3D details.", "error");
+      if (requestId === latestSceneRequestId) setUpdateStatus("Could not update room details. Please retry.", "error");
     }
   }
 
@@ -3452,18 +3546,9 @@
       updateAnimatedMomentDom(currentPayload);
     }
     if (focus) activeButton.focus();
-    const room3dActivation = setRoom3dActive(selectedTab === "room-3d");
-    if (
-      selectedTab === "room-3d"
-      && room3dInteractionHint
-      && window.matchMedia?.("(max-width: 820px) and (any-pointer: coarse)").matches
-    ) {
-      room3dActivation.then(() => {
-        window.requestAnimationFrame(() => {
-          room3dInteractionHint.scrollIntoView({ behavior: "smooth", block: "start" });
-        });
-      });
-    }
+    workspace?.setView(selectedTab);
+    setRoom3dActive(selectedTab === "room-3d");
+    if (selectedTab === "current") ensureDayAnimation();
     if (selectedTab === "long-range") {
       fetchLongRangeExposure();
     }
@@ -3485,7 +3570,9 @@
       activateResultTab(button.dataset.resultTab);
     });
     button.addEventListener("keydown", (event) => {
-      const lastIndex = resultTabButtons.length - 1;
+      const visibleTabs = Array.from(resultTabButtons).filter(item => !item.hidden);
+      const index = visibleTabs.indexOf(button);
+      const lastIndex = visibleTabs.length - 1;
       let nextIndex = null;
       if (event.key === "ArrowRight") nextIndex = index === lastIndex ? 0 : index + 1;
       if (event.key === "ArrowLeft") nextIndex = index === 0 ? lastIndex : index - 1;
@@ -3493,7 +3580,7 @@
       if (event.key === "End") nextIndex = lastIndex;
       if (nextIndex === null) return;
       event.preventDefault();
-      const nextButton = resultTabButtons[nextIndex];
+      const nextButton = visibleTabs[nextIndex];
       activateResultTab(nextButton.dataset.resultTab, { focus: true });
     });
   });
@@ -3563,8 +3650,7 @@
 
   if (room3dEditSelectedWindowButton && selectedWindowCard) {
     room3dEditSelectedWindowButton.addEventListener("click", () => {
-      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      selectedWindowCard.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+      workspace?.showInspector("window");
       selectedWindowWallSelect?.focus({ preventScroll: true });
     });
   }
@@ -3572,7 +3658,15 @@
   if (room3dTimeSlider) {
     room3dTimeSlider.addEventListener("input", () => {
       pauseRoom3dAnimation();
-      applyDayAnimationFrame(parseInt(room3dTimeSlider.value, 10));
+      const index = parseInt(room3dTimeSlider.value, 10);
+      if (dayAnimationPayload && dayAnimationKey === currentDayAnimationKey()) {
+        applyDayAnimationFrame(index);
+      } else {
+        const minutes = index * 10;
+        selectedTimeInput.value = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+        syncSlidersFromInputs();
+        scheduleRefresh();
+      }
     });
   }
 
@@ -3794,6 +3888,7 @@
   if (addWindowRowButton) {
     addWindowRowButton.addEventListener("click", () => {
       addEmptyWindowRow();
+      workspace?.showInspector("window");
       scheduleRefresh("Added another window. Updating preview...");
     });
   }
@@ -3907,6 +4002,17 @@
   updateSnapshotDom(currentPayload);
   updateTimeScrubberReference(timezoneInput.value);
   setUpdateStatus(defaultUpdateMessage, "idle");
+  workspace = window.createSunRoomWorkspace({
+    navigate: activateResultTab,
+    pause: pauseRoom3dAnimation,
+    retry: () => { refreshSnapshot(); ensureDayAnimation(); },
+    undo: undoDesign,
+    validate: validateWindowFit,
+    openLocation: () => { if (customLocationPanel.open) { ensureMap(); invalidateMapSoon(); } renderOutdoorYearPanel(); },
+  });
+  lastDesign = captureDesign();
+  workspace.update(currentPayload);
+  activateResultTab("room-3d");
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") pauseRoom3dAnimation();
   });

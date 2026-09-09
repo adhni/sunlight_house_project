@@ -1,6 +1,6 @@
-# Sunlight House Lab
+# SunRoom
 
-Sunlight House Lab is a compact Python project for exploring direct sunlight inside a simple rectangular room.
+SunRoom is a compact Python project for exploring direct sunlight inside a simple rectangular room.
 
 Public live app: https://sunlight-house-project.onrender.com/
 
@@ -27,7 +27,7 @@ The current app is designed around editable wall windows on a rectangular room. 
 
 ## Current Defaults
 
-The default scenario is a Melbourne daylight demo moment: `2025-01-15 10:00` in `Australia/Melbourne`. This keeps the first load visually useful even when the real current time is after sunset. Use the `Now` button to jump to the current time in the selected timezone.
+The default scenario is a Melbourne daylight demo moment: `2025-01-15 10:00` in `Australia/Melbourne`. This keeps the first load visually useful even when the real current time is after sunset. Use the `Use current time` button to jump to the current time in the selected timezone.
 
 Default room and window values:
 
@@ -38,10 +38,24 @@ Default room and window values:
 - Window 1: front wall, centre from left `3.0 m`, sill `0.1 m`, width `1.5 m`, height `2.0 m`
 - Window 2: right wall, centre from left `2.8 m`, sill `0.1 m`, width `1.5 m`, height `2.0 m`
 
-The primary workflow is intentionally simple: choose a location, set the room and
-window geometry, then compare the current moment, today's direct-sun map, and the
-estimated yearly view. IFC import, custom maps, outdoor reference data, and baseline
-comparison are advanced tools.
+The workspace has three destinations: **Room** (3D and 2D plan), **Sun exposure**
+(today and seasons/year), and **Improve** (sunlight goals and measured suggestions).
+Room shows sunlight at one moment; exposure maps show accumulated hours across the
+selected period. Improve keeps the goal and result in focus, with room editing in a
+dialog and expandable timing/window details.
+A shared timeline supports exact typed times, ten-minute playback, and time presets.
+The Room / Windows / Furniture editor sits beside the model on desktop and opens as
+a focused sheet on mobile. Selecting a window opens its details.
+
+**Undo design** restores room, window, shade, and furniture changes; changing the
+time does not create undo entries. Design undo lasts for the current session.
+**Compare** stores a baseline in this browser. **Location** contains location presets,
+the custom map, and clearly labelled historical outdoor reference data. **More**
+contains IFC import and calculation details.
+
+The UI uses local system fonts and keeps the existing Flask/vanilla-JavaScript stack.
+Workspace templates are in `templates/workspace/`; `static/workspace.js` handles
+navigation and dialogs, and `static/workspace.css` defines the responsive appearance.
 
 ## Coordinate System
 

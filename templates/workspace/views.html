@@ -1,0 +1,220 @@
+<div id="result-panel-current" class="result-view is-active" role="tabpanel" aria-labelledby="result-tab-current" data-result-panel="current">
+              <div class="room-snapshot-shell">
+                <div id="room-snapshot-svg" class="room-snapshot room-snapshot-large"></div>
+              </div>
+              <p id="window-edit-hint" class="drag-hint">Edit windows in the panel on the right. When only the legacy single-window mode is active, you can still drag the marker in the room view.</p>
+              <div class="geometry-readout">
+                <span id="window-centre-readout">Window centre: {{ form_values.window_span_center }} m</span>
+                <span id="window-width-readout">Window width: {{ form_values.window_width }} m</span>
+              </div>
+
+              <div class="snapshot-facts">
+                <span id="snapshot-window-fact">Room front wall: {{ form_values.window_facing }}</span>
+                <span id="snapshot-azimuth-fact">Azimuth: {{ "%.1f"|format(snapshot.position.azimuth_deg) }}°</span>
+                <span id="snapshot-elevation-fact">Elevation: {{ "%.1f"|format(snapshot.position.elevation_deg) }}°</span>
+              </div>
+
+              <p id="room-angle-caption" class="angle-caption room-caption">
+                Room edges show both room angle and compass direction.
+              </p>
+            </div>
+<div id="result-panel-room-3d" class="result-view room3d-view" role="tabpanel" aria-labelledby="result-tab-room-3d" data-result-panel="room-3d">
+
+              <p id="room3d-interaction-hint" class="angle-caption room3d-interaction-hint">
+                <span class="room3d-pointer-help">Drag to look around · scroll to zoom · select a window or its sunlight to trace the result.</span>
+                <span class="room3d-touch-help">Tap Explore 3D, then drag to look and pinch to zoom.</span>
+              </p>
+              <div
+                id="room3d-container"
+                class="room3d-container"
+                data-viewer-state="idle"
+                role="region"
+                aria-label="Interactive 3D model of the room and its current direct sunlight"
+              ></div>
+              <div class="room3d-scene-legend" aria-label="3D scene legend">
+                <span class="room3d-legend-sun">Direct sun on floor</span>
+                <span class="room3d-legend-selected">Selected window + its sun</span>
+                <span class="room3d-legend-goal">Goal zone</span>
+                <span class="room3d-legend-blocker">Shade blocker</span>
+                <span class="room3d-legend-context">1 m grid + scale objects</span>
+              </div>
+
+
+              <button id="room3d-edit-selected-window" type="button" class="chip-button chip-button-soft room3d-edit-selected-window">Edit selected window</button>
+
+
+            </div>
+<div id="result-panel-sunlight-map" class="result-view" role="tabpanel" aria-labelledby="result-tab-sunlight-map" data-result-panel="sunlight-map">
+              <div class="room-snapshot-shell">
+                <div id="daily-exposure-svg" class="room-snapshot room-snapshot-large"></div>
+                <div id="daily-exposure-tooltip" class="chart-tooltip" hidden></div>
+              </div>
+              <div class="daily-map-meta">
+                <div class="daily-map-legend">
+                  <span class="explorer-label">Direct sunlight hours today</span>
+                  <div class="legend-ramp" aria-hidden="true"></div>
+                  <div class="legend-labels">
+                    <span>0 h</span>
+                    <span id="legend-max-hours">Max</span>
+                  </div>
+                </div>
+              </div>
+              <div class="daily-map-stats">
+                <article class="metric-card">
+                  <span class="metric-label">Most sun at one spot</span>
+                  <strong id="daily-stat-peak-hours">0.0 h</strong>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">Floor receiving sunlight</span>
+                  <strong id="daily-stat-sunlit-fraction">0%</strong>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">Average across sunlit areas</span>
+                  <strong id="daily-stat-avg-sunlit-hours">0.0 h</strong>
+                </article>
+              </div>
+              <p id="daily-exposure-caption" class="angle-caption room-caption">
+                Direct sun exposure time across the selected day.
+              </p>
+            </div>
+<div id="result-panel-long-range" class="result-view" role="tabpanel" aria-labelledby="result-tab-long-range" data-result-panel="long-range">
+              <div class="chip-row result-tab-row">
+                <button type="button" class="chip-button is-active" data-period-view="year">Year</button>
+                <button type="button" class="chip-button" data-period-view="winter">Winter</button>
+                <button type="button" class="chip-button" data-period-view="spring">Spring</button>
+                <button type="button" class="chip-button" data-period-view="summer">Summer</button>
+                <button type="button" class="chip-button" data-period-view="fall">Fall</button>
+              </div>
+              <div class="room-snapshot-shell">
+                <div id="long-range-exposure-svg" class="room-snapshot room-snapshot-large"></div>
+                <div id="long-range-exposure-tooltip" class="chart-tooltip" hidden></div>
+              </div>
+              <div class="daily-map-meta">
+                <div class="daily-map-legend">
+                  <span class="explorer-label">Estimated direct sunlight hours</span>
+                  <div class="legend-ramp" aria-hidden="true"></div>
+                  <div class="legend-labels">
+                    <span>0 h</span>
+                    <span id="long-range-legend-max-hours">Max</span>
+                  </div>
+                </div>
+              </div>
+              <div class="daily-map-stats">
+                <article class="metric-card">
+                  <span class="metric-label">Most sun at one spot</span>
+                  <strong id="long-range-stat-peak-hours">0.0 h</strong>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">Floor receiving sunlight</span>
+                  <strong id="long-range-stat-sunlit-fraction">0%</strong>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">Average across sunlit areas</span>
+                  <strong id="long-range-stat-avg-sunlit-hours">0.0 h</strong>
+                </article>
+              </div>
+              <p id="long-range-exposure-caption" class="angle-caption room-caption">
+                Estimated direct sun exposure time across longer periods.
+              </p>
+            </div>
+<div id="result-panel-goal-studio" class="result-view goal-studio" role="tabpanel" aria-labelledby="result-tab-goal-studio" data-result-panel="goal-studio">
+              <div class="goal-studio-header">
+                <div>
+                  <p class="angle-caption">Choose a goal and a spot in the room. Explore suggestions and see how each change affects its sunlight.</p>
+                </div>
+                <button id="goal-evaluate-button" type="button" class="chip-button">Evaluate goal</button>
+              </div>
+
+              <div class="goal-preset-picker" role="group" aria-label="Sunlight goal">
+                <button type="button" class="goal-preset-button is-active" data-goal-preset="winter_warmth" aria-pressed="true">
+                  <strong>Winter sun</strong><span>Seek useful winter sun</span>
+                </button>
+                <button type="button" class="goal-preset-button" data-goal-preset="summer_protection" aria-pressed="false">
+                  <strong>Summer shade</strong><span>Limit hot-period direct sun</span>
+                </button>
+                <button type="button" class="goal-preset-button" data-goal-preset="morning_sun" aria-pressed="false">
+                  <strong>Morning sun</strong><span>Seek sun before midday</span>
+                </button>
+                <button type="button" class="goal-preset-button" data-goal-preset="screen_protection" aria-pressed="false">
+                  <strong>Screen protection</strong><span>Avoid direct sun at a desk</span>
+                </button>
+              </div>
+
+              <div class="goal-studio-layout">
+                <section class="goal-probe-panel" aria-labelledby="goal-probe-heading">
+                  <div class="goal-panel-heading">
+                    <div>
+                      <span class="section-kicker">1 · Pick a zone</span>
+                      <h3 id="goal-probe-heading">Choose a spot</h3>
+                    </div>
+                    <output id="goal-probe-readout">Room centre</output>
+                  </div>
+                  <div id="goal-probe-map" class="goal-probe-map" tabindex="0" aria-label="Click the floor or use arrow keys to move the sunlight probe"></div>
+                  <div class="goal-zone-size">
+                    <span class="explorer-label">Zone size</span>
+                    <div class="chip-row" role="group" aria-label="Probe zone size">
+                      <button type="button" class="chip-button chip-button-soft" data-goal-zone-size="0.5" aria-pressed="false">Spot · 0.5 m</button>
+                      <button type="button" class="chip-button chip-button-soft is-active" data-goal-zone-size="0.8" aria-pressed="true">Seat · 0.8 m</button>
+                      <button type="button" class="chip-button chip-button-soft" data-goal-zone-size="1.2" aria-pressed="false">Area · 1.2 m</button>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="goal-reading-panel" aria-labelledby="goal-reading-heading">
+                  <div class="goal-panel-heading">
+                    <div>
+                      <span class="section-kicker">2 · Read the result</span>
+                      <h3 id="goal-reading-heading">Sunlight at this spot</h3>
+                    </div>
+                    <span id="goal-studio-status" class="update-status" data-state="idle" role="status">Open this view to evaluate.</span>
+                  </div>
+                  <div id="goal-reading-empty" class="goal-reading-empty">Choose a goal and floor zone to see its direct-sun timeline.</div>
+                  <div id="goal-reading-content" hidden>
+                    <div class="goal-score-row">
+                      <div id="goal-score-ring" class="goal-score-ring" style="--goal-score: 0">
+                        <strong id="goal-score-value">0</strong><span>/ 100</span>
+                      </div>
+                      <div>
+                        <span id="goal-met-badge" class="status-chip status-chip-off">Not evaluated</span>
+                        <h3 id="goal-question">Goal result</h3>
+                        <p id="goal-target-copy" class="angle-caption"></p>
+                      </div>
+                    </div>
+                    <div class="goal-metric-grid">
+                      <article class="metric-card"><span class="metric-label">Direct sun in zone</span><strong id="goal-direct-hours">0.0 h</strong></article>
+                      <article class="metric-card"><span class="metric-label">First → last</span><strong id="goal-time-range">None</strong></article>
+                      <article class="metric-card"><span class="metric-label">Reference day</span><strong id="goal-reference-date">—</strong></article>
+                    </div>
+                    <div class="goal-timeline-section">
+                      <span class="explorer-label">Direct-sun timeline</span>
+                      <div id="goal-timeline" class="goal-timeline" aria-label="Direct sunlight timeline"></div>
+
+                    </div>
+                    <details class="goal-window-sources goal-result-details">
+                      <summary>Timing and window details</summary>
+                      <div id="goal-intervals" class="goal-intervals"></div>
+                      <div id="goal-window-contributions"></div>
+                    </details>
+                  </div>
+                </section>
+              </div>
+
+              <section class="goal-suggestions" aria-labelledby="goal-suggestions-heading">
+                <div class="goal-panel-heading">
+                  <div>
+                    <span class="section-kicker">3 · Explore a change</span>
+                    <h3 id="goal-suggestions-heading">Changes to try</h3>
+                  </div>
+                  <span id="goal-tested-count" class="angle-caption"></span>
+                </div>
+                <div id="goal-suggestion-list" class="goal-suggestion-list">
+                  <div class="goal-reading-empty">Suggestions appear after the zone is evaluated.</div>
+                </div>
+              </section>
+
+              <details class="subtle-details goal-method-details">
+                <summary>How this is calculated and what it leaves out</summary>
+                <p id="goal-method-copy"></p>
+                <p id="goal-scope-copy"></p>
+              </details>
+            </div>
