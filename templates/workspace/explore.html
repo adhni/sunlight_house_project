@@ -1,0 +1,19 @@
+<dialog id="room3d-explore-dialog" class="room3d-explore-dialog" aria-labelledby="explore-title" data-editor-open="false">
+  <header class="explore-header">
+    <div class="explore-heading"><span class="brand-mark" aria-hidden="true">◒</span><div><h2 id="explore-title">Explore your room</h2><span>Make space for the light.</span></div></div>
+    <div id="explore-camera-slot"></div>
+    <div class="explore-actions">
+      <div id="explore-undo-slot"></div>
+      <button id="explore-edit" type="button" class="chip-button" aria-expanded="false" aria-controls="explore-editor">Edit room</button>
+      <button id="explore-exit" type="button" class="quiet-button" autofocus aria-label="Exit full screen">Exit <span aria-hidden="true">↙</span></button>
+    </div>
+  </header>
+  <div class="explore-body">
+    <div id="explore-model-slot"></div>
+    <div id="explore-editor" hidden></div>
+  </div>
+  <footer class="explore-footer">
+    <div class="explore-feedback"><span>Drag to orbit · scroll to zoom · select a window to edit</span><div id="explore-status-slot"></div></div>
+    <div id="explore-timeline-slot"></div>
+  </footer>
+</dialog>

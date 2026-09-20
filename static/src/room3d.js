@@ -1,15 +1,17 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { parallelBeamSegments, sunlightAppearance } from "./sunlight3d.mjs";
+import { surface, softBox, oakFloor, interiorFurniture } from "./interior3d.js";
 
 const COLORS = {
   floor: 0xf8f1e5,
-  wall: 0xe7ddd0,
+  wall: 0xf3efe5,
   wallEdge: 0x657378,
-  window: 0x2b627a,
+  window: 0xc4d8dc,
   selectedWindowFrame: 0x6d4bb8,
-  sunlight: 0xffbd55,
-  sunlightEdge: 0xd85824,
+  sunlight: 0xffe5ac,
+  sunlightEdge: 0xc69d58,
   north: 0x2b627a,
   front: 0xd36c32,
   door: 0x9c6846,
@@ -180,11 +182,7 @@ function wallSolidIntervals(length, openings) {
 function makeWallPanel(definition, spanStart, spanEnd, bottom, top) {
   const span = spanEnd - spanStart;
   const height = top - bottom;
-  const material = new THREE.MeshStandardMaterial({
-    color: COLORS.wall,
-    roughness: 0.9,
-    metalness: 0,
-  });
+  const material = surface("plaster", COLORS.wall, span * 2, height * 2);
   const geometry = definition.spanAxis === "x"
     ? new THREE.BoxGeometry(span, height, definition.thickness)
     : new THREE.BoxGeometry(definition.thickness, height, span);
@@ -217,7 +215,7 @@ function makeWallOutline(definition, roomHeight) {
   const geometry = new THREE.BufferGeometry().setFromPoints([...points, points[0]]);
   const outline = new THREE.Line(
     geometry,
-    new THREE.LineBasicMaterial({ color: COLORS.wallEdge, transparent: true, opacity: 0.68 }),
+    new THREE.LineBasicMaterial({ color: COLORS.wallEdge, transparent: true, opacity: 0.12 }),
   );
   outline.position.copy(definition.position);
   outline.userData = { kind: "wall-outline", wall: definition.name };
@@ -248,6 +246,18 @@ function makeWallWithOpenings(name, windows, room, thickness) {
     });
   }
 
+  // Baseboards belong to their host wall so they disappear with its cutaway.
+  const trimMaterial = new THREE.MeshStandardMaterial({ color: 0xf1ece1, roughness: 0.65 });
+  wallSolidIntervals(definition.length, openings.filter((opening) => opening.bottom < 0.12)
+    .map((opening) => [opening.start, opening.end])).forEach(([start, end]) => {
+    const trim = definition.spanAxis === "x"
+      ? softBox(end - start, 0.11, 0.025, trimMaterial)
+      : softBox(0.025, 0.11, end - start, trimMaterial);
+    trim.position.copy(definition.position).addScaledVector(definition.normal, -thickness / 2 - 0.012);
+    trim.position.y = 0.055;
+    trim.position[definition.spanAxis] = ((start + end) / 2 - definition.length / 2) * (definition.spanAxis === "z" ? -1 : 1);
+    wall.add(trim);
+  });
   wall.add(makeWallOutline(definition, room.height));
   wall.userData = {
     kind: "wall",
@@ -267,12 +277,12 @@ function makeWindow(windowData, room) {
     : new THREE.BoxGeometry(thickness, windowData.height, windowData.width);
   const glassMaterial = new THREE.MeshStandardMaterial({
     color: COLORS.window,
-    emissive: 0x123442,
-    emissiveIntensity: 0.12,
+    emissive: 0x000000,
+    emissiveIntensity: 0,
     transparent: true,
-    opacity: 0.36,
-    roughness: 0.18,
-    metalness: 0.12,
+    opacity: 0.12,
+    roughness: 0.08,
+    metalness: 0.35,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
@@ -281,10 +291,24 @@ function makeWindow(windowData, room) {
   glass.userData = { kind: "window-glass", windowName: windowData.name, wall: windowData.wall };
   glass.renderOrder = 4;
 
-  const frameMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 });
-  const frame = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), frameMaterial);
+  const frameMaterial = new THREE.MeshStandardMaterial({ color: 0x5e625d, roughness: 0.36, metalness: 0.45 });
+  const frame = new THREE.Group();
+  const width = Number(windowData.width);
+  const height = Number(windowData.height);
+  const rail = Math.min(0.045, width * 0.08, height * 0.08);
+  for (const sign of [-1, 1]) {
+    frame.add(softBox(rail, height + rail, 0.1, frameMaterial, sign * width / 2, 0, 0, 0.006));
+    frame.add(softBox(width, rail, 0.1, frameMaterial, 0, sign * height / 2, 0, 0.006));
+  }
+  const sillMaterial = new THREE.MeshStandardMaterial({ color: 0xe3dfd4, roughness: 0.6 });
+  frame.add(softBox(width + 0.1, 0.045, 0.22, sillMaterial, 0, -height / 2 - 0.025, 0, 0.008));
+  if (!isFrontBack) frame.rotation.y = Math.PI / 2;
   frame.position.copy(center);
   frame.userData = { kind: "window-frame", windowName: windowData.name, wall: windowData.wall };
+  frame.traverse((object) => {
+    object.userData.windowName = windowData.name;
+    if (object.isMesh) object.receiveShadow = true;
+  });
   frame.renderOrder = 5;
 
   const group = new THREE.Group();
@@ -311,7 +335,7 @@ function makePatch(patch, room) {
   const material = new THREE.MeshBasicMaterial({
     color: COLORS.sunlight,
     transparent: true,
-    opacity: 0.48 + intensity * 0.36,
+    opacity: 0.12 + intensity * 0.12,
     side: THREE.DoubleSide,
     depthWrite: false,
     polygonOffset: true,
@@ -329,7 +353,7 @@ function makePatch(patch, room) {
 
   const edge = new THREE.LineLoop(
     new THREE.BufferGeometry().setFromPoints(points),
-    new THREE.LineBasicMaterial({ color: COLORS.sunlightEdge, transparent: true, opacity: 0.96 }),
+    new THREE.LineBasicMaterial({ color: COLORS.sunlightEdge, transparent: true, opacity: 0.3 }),
   );
   edge.renderOrder = 4;
   edge.userData = {
@@ -361,7 +385,7 @@ function makeFloorGrid(room) {
   }
   const grid = new THREE.LineSegments(
     new THREE.BufferGeometry().setFromPoints(points),
-    new THREE.LineBasicMaterial({ color: 0x8e9698, transparent: true, opacity: 0.28 }),
+    new THREE.LineBasicMaterial({ color: 0x8e9698, transparent: true, opacity: 0.09 }),
   );
   grid.renderOrder = 2;
   grid.userData = { kind: "floor-grid", spacingMetres: 1 };
@@ -435,7 +459,7 @@ function makeDoor(doorData, room, thickness) {
     : new THREE.BoxGeometry(thickness * 0.72, doorData.height, doorData.width);
   const slab = new THREE.Mesh(
     geometry,
-    new THREE.MeshStandardMaterial({ color: COLORS.door, roughness: 0.78, metalness: 0.02 }),
+    surface("oak", 0xbba082, 0.4, 1),
   );
   slab.position.copy(center);
   slab.userData = { kind: "door", wall: doorData.wall };
@@ -472,7 +496,7 @@ function makeInternalWall(wallData, room) {
   const geometry = new THREE.BoxGeometry(length, wallData.height, wallData.thickness);
   const mesh = new THREE.Mesh(
     geometry,
-    new THREE.MeshStandardMaterial({ color: COLORS.internalWall, roughness: 0.92 }),
+    surface("plaster", COLORS.wall, length * 2, wallData.height * 2),
   );
   mesh.position.copy(start.clone().add(end).multiplyScalar(0.5));
   mesh.position.y = wallData.height / 2;
@@ -480,7 +504,7 @@ function makeInternalWall(wallData, room) {
   mesh.userData = { kind: "internal-wall" };
   const outline = new THREE.LineSegments(
     new THREE.EdgesGeometry(geometry),
-    new THREE.LineBasicMaterial({ color: COLORS.wallEdge, transparent: true, opacity: 0.62 }),
+    new THREE.LineBasicMaterial({ color: COLORS.wallEdge, transparent: true, opacity: 0.12 }),
   );
   outline.position.copy(mesh.position);
   outline.rotation.copy(mesh.rotation);
@@ -553,98 +577,14 @@ function makeRoofDetails(roofData, room) {
       { size: [depth, thickness, room.depth], position: [room.width / 2 + depth / 2, room.height, 0] },
       { size: [depth, thickness, room.depth], position: [-room.width / 2 - depth / 2, room.height, 0] },
     ];
-    eaves.forEach(({ size, position }) => {
+    eaves.forEach(({ size, position }, index) => {
       const eave = new THREE.Mesh(new THREE.BoxGeometry(...size), eaveMaterial());
       eave.position.set(...position);
-      eave.userData = { kind: "eave" };
+      eave.userData = { kind: "eave", wall: ["north", "south", "east", "west"][index] };
       eaveGroup.add(eave);
     });
   }
   return { roofGroup, eaveGroup, eaveCount: eaveGroup.children.length };
-}
-
-function furnitureBox(width, height, depth, color, x, y, z) {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(width, height, depth),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.78, metalness: 0.02 }),
-  );
-  mesh.position.set(x, y, z);
-  return mesh;
-}
-
-function makeTable(scale, color = COLORS.furnitureWood) {
-  const group = new THREE.Group();
-  const width = 1.15 * scale;
-  const depth = 0.68 * scale;
-  const topHeight = 0.72 * scale;
-  const topThickness = 0.09 * scale;
-  group.add(furnitureBox(width, topThickness, depth, color, 0, topHeight, 0));
-  const legHeight = topHeight - topThickness / 2;
-  const legSize = 0.08 * scale;
-  [-1, 1].forEach((xSign) => {
-    [-1, 1].forEach((zSign) => {
-      group.add(furnitureBox(
-        legSize,
-        legHeight,
-        legSize,
-        color,
-        xSign * (width / 2 - legSize),
-        legHeight / 2,
-        zSign * (depth / 2 - legSize),
-      ));
-    });
-  });
-  group.userData = { kind: "furniture", type: "table" };
-  return group;
-}
-
-function makeChair(scale) {
-  const group = new THREE.Group();
-  const width = 0.42 * scale;
-  const depth = 0.42 * scale;
-  const seatHeight = 0.43 * scale;
-  group.add(furnitureBox(width, 0.08 * scale, depth, COLORS.furniture, 0, seatHeight, 0));
-  group.add(furnitureBox(width, 0.52 * scale, 0.08 * scale, COLORS.furniture, 0, 0.68 * scale, depth / 2));
-  [-1, 1].forEach((xSign) => {
-    [-1, 1].forEach((zSign) => {
-      group.add(furnitureBox(
-        0.055 * scale,
-        seatHeight,
-        0.055 * scale,
-        COLORS.furnitureWood,
-        xSign * width * 0.38,
-        seatHeight / 2,
-        zSign * depth * 0.38,
-      ));
-    });
-  });
-  group.userData = { kind: "furniture", type: "chair" };
-  return group;
-}
-
-function makeSofa(scale) {
-  const group = new THREE.Group();
-  const width = 1.72 * scale;
-  const depth = 0.72 * scale;
-  group.add(furnitureBox(width, 0.28 * scale, depth, COLORS.furniture, 0, 0.25 * scale, 0));
-  group.add(furnitureBox(width, 0.66 * scale, 0.16 * scale, COLORS.furniture, 0, 0.55 * scale, depth * 0.39));
-  [-1, 1].forEach((sign) => {
-    group.add(furnitureBox(0.16 * scale, 0.46 * scale, depth, COLORS.furnitureAccent, sign * width * 0.46, 0.34 * scale, 0));
-  });
-  group.userData = { kind: "furniture", type: "sofa" };
-  return group;
-}
-
-function makeBed(scale) {
-  const group = new THREE.Group();
-  const width = 1.45 * scale;
-  const depth = 2.0 * scale;
-  group.add(furnitureBox(width, 0.34 * scale, depth, 0xe6ded0, 0, 0.28 * scale, 0));
-  group.add(furnitureBox(width, 0.78 * scale, 0.12 * scale, COLORS.furnitureWood, 0, 0.47 * scale, depth * 0.47));
-  group.add(furnitureBox(width * 0.42, 0.12 * scale, 0.42 * scale, 0xf7f0e6, -width * 0.24, 0.5 * scale, depth * 0.3));
-  group.add(furnitureBox(width * 0.42, 0.12 * scale, 0.42 * scale, 0xf7f0e6, width * 0.24, 0.5 * scale, depth * 0.3));
-  group.userData = { kind: "furniture", type: "bed" };
-  return group;
 }
 
 function clampFurnitureItem(item, room) {
@@ -671,8 +611,7 @@ function clampFurnitureItem(item, room) {
 
 function makeFurnitureItem(itemData, room) {
   const item = clampFurnitureItem(itemData, room);
-  const makers = { sofa: makeSofa, chair: makeChair, table: makeTable, bed: makeBed };
-  const root = (makers[item.type] || makeTable)(item.scale);
+  const root = interiorFurniture(item.type, item.scale);
   root.position.copy(appPointToThree([item.x, item.y, 0], room));
   root.rotation.y = -THREE.MathUtils.degToRad(item.rotation);
   root.userData = { kind: "furniture", furnitureId: item.id, type: item.type };
@@ -805,6 +744,15 @@ class Room3DViewer {
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.05, 200);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    const environment = new RoomEnvironment();
+    const environmentGenerator = new THREE.PMREMGenerator(this.renderer);
+    this.environmentTarget = environmentGenerator.fromScene(environment, 0.04);
+    this.scene.environment = this.environmentTarget.texture;
+    this.scene.environmentIntensity = 0.08;
+    environment.dispose();
+    environmentGenerator.dispose();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -892,10 +840,10 @@ class Room3DViewer {
       this.orientationGroup,
     );
     this.scene.add(this.contentGroup);
-    this.skyLight = new THREE.HemisphereLight(0xfffbf2, 0x64727a, 1.25);
+    this.skyLight = new THREE.HemisphereLight(0xc2d2ec, 0x4b5261, 0.62);
     this.sunLight = new THREE.DirectionalLight(0xffffff, 0);
     this.sunLight.castShadow = true;
-    this.sunLight.shadow.mapSize.setScalar(this.isTouchDevice ? 1024 : 2048);
+    this.sunLight.shadow.mapSize.setScalar(4096);
     this.sunLight.shadow.bias = -0.0001;
     this.sunLight.shadow.normalBias = 0.008;
     this.sunLight.shadow.radius = 2;
@@ -994,12 +942,7 @@ class Room3DViewer {
     this.windowVisuals.clear();
     this.furnitureVisuals.clear();
 
-    const floor = new THREE.Mesh(
-      new THREE.BoxGeometry(room.width, 0.04, room.depth),
-      new THREE.MeshStandardMaterial({ color: COLORS.floor, roughness: 0.94 }),
-    );
-    floor.position.y = -0.025;
-    this.floorGroup.add(floor);
+    this.floorGroup.add(oakFloor(room));
     this.floorGridGroup.add(makeFloorGrid(room));
     if (this.probe) this.setProbe(this.probe);
 
@@ -1097,6 +1040,7 @@ class Room3DViewer {
     this.container.dataset.furnitureCount = String(furniture.itemCount);
     this.container.dataset.furniturePreset = furniture.preset;
     this.container.dataset.roofVisible = String(this.roofVisible);
+    this.updateCameraAwareWalls();
     this.container.dataset.contextVisible = String(this.contextVisible);
     this.container.dataset.floorGridVisible = String(this.floorGridGroup.visible);
     this.container.dataset.floorGridSpacing = "1";
@@ -1290,9 +1234,10 @@ class Room3DViewer {
     const appearance = sunlightAppearance(snapshot.room_vector);
     this.sunLight.intensity = appearance.sunIntensity;
     this.skyLight.intensity = appearance.ambientIntensity;
-    this.sunLight.color.setHex(0xffb36b).lerp(new THREE.Color(0xfffaf0), appearance.sunWarmth);
-    this.skyLight.color.setHex(0x8197be).lerp(new THREE.Color(0xfffbf2), appearance.daylight);
-    this.scene.background.setHex(0x182334).lerp(new THREE.Color(0xeff1e9), appearance.daylight);
+    this.sunLight.color.setHex(0xffb36b).lerp(new THREE.Color(0xfff1d6), appearance.sunWarmth);
+    this.skyLight.color.setHex(0x8197be).lerp(new THREE.Color(0xc2d2ec), appearance.daylight);
+    this.scene.background.setHex(0x182334).lerp(new THREE.Color(0xe9e6df), appearance.daylight);
+    this.scene.environmentIntensity = 0.01 + appearance.daylight * 0.07;
     if (appearance.direction && this.shadowCenter) {
       const [x, y, z] = appearance.direction;
       const direction = new THREE.Vector3(x, z, -y);
@@ -1519,11 +1464,10 @@ class Room3DViewer {
     this.windowVisuals.forEach((visual, windowName) => {
       const selected = windowName === name;
       visual.glassMaterial.color.setHex(COLORS.window);
-      visual.glassMaterial.emissive.setHex(selected ? 0x3d2769 : 0x123442);
-      visual.glassMaterial.emissiveIntensity = selected ? 0.24 : 0.12;
-      visual.glassMaterial.opacity = selected ? 0.46 : 0.36;
-      visual.frameMaterial.color.setHex(selected ? COLORS.selectedWindowFrame : 0xffffff);
-      visual.frameMaterial.opacity = selected ? 1 : 0.78;
+      visual.glassMaterial.emissive.setHex(selected ? 0x3d2769 : 0x000000);
+      visual.glassMaterial.emissiveIntensity = selected ? 0.04 : 0;
+      visual.glassMaterial.opacity = selected ? 0.18 : 0.12;
+      visual.frameMaterial.color.setHex(selected ? COLORS.selectedWindowFrame : 0x5e625d);
       const label = this.labelElements.get(`window:${windowName}`)?.element;
       label?.classList.toggle("is-selected", selected);
       label?.setAttribute("aria-pressed", String(selected));
@@ -1832,6 +1776,11 @@ class Room3DViewer {
     this.doorGroup.children.forEach((door) => {
       door.visible = this.contextVisible && Boolean(wallVisibility.get(door.userData.wall));
     });
+    this.eaveGroup.traverse((eave) => {
+      if (eave.userData.kind === "eave") {
+        eave.visible = this.roofVisible || Boolean(wallVisibility.get(eave.userData.wall));
+      }
+    });
     hidden.sort();
     visible.sort();
     this.container.dataset.autoHiddenWalls = hidden.join(",");
@@ -2007,6 +1956,7 @@ class Room3DViewer {
     disposeObject(this.contentGroup);
     this.controls.dispose();
     this.sunLight.shadow.dispose();
+    this.environmentTarget.dispose();
     this.renderer.dispose();
     this.destroyed = true;
     this.container.dataset.viewerDestroyed = "true";

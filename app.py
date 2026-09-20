@@ -334,7 +334,7 @@ def default_form_values() -> dict[str, str]:
         "windows_json": default_demo_windows_json(),
         "scene_door_enabled": "1",
         "scene_door_wall": "south",
-        "scene_partition_enabled": "1",
+        "scene_partition_enabled": "0",
         "scene_eaves_enabled": "1",
         "scene_furniture_preset": "living",
         "scene_furniture_json": furniture_json_string(starter_furniture_items("living", room)),
