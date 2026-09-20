@@ -17,7 +17,8 @@ export function sunlightAppearance(vector) {
     direction,
     daylight,
     // Keep a little cool ambient light so the room can still be edited at night.
-    ambientIntensity: 0.1 + daylight * 1.15,
+    // Keep the unlit room subdued so direct sunlight has a readable boundary.
+    ambientIntensity: 0.08 + daylight * 0.54,
     sunIntensity: 3.2 * smoothstep(0, 18, elevation),
     sunWarmth: smoothstep(0, 35, elevation),
   };

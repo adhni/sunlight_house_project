@@ -38,6 +38,9 @@ Default room and window values:
 - Window 1: front wall, centre from left `3.0 m`, sill `0.1 m`, width `1.5 m`, height `2.0 m`
 - Window 2: right wall, centre from left `2.8 m`, sill `0.1 m`, width `1.5 m`, height `2.0 m`
 
+The internal divider is off by default. Enable it under **Room → Shade & architecture**
+to explore its effect on sunlight.
+
 The workspace has three destinations: **Room** (3D and 2D plan), **Sun exposure**
 (today and seasons/year), and **Improve** (sunlight goals and measured suggestions).
 Room shows sunlight at one moment; exposure maps show accumulated hours across the
@@ -46,6 +49,12 @@ dialog and expandable timing/window details.
 A shared timeline supports exact typed times, ten-minute playback, and time presets.
 The Room / Windows / Furniture editor sits beside the model on desktop and opens as
 a focused sheet on mobile. Selecting a window opens its details.
+
+**Explore full screen** expands the live 3D room into a dedicated view. The bottom
+sunlight bar keeps date, time, and day playback available; **Edit room** reveals the
+same room, window, and furniture controls beside the model. Camera and display
+controls stay at the top. **Exit** or Escape returns to the workspace with the
+current design, time, and camera retained.
 
 **Undo design** restores room, window, shade, and furniture changes; changing the
 time does not create undo entries. Design undo lasts for the current session.
@@ -109,6 +118,7 @@ The app currently includes:
 - a `Current Moment` room snapshot
 - a lazy-loaded `3D room` view with real window openings, a plain-language current-sun reading, per-window sunlight tracing, compass/front indicators, a 1 m scale grid, host-aware cutaway walls, orbit, bounded zoom/pan, and camera reset
 - optional 3D details: an exterior door, sunlight-blocking internal divider and roof eaves, outside fence/building presets, and scale furniture
+- textured oak floors, plaster walls, framed glazing, upholstered furniture, and styled tabletop details, with soft contact shading and day/night environment reflections; roof eaves follow the wall cutaway
 - cached 3D day playback with a time scrubber plus morning, solar-noon, and evening presets
 - sun-driven 3D lighting with warmer low-angle light, dim nighttime ambient light, and shadows that remain intact when walls or the roof are cut away
 - optional parallel sunbeams under `Display → Sunbeams`; the floor overlays remain visible when beams are off

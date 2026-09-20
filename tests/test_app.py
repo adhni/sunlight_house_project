@@ -47,7 +47,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(len(json.loads(values["windows_json"])), 2)
         self.assertEqual(values["scene_door_enabled"], "1")
         self.assertEqual(values["scene_door_wall"], "south")
-        self.assertEqual(values["scene_partition_enabled"], "1")
+        self.assertEqual(values["scene_partition_enabled"], "0")
         self.assertEqual(values["scene_eaves_enabled"], "1")
         self.assertEqual(values["scene_furniture_preset"], "living")
         self.assertEqual(len(json.loads(values["scene_furniture_json"])["items"]), 2)
@@ -83,7 +83,7 @@ class AppTests(unittest.TestCase):
         self.assertFalse(payload["scene"]["visual_only"])
         self.assertTrue(payload["scene"]["door"]["enabled"])
         self.assertEqual(payload["scene"]["door"]["wall"], "south")
-        self.assertTrue(payload["scene"]["internal_wall"]["enabled"])
+        self.assertFalse(payload["scene"]["internal_wall"]["enabled"])
         self.assertTrue(payload["scene"]["internal_wall"]["affects_sunlight"])
         self.assertFalse(payload["scene"]["external_obstruction"]["enabled"])
         self.assertEqual(payload["scene"]["furniture"]["preset"], "living")
@@ -213,9 +213,16 @@ class AppTests(unittest.TestCase):
         self.assertEqual(blocked_payload["scene"]["external_obstruction"]["preset"], "building")
         self.assertEqual(blocked_payload["scene"]["furniture"]["preset"], "bedroom")
 
-    def test_default_config_builds_partition_and_eave_blockers(self) -> None:
+    def test_default_config_omits_divider_but_allows_enabling_it(self) -> None:
         config, _moment = build_config_and_moment(default_form_values())
 
+        self.assertEqual(len(config.obstructions), 4)
+        self.assertNotIn("internal-divider", {box.name for box in config.obstructions})
+        self.assertEqual({box.scope for box in config.obstructions}, {"exterior"})
+
+        config, _moment = build_config_and_moment(
+            default_form_values() | {"scene_partition_enabled": "1"}
+        )
         self.assertEqual(len(config.obstructions), 5)
         self.assertEqual(config.obstructions[0].name, "internal-divider")
         self.assertEqual({box.scope for box in config.obstructions}, {"interior", "exterior"})

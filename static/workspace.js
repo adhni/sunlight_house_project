@@ -3,6 +3,13 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
   const form = document.getElementById('simulation-form');
   const inspector = document.getElementById('inspector');
   const inspectorDialog = document.getElementById('inspector-dialog');
+  const exploreDialog = document.getElementById('room3d-explore-dialog');
+  const exploreButton = document.getElementById('room3d-explore');
+  const exploreEditor = document.getElementById('explore-editor');
+  const exploreEditButton = document.getElementById('explore-edit');
+  let exploreActive = false;
+  let exploreReturnPoints = [];
+  let exploreScroll = 0;
   const mobile = window.matchMedia('(max-width: 980px)');
   const primaryTabs = [...document.querySelectorAll('[data-workspace-mode]')];
   const remembered = { room: 'room-3d', exposure: 'sunlight-map', improve: 'goal-studio' };
@@ -30,9 +37,15 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
     });
   });
   document.querySelectorAll('[data-open-dialog]').forEach(button => button.addEventListener('click', () => openDialog(button.dataset.openDialog, button)));
-  document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEventListener('click', () => document.getElementById(button.dataset.closeDialog).close()));
+  document.querySelectorAll('[data-close-dialog]').forEach(button => button.addEventListener('click', () => {
+    if (exploreActive && button.dataset.closeDialog === 'inspector-dialog') {
+      setExploreEditor(false);
+      exploreEditButton.focus();
+    } else document.getElementById(button.dataset.closeDialog).close();
+  }));
   function placeInspector() {
-    if (mobile.matches || form.dataset.mode === 'improve') inspectorDialog.append(inspector);
+    if (exploreActive) exploreEditor.append(inspector);
+    else if (mobile.matches || form.dataset.mode === 'improve') inspectorDialog.append(inspector);
     else {
       if (inspectorDialog.open) inspectorDialog.close();
       document.getElementById('inspector-slot').append(inspector);
@@ -46,19 +59,73 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
     document.querySelectorAll('[data-inspector]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.inspector === kind)));
     document.getElementById('inspector-title').textContent = { room: 'Room settings', window: 'Window details', furniture: 'Arrange furniture' }[kind];
     if (kind === 'furniture') inspector.querySelector('.furniture-tools').open = true;
-    if (open && (mobile.matches || form.dataset.mode === 'improve')) openDialog('inspector-dialog');
+    if (open && exploreActive) setExploreEditor(true);
+    else if (open && (mobile.matches || form.dataset.mode === 'improve')) openDialog('inspector-dialog');
   }
   document.querySelectorAll('[data-inspector]').forEach(button => button.addEventListener('click', () => showInspector(button.dataset.inspector)));
   document.querySelector('[data-open-inspector]').addEventListener('click', () => showInspector());
   document.getElementById('mobile-camera-preset').addEventListener('change', event => document.querySelector(`[data-room3d-camera-preset="${event.target.value}"]`).click());
+  function setExploreEditor(open) {
+    exploreEditor.hidden = !open;
+    exploreDialog.dataset.editorOpen = String(open);
+    exploreEditButton.setAttribute('aria-expanded', String(open));
+    exploreEditButton.textContent = open ? 'Hide editor' : 'Edit room';
+  }
+  function restoreExplore() {
+    if (!exploreActive) return;
+    exploreActive = false;
+    exploreReturnPoints.forEach(({ node, marker }) => marker.replaceWith(node));
+    exploreReturnPoints = [];
+    setExploreEditor(false);
+    document.body.classList.remove('is-exploring');
+    placeInspector();
+    window.scrollTo({ top: exploreScroll, behavior: 'instant' });
+    exploreButton.focus({ preventScroll: true });
+  }
+  function exitExplore() {
+    if (!exploreActive) return;
+    exploreDialog.close();
+    restoreExplore();
+  }
+  exploreButton.addEventListener('click', () => {
+    if (exploreActive) return;
+    exploreScroll = window.scrollY;
+    exploreActive = true;
+    const move = (node, slot) => {
+      const marker = document.createComment('Explore return point');
+      node.before(marker);
+      exploreReturnPoints.push({ node, marker });
+      document.getElementById(slot).append(node);
+    };
+    move(document.getElementById('result-panel-room-3d'), 'explore-model-slot');
+    move(document.querySelector('.room3d-toolbar'), 'explore-camera-slot');
+    move(document.getElementById('room3d-animation-controls'), 'explore-timeline-slot');
+    move(document.getElementById('design-undo-button'), 'explore-undo-slot');
+    move(document.querySelector('.workspace-status'), 'explore-status-slot');
+    move(inspector, 'explore-editor');
+    document.querySelector('.room3d-display-options').open = false;
+    document.body.classList.add('is-exploring');
+    exploreDialog.showModal();
+  });
+  exploreDialog.addEventListener('close', restoreExplore);
+  document.getElementById('explore-exit').addEventListener('click', exitExplore);
+  exploreEditButton.addEventListener('click', () => {
+    if (exploreEditor.hidden) {
+      showInspector();
+      inspector.querySelector('.inspector-tabs [aria-pressed=true]').focus();
+    } else setExploreEditor(false);
+  });
   function setView(view) {
+    // Also restore the workspace if WebGL falls back while Explore is open.
+    if (exploreActive && view !== 'room-3d') exitExplore();
     const mode = ['room-3d', 'current'].includes(view) ? 'room' : view === 'goal-studio' ? 'improve' : 'exposure';
     remembered[mode] = view;
     form.dataset.mode = mode;
     form.dataset.view = view;
     placeInspector();
     const timeline = document.getElementById('room3d-animation-controls');
-    if (mode === 'room') document.getElementById('room3d-reading').before(timeline);
+    if (exploreActive) document.getElementById('explore-timeline-slot').append(timeline);
+    else if (mode === 'room') document.getElementById('room3d-reading').before(timeline);
     else document.querySelector('.view-bar').after(timeline);
     primaryTabs.forEach(button => {
       const active = button.dataset.workspaceMode === mode;

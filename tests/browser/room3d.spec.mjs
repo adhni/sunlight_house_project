@@ -47,11 +47,11 @@ test("opens the current room and sunlight in WebGL by default", async ({ page })
   await expect(viewer).toHaveAttribute("data-door-count", "1");
   await expect(viewer).toHaveAttribute("data-door-wall", "south");
   await expect(viewer).toHaveAttribute("data-door-visible", "false");
-  await expect(viewer).toHaveAttribute("data-internal-wall-count", "1");
+  await expect(viewer).toHaveAttribute("data-internal-wall-count", "0");
   await expect(viewer).toHaveAttribute("data-eave-count", "4");
   await expect(viewer).toHaveAttribute("data-external-obstruction-count", "0");
   await expect(viewer).toHaveAttribute("data-external-obstruction-preset", "none");
-  await expect(viewer).toHaveAttribute("data-sunlight-blocker-count", "5");
+  await expect(viewer).toHaveAttribute("data-sunlight-blocker-count", "4");
   await expect(viewer).toHaveAttribute("data-furniture-count", "2");
   await expect(viewer).toHaveAttribute("data-furniture-preset", "living");
   await expect(viewer).toHaveAttribute("data-furniture-visible", "true");
@@ -74,7 +74,7 @@ test("opens the current room and sunlight in WebGL by default", async ({ page })
   await expect(page.locator("#room3d-reading-floor")).toContainText("from 2 windows");
   await expect(page.locator("#room3d-reading-selected-label")).toHaveText("Selected · Window 1");
   await expect(page.locator("#room3d-reading-selected")).toContainText("strongest source");
-  await expect(page.locator("#room3d-reading-blockers")).toHaveText("Divider + Roof eaves");
+  await expect(page.locator("#room3d-reading-blockers")).toHaveText("Roof eaves");
   await expect(page.locator(".room3d-scope-note")).toContainText("do not shade");
   await expect(page.locator(".room3d-compass-key-north")).toHaveText("N · true north");
   await expect(page.locator(".room3d-compass-key-front")).toHaveText("Front · NE");
@@ -332,7 +332,7 @@ test("adds an exterior blocker through the full sunlight refresh path", async ({
 
   await expect(viewer).toHaveAttribute("data-external-obstruction-count", "1");
   await expect(viewer).toHaveAttribute("data-external-obstruction-preset", "building");
-  await expect(viewer).toHaveAttribute("data-sunlight-blocker-count", "6");
+  await expect(viewer).toHaveAttribute("data-sunlight-blocker-count", "5");
   expect(requests.filter((path) => path === "/api/snapshot")).toHaveLength(1);
   expect(requests.filter((path) => path === "/api/scene-details")).toHaveLength(0);
 });
