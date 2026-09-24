@@ -1332,6 +1332,8 @@
             roofButton: room3dRoofButton,
             contextButton: room3dContextButton,
             beamsButton: room3dBeamsButton,
+            gridButton: document.getElementById("room3d-toggle-grid"),
+            presentationButtons: document.querySelectorAll("[data-room3d-presentation]"),
             onWindowSelect: selectWindowFrom3d,
             onFurnitureSelect: setSelectedFurniture,
             onFurnitureChange: handleFurnitureChange,
@@ -4008,6 +4010,7 @@
     retry: () => { refreshSnapshot(); ensureDayAnimation(); },
     undo: undoDesign,
     validate: validateWindowFit,
+    setExploreActive: (active) => room3dViewer?.setFullscreen(active),
     openLocation: () => { if (customLocationPanel.open) { ensureMap(); invalidateMapSoon(); } renderOutdoorYearPanel(); },
   });
   lastDesign = captureDesign();

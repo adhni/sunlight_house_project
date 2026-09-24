@@ -18,14 +18,18 @@
                 Room edges show both room angle and compass direction.
               </p>
             </div>
-<div id="result-panel-room-3d" class="result-view room3d-view" role="tabpanel" aria-labelledby="result-tab-room-3d" data-result-panel="room-3d">
+<div id="result-panel-room-3d" class="result-view room3d-view" role="tabpanel" aria-labelledby="result-tab-room-3d" data-result-panel="room-3d" data-presentation="room">
+              <div class="room3d-presentation" role="group" aria-label="Room presentation">
+                <button type="button" data-room3d-presentation="room" aria-pressed="true">Room view</button>
+                <button type="button" data-room3d-presentation="analysis" aria-pressed="false">Sunlight analysis</button>
+              </div>
               <button id="room3d-explore" type="button" class="chip-button room3d-explore-button" aria-haspopup="dialog" aria-controls="room3d-explore-dialog" aria-label="Explore room full screen">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg>
-                Explore full screen
+                <span>Explore full screen</span>
               </button>
               <p id="room3d-interaction-hint" class="angle-caption room3d-interaction-hint">
-                <span class="room3d-pointer-help">Drag to look around · scroll to zoom · select a window or its sunlight to trace the result.</span>
-                <span class="room3d-touch-help">Tap Explore 3D, then drag to look and pinch to zoom.</span>
+                <span class="room3d-pointer-help">Drag to look around · scroll to zoom · select a window to edit.</span>
+                <span class="room3d-touch-help">Enable touch controls to drag and pinch, or explore full screen.</span>
               </p>
               <div
                 id="room3d-container"
@@ -39,7 +43,7 @@
                 <span class="room3d-legend-selected">Selected window + its sun</span>
                 <span class="room3d-legend-goal">Goal zone</span>
                 <span class="room3d-legend-blocker">Shade blocker</span>
-                <span class="room3d-legend-context">1 m grid + scale objects</span>
+                <span class="room3d-analysis-note">Calculated sun · excludes furniture</span>
               </div>
 
 

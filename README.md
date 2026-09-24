@@ -50,11 +50,21 @@ A shared timeline supports exact typed times, ten-minute playback, and time pres
 The Room / Windows / Furniture editor sits beside the model on desktop and opens as
 a focused sheet on mobile. Selecting a window opens its details.
 
+The 3D room opens in **Room view**, with natural daylight, furniture shadows, and
+minimal guides. **Sunlight analysis** reveals window labels, calculated floor
+overlays, the goal zone, and compass. Furniture shadows are visual only and are
+hidden in the analysis view; furniture does not affect the sunlight calculations.
+**Display** has separate furniture and 1 m grid controls. Grid preferences are
+remembered separately for each view during the session. **Hide editor** makes more
+space for the model on desktop.
+
 **Explore full screen** expands the live 3D room into a dedicated view. The bottom
 sunlight bar keeps date, time, and day playback available; **Edit room** reveals the
 same room, window, and furniture controls beside the model. Camera and display
 controls stay at the top. **Exit** or Escape returns to the workspace with the
 current design, time, and camera retained.
+On touch devices, fullscreen enables gestures immediately and restores the previous
+touch/scroll setting when closed.
 
 **Undo design** restores room, window, shade, and furniture changes; changing the
 time does not create undo entries. Design undo lasts for the current session.
@@ -121,7 +131,7 @@ The app currently includes:
 - textured oak floors, plaster walls, framed glazing, upholstered furniture, and styled tabletop details, with soft contact shading and day/night environment reflections; roof eaves follow the wall cutaway
 - cached 3D day playback with a time scrubber plus morning, solar-noon, and evening presets
 - sun-driven 3D lighting with warmer low-angle light, dim nighttime ambient light, and shadows that remain intact when walls or the roof are cut away
-- optional parallel sunbeams under `Display → Sunbeams`; the floor overlays remain visible when beams are off
+- optional parallel sunbeams under `Display → Sunbeams`; these open Sunlight analysis, where floor overlays remain visible when beams are off
 - mobile-first 3D interaction with explicit touch activation, scroll-safe viewing, 44 px window targets, an in-view window edit action, model-first ordering, and progressively disclosed display/furniture tools
 - a `Direct Sun Hours Today` floor map with legend, stats, and in-chart tooltip
 - a `Yearly / Seasonal` floor map with `Year`, `Winter`, `Spring`, `Summer`, and `Fall`
@@ -247,7 +257,8 @@ npm run test:3d
 
 3D material lighting and shadow maps are visual approximations. The labelled floor
 overlays and sunlight-hour results continue to come from the Python model. Furniture
-receives light and architectural shadows but does not cast sunlight-blocking shadows.
+receives light and casts visual shadows in Room view. These shadows are hidden in
+Sunlight analysis and do not change the calculated floor overlays or sunlight hours.
 
 ## Render Deployment
 

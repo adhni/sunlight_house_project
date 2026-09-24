@@ -57,8 +57,8 @@ test("rendered floor shadows survive cutaways and the hidden roof blocks overhea
     viewer.floorGridGroup.visible = false;
     viewer.orientationGroup.visible = false;
     // Sample actual framebuffer pixels on the floor, with no analytical overlays.
-    const brightnessAt = (x, z) => {
-      viewer.renderer.shadowMap.needsUpdate = true;
+    const brightnessAt = (x, z, refresh = true) => {
+      if (refresh) viewer.renderer.shadowMap.needsUpdate = true;
       viewer.renderer.render(viewer.scene, viewer.camera);
       const point = viewer.camera.position.clone().set(x, 0, z).project(viewer.camera);
       const gl = viewer.renderer.getContext();
@@ -80,15 +80,29 @@ test("rendered floor shadows survive cutaways and the hidden roof blocks overhea
     viewer.shadowGroup.visible = false;
     const withoutRoof = brightnessAt(0, 0);
     viewer.shadowGroup.visible = true;
+    viewer.updateSunlightFrame(snapshot);
+    const beforeFurniture = brightnessAt(0, -0.7);
+    const table = { id: "test-table", type: "table", x: 2, y: 4, rotation: 0, scale: 1 };
+    viewer.updateFurniture({ preset: "custom", items: [table] });
+    const furnitureShadow = brightnessAt(0, -0.7, false);
+    viewer.setPresentationMode("analysis");
+    viewer.floorGridGroup.visible = false;
+    const analysisFloor = brightnessAt(0, -0.7, false);
+    viewer.setPresentationMode("room");
+    viewer.updateFurniture({ preset: "custom", items: [{ ...table, x: 3.4 }] });
+    const movedFurniture = brightnessAt(0, -0.7, false);
     viewer.updateSunlightFrame({ ...snapshot, room_vector: [0, 1, -1] });
     const night = brightnessAt(-1.5, -1);
     viewer.destroy();
     container.remove();
-    return { litOpening, closedWalls, cutawayWalls, withoutBlockers, underRoof, withoutRoof, night };
+    return { litOpening, closedWalls, cutawayWalls, withoutBlockers, underRoof, withoutRoof, night, beforeFurniture, furnitureShadow, analysisFloor, movedFurniture };
   });
   expect(result.litOpening).toBeGreaterThan(result.closedWalls + 20);
   expect(Math.abs(result.closedWalls - result.cutawayWalls)).toBeLessThan(2);
   expect(result.withoutBlockers).toBeGreaterThan(result.cutawayWalls + 20);
   expect(result.withoutRoof).toBeGreaterThan(result.underRoof + 20);
   expect(result.night).toBeLessThan(result.closedWalls * 0.6);
+  expect(result.beforeFurniture).toBeGreaterThan(result.furnitureShadow + 20);
+  expect(Math.abs(result.analysisFloor - result.beforeFurniture)).toBeLessThan(2);
+  expect(Math.abs(result.movedFurniture - result.beforeFurniture)).toBeLessThan(2);
 });

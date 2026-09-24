@@ -80,8 +80,31 @@ export function oakFloor(room) {
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = -0.004;
   floor.receiveShadow = true;
-  group.add(slab, floor);
+  group.add(slab, floor, floorContactShade(room));
   return group;
+}
+
+function floorContactShade(room) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  const edgeX = Math.min(64, 256 * 0.22 / room.width);
+  const edgeY = Math.min(64, 256 * 0.22 / room.depth);
+  // A narrow, soft falloff anchors the floor to the wall junctions.
+  for (const [x0, y0, x1, y1] of [[0, 0, edgeX, 0], [256, 0, 256 - edgeX, 0], [0, 0, 0, edgeY], [0, 256, 0, 256 - edgeY]]) {
+    const gradient = ctx.createLinearGradient(x0, y0, x1, y1);
+    gradient.addColorStop(0, "rgba(48, 39, 29, 0.22)");
+    gradient.addColorStop(1, "rgba(48, 39, 29, 0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 256, 256);
+  }
+  const shade = new THREE.Mesh(new THREE.PlaneGeometry(room.width, room.depth), new THREE.MeshBasicMaterial({
+    map: new THREE.CanvasTexture(canvas), transparent: true, depthWrite: false,
+  }));
+  shade.rotation.x = -Math.PI / 2;
+  shade.position.y = -0.003;
+  shade.raycast = () => {};
+  return shade;
 }
 
 function contactShadow(width, depth) {

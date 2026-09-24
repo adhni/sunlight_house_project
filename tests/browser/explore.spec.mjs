@@ -50,6 +50,7 @@ test('Explore expands the live canvas, plays sunlight, and restores camera and f
 test('window, furniture, date, and undo controls edit the same design in Explore', async ({ page }) => {
   const viewer = await ready(page);
   await page.locator('#room3d-explore').click();
+  await page.getByRole('button', { name: 'Sunlight analysis', exact: true }).click();
   await page.locator('.room3d-window-label[data-window-name="main_window"]').click();
   await expect(page.locator('#explore-editor')).toBeVisible();
   await expect(page.locator('#explore-edit')).toHaveAttribute('aria-expanded', 'true');

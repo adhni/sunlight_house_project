@@ -6,6 +6,7 @@ async function open3dRoom(page) {
   const viewer = page.locator("#room3d-container");
   await expect(viewer).toHaveAttribute("data-viewer-state", "ready");
   await expect(viewer.locator("canvas")).toBeVisible();
+  await page.getByRole('button', { name: 'Sunlight analysis', exact: true }).click();
   return viewer;
 }
 
@@ -36,7 +37,7 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator("#room3d-container")).toHaveAttribute("data-viewer-state", "ready");
 });
 
-test("opens the current room and sunlight in WebGL by default", async ({ page }) => {
+test("opens the current room in WebGL and reveals its sunlight analysis", async ({ page }) => {
   const viewer = page.locator("#room3d-container");
   await expect(viewer).toHaveAttribute("data-viewer-state", "ready");
 
@@ -126,7 +127,7 @@ test("updates visual architecture without resetting the camera", async ({ page }
   await expect(viewer).toHaveAttribute("data-roof-visible", "true");
 });
 
-test("keeps context optional without changing the sunlight scene", async ({ page }) => {
+test("keeps furniture optional without changing the grid or sunlight scene", async ({ page }) => {
   const viewer = await open3dRoom(page);
   const patchCount = await viewer.getAttribute("data-patch-count");
   const contextButton = page.locator("#room3d-toggle-context");
@@ -136,7 +137,7 @@ test("keeps context optional without changing the sunlight scene", async ({ page
   await expect(contextButton).toHaveAttribute("aria-pressed", "false");
   await expect(viewer).toHaveAttribute("data-context-visible", "false");
   await expect(viewer).toHaveAttribute("data-furniture-visible", "false");
-  await expect(viewer).toHaveAttribute("data-floor-grid-visible", "false");
+  await expect(viewer).toHaveAttribute("data-floor-grid-visible", "true");
   await expect(viewer).toHaveAttribute("data-patch-count", patchCount);
 
   await contextButton.click();
