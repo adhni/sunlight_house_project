@@ -282,6 +282,35 @@ class AppTests(unittest.TestCase):
         self.assertIn("patches", first["frames"][0]["snapshot"])
         self.assertEqual(first["frames"], second["frames"])
 
+    def test_day_playback_includes_dawn_and_dusk_across_seasons(self) -> None:
+        ranges = []
+        for selected_date in ("2025-01-15", "2025-07-15"):
+            with self.subTest(selected_date=selected_date):
+                payload = self.client.get("/api/day-animation", query_string={
+                    "selected_date": selected_date,
+                }).get_json()
+                frames = payload["frames"]
+                daylight = [i for i, frame in enumerate(frames) if frame["snapshot"]["elevation_deg"] > 0]
+                start, end = payload["playback_start_index"], payload["playback_end_index"]
+                self.assertEqual(start, daylight[0] - 6)
+                self.assertEqual(end, daylight[-1] + 6)
+                self.assertLess(frames[start]["snapshot"]["elevation_deg"], 0)
+                self.assertLess(frames[end]["snapshot"]["elevation_deg"], 0)
+                ranges.append((start, end))
+        self.assertNotEqual(*ranges)
+
+    def test_day_playback_handles_polar_day_and_night(self) -> None:
+        for selected_date in ("2025-06-21", "2025-12-21"):
+            with self.subTest(selected_date=selected_date):
+                response = self.client.get("/api/day-animation", query_string={
+                    "selected_date": selected_date, "location_preset": "custom",
+                    "latitude": "69.6492", "longitude": "18.9553", "timezone_name": "Europe/Oslo",
+                })
+                self.assertEqual(response.status_code, 200)
+                payload = response.get_json()
+                self.assertEqual(payload["playback_start_index"], 0)
+                self.assertEqual(payload["playback_end_index"], len(payload["frames"]) - 1)
+
     def test_day_animation_api_does_not_run_daily_exposure_analysis(self) -> None:
         with patch("app.analyze_day", side_effect=AssertionError("daily analysis should not run")):
             response = self.client.get(

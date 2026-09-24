@@ -17,9 +17,9 @@ export function sunlightAppearance(vector) {
     direction,
     daylight,
     // Keep a little cool ambient light so the room can still be edited at night.
-    // Keep the unlit room subdued so direct sunlight has a readable boundary.
-    ambientIntensity: 0.08 + daylight * 0.54,
-    sunIntensity: 3.2 * smoothstep(0, 18, elevation),
+    // Broad sky fill keeps pale walls readable while preserving direct-sun contrast.
+    ambientIntensity: 0.12 + daylight * 1.35,
+    sunIntensity: 4.5 * smoothstep(0, 18, elevation),
     sunWarmth: smoothstep(0, 35, elevation),
   };
 }

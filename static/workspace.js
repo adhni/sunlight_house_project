@@ -1,5 +1,5 @@
 /* Presentation and accessibility for the SunRoom workspace. Simulation stays in app.js. */
-window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation, undo, validate }) {
+window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation, undo, validate, setExploreActive }) {
   const form = document.getElementById('simulation-form');
   const inspector = document.getElementById('inspector');
   const inspectorDialog = document.getElementById('inspector-dialog');
@@ -10,6 +10,8 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
   let exploreActive = false;
   let exploreReturnPoints = [];
   let exploreScroll = 0;
+  let desktopEditorOpen = true;
+  const editButton = document.getElementById('edit-room-button');
   const mobile = window.matchMedia('(max-width: 980px)');
   const primaryTabs = [...document.querySelectorAll('[data-workspace-mode]')];
   const remembered = { room: 'room-3d', exposure: 'sunlight-map', improve: 'goal-studio' };
@@ -23,6 +25,7 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
     document.querySelector('.workspace-menu').open = false;
     dialogTriggers.set(dialog, trigger);
     dialog.showModal();
+    if (id === 'inspector-dialog') editButton.setAttribute('aria-expanded', 'true');
     if (id === 'location-dialog') openLocation();
   }
   document.querySelectorAll('dialog').forEach(dialog => {
@@ -41,6 +44,10 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
     if (exploreActive && button.dataset.closeDialog === 'inspector-dialog') {
       setExploreEditor(false);
       exploreEditButton.focus();
+    } else if (button.dataset.closeDialog === 'inspector-dialog' && !mobile.matches && form.dataset.mode !== 'improve') {
+      desktopEditorOpen = false;
+      placeInspector();
+      editButton.focus();
     } else document.getElementById(button.dataset.closeDialog).close();
   }));
   function placeInspector() {
@@ -50,6 +57,12 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
       if (inspectorDialog.open) inspectorDialog.close();
       document.getElementById('inspector-slot').append(inspector);
     }
+    const docked = !mobile.matches && form.dataset.mode !== 'improve';
+    form.dataset.editorOpen = String(docked && desktopEditorOpen);
+    document.getElementById('inspector-slot').hidden = !docked || !desktopEditorOpen;
+    editButton.textContent = docked && desktopEditorOpen ? 'Hide editor' : 'Edit room';
+    editButton.setAttribute('aria-expanded', String(docked ? desktopEditorOpen : inspectorDialog.open));
+    editButton.setAttribute('aria-controls', docked ? 'inspector-slot' : 'inspector-dialog');
   }
   mobile.addEventListener('change', placeInspector);
   placeInspector();
@@ -61,9 +74,18 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
     if (kind === 'furniture') inspector.querySelector('.furniture-tools').open = true;
     if (open && exploreActive) setExploreEditor(true);
     else if (open && (mobile.matches || form.dataset.mode === 'improve')) openDialog('inspector-dialog');
+    else if (open) { desktopEditorOpen = true; placeInspector(); }
   }
   document.querySelectorAll('[data-inspector]').forEach(button => button.addEventListener('click', () => showInspector(button.dataset.inspector)));
-  document.querySelector('[data-open-inspector]').addEventListener('click', () => showInspector());
+  editButton.addEventListener('click', () => {
+    if (!mobile.matches && form.dataset.mode !== 'improve' && desktopEditorOpen) {
+      desktopEditorOpen = false;
+      placeInspector();
+    } else showInspector();
+  });
+  inspectorDialog.addEventListener('close', () => {
+    editButton.setAttribute('aria-expanded', String(!mobile.matches && form.dataset.mode !== 'improve' && desktopEditorOpen));
+  });
   document.getElementById('mobile-camera-preset').addEventListener('change', event => document.querySelector(`[data-room3d-camera-preset="${event.target.value}"]`).click());
   function setExploreEditor(open) {
     exploreEditor.hidden = !open;
@@ -74,6 +96,7 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
   function restoreExplore() {
     if (!exploreActive) return;
     exploreActive = false;
+    setExploreActive(false);
     exploreReturnPoints.forEach(({ node, marker }) => marker.replaceWith(node));
     exploreReturnPoints = [];
     setExploreEditor(false);
@@ -106,6 +129,7 @@ window.createSunRoomWorkspace = function ({ navigate, pause, retry, openLocation
     document.querySelector('.room3d-display-options').open = false;
     document.body.classList.add('is-exploring');
     exploreDialog.showModal();
+    setExploreActive(true);
   });
   exploreDialog.addEventListener('close', restoreExplore);
   document.getElementById('explore-exit').addEventListener('click', exitExplore);

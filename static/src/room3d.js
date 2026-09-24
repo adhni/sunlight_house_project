@@ -335,7 +335,7 @@ function makePatch(patch, room) {
   const material = new THREE.MeshBasicMaterial({
     color: COLORS.sunlight,
     transparent: true,
-    opacity: 0.12 + intensity * 0.12,
+    opacity: 0.28 + intensity * 0.2,
     side: THREE.DoubleSide,
     depthWrite: false,
     polygonOffset: true,
@@ -353,7 +353,7 @@ function makePatch(patch, room) {
 
   const edge = new THREE.LineLoop(
     new THREE.BufferGeometry().setFromPoints(points),
-    new THREE.LineBasicMaterial({ color: COLORS.sunlightEdge, transparent: true, opacity: 0.3 }),
+    new THREE.LineBasicMaterial({ color: COLORS.sunlightEdge, transparent: true, opacity: 0.65 }),
   );
   edge.renderOrder = 4;
   edge.userData = {
@@ -690,6 +690,8 @@ class Room3DViewer {
     roofButton,
     contextButton,
     beamsButton,
+    gridButton,
+    presentationButtons,
     onWindowSelect,
     onFurnitureSelect,
     onFurnitureChange,
@@ -705,6 +707,8 @@ class Room3DViewer {
     this.roofButton = roofButton;
     this.contextButton = contextButton;
     this.beamsButton = beamsButton;
+    this.gridButton = gridButton;
+    this.presentationButtons = Array.from(presentationButtons || []);
     this.onWindowSelect = onWindowSelect;
     this.onFurnitureSelect = onFurnitureSelect;
     this.onFurnitureChange = onFurnitureChange;
@@ -717,6 +721,8 @@ class Room3DViewer {
     this.roofVisible = false;
     this.contextVisible = true;
     this.beamsVisible = false;
+    this.presentationMode = "room";
+    this.gridPreferences = { room: false, analysis: true };
     this.inViewport = true;
     this.isTouchDevice = Boolean(window.matchMedia?.("(any-pointer: coarse)").matches);
     this.primaryPointerIsCoarse = Boolean(window.matchMedia?.("(pointer: coarse)").matches);
@@ -758,7 +764,7 @@ class Room3DViewer {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.domElement.tabIndex = 0;
-    this.renderer.domElement.setAttribute("aria-label", "Orbitable 3D room model. Select a window or its sunlight to trace the floor result.");
+    this.renderer.domElement.setAttribute("aria-label", "Orbitable 3D room model. Select a window to edit. Sunlight analysis provides labelled floor results.");
     this.renderer.domElement.setAttribute("aria-describedby", "room3d-interaction-hint room3d-keyboard-help");
     this.onContextLost = (event) => {
       event.preventDefault();
@@ -787,7 +793,7 @@ class Room3DViewer {
     this.touchToggle = document.createElement("button");
     this.touchToggle.type = "button";
     this.touchToggle.className = "room3d-touch-toggle";
-    this.touchToggle.textContent = "Explore 3D";
+    this.touchToggle.textContent = "Enable touch controls";
     this.touchToggle.setAttribute("aria-pressed", "false");
     this.touchToggle.hidden = !this.isTouchDevice;
     this.interactionLayer.append(this.touchToggle);
@@ -840,13 +846,13 @@ class Room3DViewer {
       this.orientationGroup,
     );
     this.scene.add(this.contentGroup);
-    this.skyLight = new THREE.HemisphereLight(0xc2d2ec, 0x4b5261, 0.62);
+    this.skyLight = new THREE.HemisphereLight(0xe0e8f1, 0xb3a18a, 1.47);
     this.sunLight = new THREE.DirectionalLight(0xffffff, 0);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.mapSize.setScalar(4096);
     this.sunLight.shadow.bias = -0.0001;
     this.sunLight.shadow.normalBias = 0.008;
-    this.sunLight.shadow.radius = 2;
+    this.sunLight.shadow.radius = 4;
     this.scene.add(this.skyLight, this.sunLight, this.sunLight.target);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -863,12 +869,16 @@ class Room3DViewer {
     this.onToggleRoof = () => this.toggleRoof();
     this.onToggleContext = () => this.toggleContext();
     this.onToggleBeams = () => this.toggleBeams();
+    this.onToggleGrid = () => this.toggleGrid();
+    this.onPresentation = (event) => this.setPresentationMode(event.currentTarget.dataset.room3dPresentation);
     this.onToggleTouchInteraction = () => this.setTouchInteraction(!this.container.classList.contains("is-touch-interacting"));
     this.cameraButtons.forEach((button) => button.addEventListener("click", this.onCameraPreset));
     wallsButton?.addEventListener("click", this.onToggleWalls);
     roofButton?.addEventListener("click", this.onToggleRoof);
     contextButton?.addEventListener("click", this.onToggleContext);
     beamsButton?.addEventListener("click", this.onToggleBeams);
+    gridButton?.addEventListener("click", this.onToggleGrid);
+    this.presentationButtons.forEach((button) => button.addEventListener("click", this.onPresentation));
     this.touchToggle.addEventListener("click", this.onToggleTouchInteraction);
 
     this.container.dataset.viewerState = "ready";
@@ -878,6 +888,7 @@ class Room3DViewer {
       this.container.dataset.touchInteraction = "desktop";
     }
     this.setStatus("3D room ready.");
+    this.setPresentationMode("room");
     this.resize();
   }
 
@@ -1018,6 +1029,7 @@ class Room3DViewer {
     this.setSelectedWindow(selectedExists ? this.selectedWindowName : payload.windows[0]?.name);
     this.updateCameraAwareWalls();
     this.applyContextVisibility();
+    this.setPresentationMode(this.presentationMode);
     this.updateLabels();
 
     const wallPanelCount = this.wallGroup.children.reduce(
@@ -1127,7 +1139,8 @@ class Room3DViewer {
     marker.position.copy(appPointToThree([x, y, 0.025], room));
     marker.renderOrder = 10;
     this.probeGroup.add(zone, edge, marker);
-    this.container.dataset.goalProbeVisible = "true";
+    this.probeGroup.visible = this.presentationMode === "analysis";
+    this.container.dataset.goalProbeVisible = String(this.probeGroup.visible);
     this.container.dataset.goalProbePosition = `${x.toFixed(3)},${y.toFixed(3)}`;
     this.container.dataset.goalProbeSize = size.toFixed(3);
     this.needsRender = true;
@@ -1142,9 +1155,12 @@ class Room3DViewer {
     this.furnitureVisuals.clear();
     const furniture = makeFurniture(furnitureData, room);
     furniture.group.traverse((object) => {
-      if (object.isMesh) object.receiveShadow = true;
+      if (object.isMesh && object.material.isMeshStandardMaterial) {
+        object.receiveShadow = true;
+      }
     });
     this.furnitureGroup.add(furniture.group);
+    this.applyFurnitureShadows();
     this.furnitureItems = furniture.items.map((item) => ({ ...item }));
     furniture.group.children.forEach((root) => this.furnitureVisuals.set(root.userData.furnitureId, root));
     this.furnitureGroup.visible = this.contextVisible;
@@ -1153,6 +1169,7 @@ class Room3DViewer {
     this.container.dataset.furniturePreset = furniture.preset;
     this.container.dataset.furnitureItems = JSON.stringify(this.furnitureItems);
     this.setSelectedFurniture(this.furnitureVisuals.has(previousSelection) ? previousSelection : null, false);
+    this.renderer.shadowMap.needsUpdate = true;
     this.needsRender = true;
     return furniture;
   }
@@ -1162,7 +1179,7 @@ class Room3DViewer {
     if (this.arrangeFurniture && !this.contextVisible) this.toggleContext();
     if (this.arrangeFurniture && this.isTouchDevice) this.setTouchInteraction(true);
     if (!this.arrangeFurniture) {
-      if (this.isTouchDevice) this.setTouchInteraction(false);
+      if (this.isTouchDevice) this.setTouchInteraction(Boolean(this.fullscreen));
       this.setSelectedFurniture(null, true);
     }
     this.container.dataset.arrangeMode = String(this.arrangeFurniture);
@@ -1170,7 +1187,7 @@ class Room3DViewer {
       "aria-label",
       this.arrangeFurniture
         ? "3D room furniture editor. Select or drag furniture on the floor."
-        : "Orbitable 3D room model. Select a window or its sunlight to trace the floor result.",
+        : "Orbitable 3D room model. Select a window to edit. Sunlight analysis provides labelled floor results.",
     );
   }
 
@@ -1234,10 +1251,11 @@ class Room3DViewer {
     const appearance = sunlightAppearance(snapshot.room_vector);
     this.sunLight.intensity = appearance.sunIntensity;
     this.skyLight.intensity = appearance.ambientIntensity;
-    this.sunLight.color.setHex(0xffb36b).lerp(new THREE.Color(0xfff1d6), appearance.sunWarmth);
-    this.skyLight.color.setHex(0x8197be).lerp(new THREE.Color(0xc2d2ec), appearance.daylight);
-    this.scene.background.setHex(0x182334).lerp(new THREE.Color(0xe9e6df), appearance.daylight);
-    this.scene.environmentIntensity = 0.01 + appearance.daylight * 0.07;
+    this.sunLight.color.setHex(0xffb36b).lerp(new THREE.Color(0xffefd0), appearance.sunWarmth);
+    this.skyLight.color.setHex(0x8197be).lerp(new THREE.Color(0xe0e8f1), appearance.daylight);
+    this.skyLight.groundColor.setHex(0x273346).lerp(new THREE.Color(0xb3a18a), appearance.daylight);
+    this.scene.background.setHex(0x182334).lerp(new THREE.Color(0xeeeae2), appearance.daylight);
+    this.scene.environmentIntensity = 0.015 + appearance.daylight * 0.3;
     if (appearance.direction && this.shadowCenter) {
       const [x, y, z] = appearance.direction;
       const direction = new THREE.Vector3(x, z, -y);
@@ -1312,7 +1330,9 @@ class Room3DViewer {
         if (!object.material || object.userData.baseOpacity === undefined) return;
         const kind = object.userData.kind;
         if (kind === "sunlight-patch") {
-          object.material.opacity = object.userData.baseOpacity * (selected ? 1.06 : 0.62);
+          object.material.opacity = object.userData.baseOpacity * (selected ? 1.06 : 0.85);
+        } else if (kind === "sunlight-patch-edge") {
+          object.material.opacity = object.userData.baseOpacity * (selected ? 1.15 : 0.8);
         } else if (kind === "sunlight-volume") {
           object.material.opacity = object.userData.baseOpacity * (selected ? 1.15 : 0.5);
         } else {
@@ -1361,7 +1381,8 @@ class Room3DViewer {
       const projected = anchor.clone().project(this.camera);
       const facesCamera = this.activeCameraPreset === "top" || Math.abs(viewDirection.dot(wallNormal)) > 0.3;
       const visible = Boolean(
-        visual
+        this.presentationMode === "analysis"
+        && visual
         && objectIsVisible(visual.group, this.scene)
         && facesCamera
         && projected.x > -1.08
@@ -1454,6 +1475,7 @@ class Room3DViewer {
 
   selectWindow(name, notify) {
     if (!name || !this.windowVisuals.has(name)) return;
+    this.setPresentationMode("analysis");
     this.setSelectedWindow(name);
     if (notify) this.onWindowSelect?.(name);
   }
@@ -1462,7 +1484,7 @@ class Room3DViewer {
     if (!name || !this.windowVisuals.has(name)) return;
     this.selectedWindowName = name;
     this.windowVisuals.forEach((visual, windowName) => {
-      const selected = windowName === name;
+      const selected = this.presentationMode === "analysis" && windowName === name;
       visual.glassMaterial.color.setHex(COLORS.window);
       visual.glassMaterial.emissive.setHex(selected ? 0x3d2769 : 0x000000);
       visual.glassMaterial.emissiveIntensity = selected ? 0.04 : 0;
@@ -1549,6 +1571,7 @@ class Room3DViewer {
       this.furnitureItems[index] = item;
       root.position.copy(appPointToThree([item.x, item.y, 0], this.payload.room));
       this.furnitureSelectionGroup.children[0]?.update();
+      this.renderer.shadowMap.needsUpdate = true;
       this.needsRender = true;
       drag.moved = true;
       this.container.dataset.furnitureItems = JSON.stringify(this.furnitureItems);
@@ -1648,7 +1671,7 @@ class Room3DViewer {
       preset = "perspective";
       this.controls.target.set(0, room.height * 0.42, 0);
       // Start opposite the default north/east windows so their real wall openings are visible.
-      const direction = new THREE.Vector3(-1.18, 0.92, 1.28).normalize();
+      const direction = new THREE.Vector3(-1.18, 0.82, 1.28).normalize();
       this.camera.position.copy(this.controls.target).add(direction);
       this.camera.lookAt(this.controls.target);
       const inverseRotation = this.camera.quaternion.clone().invert();
@@ -1658,13 +1681,15 @@ class Room3DViewer {
       for (const x of [-room.width / 2 - eave, room.width / 2 + eave]) {
         for (const y of [0, room.height + 0.15]) {
           for (const z of [-room.depth / 2 - eave, room.depth / 2 + eave]) {
+            // Frame the visible cutaway, without reserving space for the missing near corner.
+            if (y > 0 && x < 0 && z > 0 && this.wallsVisible && !this.roofVisible) continue;
             const corner = new THREE.Vector3(x, y, z).sub(this.controls.target).applyQuaternion(inverseRotation);
             distance = Math.max(distance, corner.z + Math.abs(corner.y) / tangent,
               corner.z + Math.abs(corner.x) / (tangent * Math.max(this.camera.aspect, 0.1)));
           }
         }
       }
-      this.camera.position.copy(this.controls.target).addScaledVector(direction, distance * 1.03);
+      this.camera.position.copy(this.controls.target).addScaledVector(direction, distance * 1.06);
     }
     this.camera.lookAt(this.controls.target);
     this.controls.update();
@@ -1706,6 +1731,7 @@ class Room3DViewer {
 
   toggleBeams() {
     if (this.destroyed) return;
+    if (!this.beamsVisible) this.setPresentationMode("analysis");
     this.beamsVisible = !this.beamsVisible;
     this.beamsButton?.setAttribute("aria-pressed", String(this.beamsVisible));
     if (this.beamsButton) this.beamsButton.textContent = this.beamsVisible ? "Sunbeams on" : "Sunbeams off";
@@ -1725,7 +1751,7 @@ class Room3DViewer {
     this.contextVisible = !this.contextVisible;
     if (this.contextButton) {
       this.contextButton.setAttribute("aria-pressed", String(this.contextVisible));
-      this.contextButton.textContent = this.contextVisible ? "Scale objects on" : "Scale objects off";
+      this.contextButton.textContent = this.contextVisible ? "Furniture on" : "Furniture off";
     }
     this.container.dataset.contextVisible = String(this.contextVisible);
     this.applyContextVisibility();
@@ -1736,10 +1762,64 @@ class Room3DViewer {
   applyContextVisibility() {
     this.furnitureGroup.visible = this.contextVisible;
     this.furnitureSelectionGroup.visible = this.contextVisible;
-    this.floorGridGroup.visible = this.contextVisible;
     this.container.dataset.furnitureVisible = String(this.furnitureGroup.visible);
     this.container.dataset.floorGridVisible = String(this.floorGridGroup.visible);
     this.updateCameraAwareWalls();
+    this.renderer.shadowMap.needsUpdate = true;
+  }
+
+  setPresentationMode(mode) {
+    if (this.destroyed || !["room", "analysis"].includes(mode)) return;
+    this.presentationMode = mode;
+    const analysis = mode === "analysis";
+    this.container.dataset.presentation = mode;
+    const panel = this.container.closest(".room3d-view");
+    if (panel) panel.dataset.presentation = mode;
+    this.presentationButtons.forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.room3dPresentation === mode));
+    });
+    this.sunlightGroup.visible = analysis;
+    if (!analysis) {
+      this.beamsVisible = false;
+      this.beamsButton?.setAttribute("aria-pressed", "false");
+      if (this.beamsButton) this.beamsButton.textContent = "Sunbeams off";
+      this.sunlightGroup.children.forEach((group) => {
+        if (group.userData.kind === "sunlight-beam-group") group.visible = false;
+      });
+      this.container.dataset.beamsVisible = "false";
+    }
+    this.orientationGroup.visible = analysis;
+    this.probeGroup.visible = analysis && Boolean(this.probe);
+    this.container.dataset.goalProbeVisible = String(this.probeGroup.visible);
+    this.labelLayer.querySelector(".room3d-compass-legend")?.toggleAttribute("hidden", !analysis);
+    this.applyFurnitureShadows();
+    this.setSelectedWindow(this.selectedWindowName);
+    this.applyGridVisibility();
+    this.updateLabels();
+    this.renderer.shadowMap.needsUpdate = true;
+    this.needsRender = true;
+  }
+
+  toggleGrid() {
+    this.gridPreferences[this.presentationMode] = !this.gridPreferences[this.presentationMode];
+    this.applyGridVisibility();
+    this.needsRender = true;
+  }
+
+  applyFurnitureShadows() {
+    const visible = this.presentationMode === "room";
+    this.furnitureGroup.traverse((object) => {
+      if (object.isMesh && object.material.isMeshStandardMaterial) object.castShadow = visible;
+      if (object.userData.kind === "furniture-contact-shadow") object.visible = visible;
+    });
+  }
+
+  applyGridVisibility() {
+    const visible = this.gridPreferences[this.presentationMode];
+    this.floorGridGroup.visible = visible;
+    this.gridButton?.setAttribute("aria-pressed", String(visible));
+    if (this.gridButton) this.gridButton.textContent = visible ? "1 m grid on" : "1 m grid off";
+    this.container.dataset.floorGridVisible = String(visible);
   }
 
   setTouchInteraction(active) {
@@ -1750,8 +1830,16 @@ class Room3DViewer {
     this.container.classList.toggle("is-touch-interacting", enabled);
     this.container.dataset.touchInteraction = enabled ? "active" : "scroll";
     this.touchToggle.setAttribute("aria-pressed", String(enabled));
-    this.touchToggle.textContent = enabled ? "Done" : "Explore 3D";
+    this.touchToggle.textContent = enabled ? "Done" : "Enable touch controls";
     if (enabled) this.renderer.domElement.focus({ preventScroll: true });
+  }
+
+  setFullscreen(active) {
+    if (this.destroyed || !this.isTouchDevice) return;
+    if (active && !this.fullscreen) this.touchBeforeFullscreen = this.container.classList.contains("is-touch-interacting");
+    this.fullscreen = active;
+    this.setTouchInteraction(active || this.arrangeFurniture || this.touchBeforeFullscreen);
+    this.touchToggle.hidden = active;
   }
 
   updateCameraAwareWalls() {
@@ -1771,10 +1859,11 @@ class Room3DViewer {
     });
     this.windowVisuals.forEach((visual) => {
       const wallIsVisible = Boolean(wallVisibility.get(visual.windowData.wall));
-      visual.group.visible = !this.wallsVisible || wallIsVisible || visual.windowData.name === this.selectedWindowName;
+      visual.group.visible = !this.wallsVisible || wallIsVisible
+        || (this.presentationMode === "analysis" && visual.windowData.name === this.selectedWindowName);
     });
     this.doorGroup.children.forEach((door) => {
-      door.visible = this.contextVisible && Boolean(wallVisibility.get(door.userData.wall));
+      door.visible = Boolean(wallVisibility.get(door.userData.wall));
     });
     this.eaveGroup.traverse((eave) => {
       if (eave.userData.kind === "eave") {
@@ -1942,6 +2031,8 @@ class Room3DViewer {
     this.roofButton?.removeEventListener("click", this.onToggleRoof);
     this.contextButton?.removeEventListener("click", this.onToggleContext);
     this.beamsButton?.removeEventListener("click", this.onToggleBeams);
+    this.gridButton?.removeEventListener("click", this.onToggleGrid);
+    this.presentationButtons.forEach((button) => button.removeEventListener("click", this.onPresentation));
     this.touchToggle.removeEventListener("click", this.onToggleTouchInteraction);
     this.controls.removeEventListener("change", this.onControlsChange);
     this.renderer.domElement.removeEventListener("webglcontextlost", this.onContextLost);

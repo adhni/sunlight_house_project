@@ -177,11 +177,13 @@
   let windowRows = [];
   let room3dViewer = null;
   let room3dViewerPromise = null;
+  let room3dExploreActive = false;
   let dayAnimationPayload = null;
   let dayAnimationKey = "";
   let dayAnimationIndex = 0;
   let dayAnimationController = null;
   let dayAnimationTimer = null;
+  let dayPlaybackState = "idle";
   const dayAnimationCache = new Map();
   const DAY_ANIMATION_CACHE_MAX = 4;
   const MAX_FURNITURE_ITEMS = 24;
@@ -1332,6 +1334,8 @@
             roofButton: room3dRoofButton,
             contextButton: room3dContextButton,
             beamsButton: room3dBeamsButton,
+            gridButton: document.getElementById("room3d-toggle-grid"),
+            presentationButtons: document.querySelectorAll("[data-room3d-presentation]"),
             onWindowSelect: selectWindowFrom3d,
             onFurnitureSelect: setSelectedFurniture,
             onFurnitureChange: handleFurnitureChange,
@@ -1341,6 +1345,7 @@
           room3dViewer.setProbe?.(goalProbe);
           room3dViewer.setSelectedFurniture(selectedFurnitureId, false);
           room3dViewer.setSelectedWindow(windowRows[activeWindowIndex]?.name);
+          if (room3dExploreActive) room3dViewer.setFullscreen(true);
           return room3dViewer;
         })
         .catch((error) => {
@@ -1457,6 +1462,7 @@
   }
 
   function installDayAnimation(payload, key, source) {
+    pauseRoom3dAnimation({ reset: true });
     dayAnimationPayload = payload;
     dayAnimationKey = key;
     dayAnimationIndex = nearestAnimationFrameIndex(payload);
@@ -1465,6 +1471,11 @@
     }
     syncDayAnimationControls(payload, dayAnimationIndex);
     setDayAnimationEnabled(true);
+    if (room3dPlayButton) {
+      const start = payload.frames[payload.playback_start_index].selected_moment.slice(11, 16);
+      const end = payload.frames[payload.playback_end_index].selected_moment.slice(11, 16);
+      room3dPlayButton.title = `Play the day from ${start} to ${end}, including dawn and dusk.`;
+    }
     setDayAnimationStatus(
       `Day ready · sampled every ${payload.step_minutes} minutes${source === "cache" || payload.cache_hit ? " · cached" : ""}.`,
       "ready",
@@ -1513,18 +1524,23 @@
     }
   }
 
-  function pauseRoom3dAnimation() {
+  function pauseRoom3dAnimation({ reset = false, completed = false } = {}) {
     const wasPlaying = Boolean(dayAnimationTimer);
     if (dayAnimationTimer) {
       window.clearInterval(dayAnimationTimer);
       dayAnimationTimer = null;
     }
+    if (reset) dayPlaybackState = "idle";
+    else if (completed) dayPlaybackState = "complete";
+    else if (wasPlaying) dayPlaybackState = "paused";
     if (room3dPlayButton) {
-      room3dPlayButton.textContent = "Play day";
+      room3dPlayButton.textContent = dayPlaybackState === "complete" ? "Replay" : dayPlaybackState === "paused" ? "Resume" : "Play day";
       room3dPlayButton.setAttribute("aria-pressed", "false");
     }
     if (room3dContainer) room3dContainer.dataset.animationPlaying = "false";
-    if (wasPlaying) {
+    if (completed) {
+      setRoom3dStatus(`Day playback finished at ${room3dTimeReadout?.textContent}. Select Replay to watch again.`);
+    } else if (wasPlaying) {
       setRoom3dStatus(`Day playback paused at ${room3dTimeReadout?.textContent || "the selected time"}.`);
     }
   }
@@ -1584,31 +1600,31 @@
   }
 
   async function playRoom3dAnimation() {
-    const payload = await ensureDayAnimation();
-    if (!payload) return;
     if (dayAnimationTimer) {
       pauseRoom3dAnimation();
       return;
     }
-    if (dayAnimationIndex < payload.playback_start_index || dayAnimationIndex >= payload.playback_end_index) {
+    const payload = await ensureDayAnimation();
+    if (!payload || dayAnimationTimer) return;
+    if (dayPlaybackState !== "paused" || dayAnimationIndex < payload.playback_start_index || dayAnimationIndex >= payload.playback_end_index) {
       applyDayAnimationFrame(payload.playback_start_index);
     }
+    dayPlaybackState = "playing";
     room3dPlayButton.textContent = "Pause";
     room3dPlayButton.setAttribute("aria-pressed", "true");
     if (room3dContainer) room3dContainer.dataset.animationPlaying = "true";
     setRoom3dStatus(`Playing the day from ${room3dTimeReadout?.textContent || "the selected time"}.`);
     dayAnimationTimer = window.setInterval(() => {
-      const next = dayAnimationIndex >= payload.playback_end_index
-        ? payload.playback_start_index
-        : dayAnimationIndex + 1;
+      const next = Math.min(dayAnimationIndex + 1, payload.playback_end_index);
       applyDayAnimationFrame(next);
+      if (next === payload.playback_end_index) pauseRoom3dAnimation({ completed: true });
     }, 120);
   }
 
   function syncDayAnimationAfterSnapshot() {
     const key = currentDayAnimationKey();
     if (dayAnimationKey && dayAnimationKey !== key) {
-      pauseRoom3dAnimation();
+      pauseRoom3dAnimation({ reset: true });
       dayAnimationController?.abort();
       dayAnimationPayload = null;
       dayAnimationKey = "";
@@ -2416,7 +2432,7 @@
       return;
     }
     if (!validateWindowFit()) return;
-    pauseRoom3dAnimation();
+    pauseRoom3dAnimation({ reset: true });
     syncWindowsJsonFromEditor();
     setUpdateStatus(message, "pending");
     debouncedRefresh();
@@ -3657,7 +3673,7 @@
 
   if (room3dTimeSlider) {
     room3dTimeSlider.addEventListener("input", () => {
-      pauseRoom3dAnimation();
+      pauseRoom3dAnimation({ reset: true });
       const index = parseInt(room3dTimeSlider.value, 10);
       if (dayAnimationPayload && dayAnimationKey === currentDayAnimationKey()) {
         applyDayAnimationFrame(index);
@@ -3672,7 +3688,7 @@
 
   room3dPresetButtons.forEach((button) => {
     button.addEventListener("click", async () => {
-      pauseRoom3dAnimation();
+      pauseRoom3dAnimation({ reset: true });
       const payload = await ensureDayAnimation();
       const preset = payload?.presets?.[button.dataset.room3dTimePreset];
       if (preset) applyDayAnimationFrame(preset.index);
@@ -4008,6 +4024,10 @@
     retry: () => { refreshSnapshot(); ensureDayAnimation(); },
     undo: undoDesign,
     validate: validateWindowFit,
+    setExploreActive: (active) => {
+      room3dExploreActive = active;
+      room3dViewer?.setFullscreen(active);
+    },
     openLocation: () => { if (customLocationPanel.open) { ensureMap(); invalidateMapSoon(); } renderOutdoorYearPanel(); },
   });
   lastDesign = captureDesign();

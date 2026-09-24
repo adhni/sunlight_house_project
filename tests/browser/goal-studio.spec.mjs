@@ -61,6 +61,7 @@ test("switches goals, applies a measured suggestion, and carries the probe into 
 
   await page.locator("#mode-room").click();
   await page.locator('[data-result-tab="room-3d"]').click();
+  await page.getByRole('button', { name: 'Sunlight analysis', exact: true }).click();
   const viewer = page.locator("#room3d-container");
   await expect(viewer).toHaveAttribute("data-viewer-state", "ready");
   await expect(viewer).toHaveAttribute("data-goal-probe-visible", "true");

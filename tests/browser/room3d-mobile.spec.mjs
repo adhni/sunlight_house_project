@@ -74,6 +74,7 @@ test("opens touch interaction automatically while arranging furniture", async ({
 
 test("keeps labels separate and offers an in-view edit action", async ({ page }) => {
   await page.locator('[data-result-tab="room-3d"]').click();
+  await page.getByRole('button', { name: 'Sunlight analysis', exact: true }).click();
   const viewer = page.locator("#room3d-container");
   await expect(viewer).toHaveAttribute("data-viewer-state", "ready");
   const labels = viewer.locator(".room3d-window-label:visible");
