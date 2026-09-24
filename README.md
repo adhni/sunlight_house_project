@@ -47,6 +47,11 @@ Room shows sunlight at one moment; exposure maps show accumulated hours across t
 selected period. Improve keeps the goal and result in focus, with room editing in a
 dialog and expandable timing/window details.
 A shared timeline supports exact typed times, ten-minute playback, and time presets.
+**Play day** starts about one hour before sunrise and stops about one hour after
+sunset for the selected date and location, within that calendar day. Pause offers
+**Resume**; finishing offers **Replay**. Sunrise and sunset use the ten-minute
+samples. Where the sun stays above or below the horizon all day, playback spans
+the available day.
 The Room / Windows / Furniture editor sits beside the model on desktop and opens as
 a focused sheet on mobile. Selecting a window opens its details.
 
@@ -64,7 +69,7 @@ same room, window, and furniture controls beside the model. Camera and display
 controls stay at the top. **Exit** or Escape returns to the workspace with the
 current design, time, and camera retained.
 On touch devices, fullscreen enables gestures immediately and restores the previous
-touch/scroll setting when closed.
+touch/scroll setting when closed, keeping gestures enabled while arranging furniture.
 
 **Undo design** restores room, window, shade, and furniture changes; changing the
 time does not create undo entries. Design undo lasts for the current session.

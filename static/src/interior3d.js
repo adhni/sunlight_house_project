@@ -76,7 +76,8 @@ export function oakFloor(room) {
   const slab = softBox(room.width + 0.1, 0.18, room.depth + 0.1,
     new THREE.MeshStandardMaterial({ color: 0xd7cfc3, roughness: 0.9 }), 0, -0.13, 0, 0.018);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(room.width, room.depth),
-    surface("oak", 0xffffff, room.width / 2, room.depth / 2));
+    surface("oak", 0xc6b89f, room.width / 2, room.depth / 2));
+  floor.material.envMapIntensity = 0.65;
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = -0.004;
   floor.receiveShadow = true;
@@ -123,6 +124,7 @@ function contactShadow(width, depth) {
   }));
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.y = 0.001;
+  mesh.userData.kind = "furniture-contact-shadow";
   mesh.raycast = () => {};
   return mesh;
 }

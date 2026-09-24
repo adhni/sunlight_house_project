@@ -96,3 +96,79 @@ test('mobile fullscreen enables gestures immediately and restores scroll-safe vi
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   } finally { await context.close(); }
 });
+
+test('day playback starts before dawn, resumes, and stops after dusk with replay', async ({ page }) => {
+  const response = page.waitForResponse(response => response.url().includes('/api/day-animation?'));
+  const viewer = await ready(page);
+  const payload = await (await response).json();
+  const play = page.locator('#room3d-play');
+  const slider = page.locator('#room3d-time-slider');
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await play.click();
+  await expect(slider).toHaveValue(String(payload.playback_start_index));
+  await expect(viewer).toHaveAttribute('data-sun-intensity', '0.0000');
+  await page.clock.runFor(120 * 10);
+  await play.click();
+  await expect(play).toHaveText('Resume');
+  const paused = await slider.inputValue();
+  await page.clock.runFor(120 * 10);
+  await expect(slider).toHaveValue(paused);
+  await play.click();
+  await expect(slider).toHaveValue(paused);
+  await page.clock.runFor(120 * 144);
+  await expect(play).toHaveText('Replay');
+  await expect(slider).toHaveValue(String(payload.playback_end_index));
+  await expect(viewer).toHaveAttribute('data-sun-intensity', '0.0000');
+  await page.clock.runFor(120 * 10);
+  await expect(slider).toHaveValue(String(payload.playback_end_index));
+  await play.click();
+  await expect(slider).toHaveValue(String(payload.playback_start_index));
+  await slider.fill('72');
+  await expect(play).toHaveText('Play day');
+  await play.click();
+  await expect(slider).toHaveValue(String(payload.playback_start_index));
+});
+
+test('arranging started in fullscreen remains touch-enabled after exit', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    const viewer = await ready(page);
+    await page.locator('#room3d-explore').click();
+    await page.locator('#explore-edit').click();
+    await page.locator('.inspector-tabs [data-inspector="furniture"]').click();
+    await page.locator('#furniture-arrange-button').click();
+    await page.locator('#explore-exit').click();
+    await expect(viewer).toHaveAttribute('data-arrange-mode', 'true');
+    await expect(viewer).toHaveAttribute('data-touch-interaction', 'active');
+    await expect(viewer.locator('canvas')).toHaveCSS('touch-action', 'none');
+    await page.locator('#edit-room-button').click();
+    await page.locator('#furniture-arrange-button').click();
+    await expect(viewer).toHaveAttribute('data-touch-interaction', 'scroll');
+  } finally { await context.close(); }
+});
+
+for (const exitBeforeReady of [false, true]) {
+  test(`slow-loading mobile viewer respects fullscreen state (exit early: ${exitBeforeReady})`, async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const page = await context.newPage();
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    await page.route('**/room3d.bundle.js', async route => { await gate; await route.continue(); });
+    try {
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await page.locator('#room3d-explore').click();
+      if (exitBeforeReady) await page.locator('#explore-exit').click();
+      release();
+      const viewer = page.locator('#room3d-container');
+      await expect(viewer).toHaveAttribute('data-viewer-state', 'ready');
+      await expect(viewer).toHaveAttribute('data-touch-interaction', exitBeforeReady ? 'scroll' : 'active');
+      if (!exitBeforeReady) {
+        await expect(viewer.locator('.room3d-touch-toggle')).toBeHidden();
+        await page.locator('#explore-exit').click();
+        await expect(viewer).toHaveAttribute('data-touch-interaction', 'scroll');
+      }
+    } finally { release(); await context.close(); }
+  });
+}

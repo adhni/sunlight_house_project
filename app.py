@@ -813,8 +813,9 @@ def _compute_day_animation_payload(config: SimulationConfig, target_date: date) 
         morning_index = daylight_indices[len(daylight_indices) // 4]
         noon_index = max(daylight_indices, key=lambda index: frames[index]["snapshot"]["elevation_deg"])
         evening_index = daylight_indices[(len(daylight_indices) * 3) // 4]
-        playback_start_index = daylight_indices[0]
-        playback_end_index = daylight_indices[-1]
+        twilight_frames = 60 // _ANIMATION_STEP_MINUTES
+        playback_start_index = max(0, daylight_indices[0] - twilight_frames)
+        playback_end_index = min(len(frames) - 1, daylight_indices[-1] + twilight_frames)
     else:
         morning_index = 9 * 60 // _ANIMATION_STEP_MINUTES
         noon_index = 12 * 60 // _ANIMATION_STEP_MINUTES

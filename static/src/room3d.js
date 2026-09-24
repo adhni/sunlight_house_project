@@ -335,7 +335,7 @@ function makePatch(patch, room) {
   const material = new THREE.MeshBasicMaterial({
     color: COLORS.sunlight,
     transparent: true,
-    opacity: 0.12 + intensity * 0.12,
+    opacity: 0.28 + intensity * 0.2,
     side: THREE.DoubleSide,
     depthWrite: false,
     polygonOffset: true,
@@ -353,7 +353,7 @@ function makePatch(patch, room) {
 
   const edge = new THREE.LineLoop(
     new THREE.BufferGeometry().setFromPoints(points),
-    new THREE.LineBasicMaterial({ color: COLORS.sunlightEdge, transparent: true, opacity: 0.3 }),
+    new THREE.LineBasicMaterial({ color: COLORS.sunlightEdge, transparent: true, opacity: 0.65 }),
   );
   edge.renderOrder = 4;
   edge.userData = {
@@ -1157,10 +1157,10 @@ class Room3DViewer {
     furniture.group.traverse((object) => {
       if (object.isMesh && object.material.isMeshStandardMaterial) {
         object.receiveShadow = true;
-        object.castShadow = this.presentationMode === "room";
       }
     });
     this.furnitureGroup.add(furniture.group);
+    this.applyFurnitureShadows();
     this.furnitureItems = furniture.items.map((item) => ({ ...item }));
     furniture.group.children.forEach((root) => this.furnitureVisuals.set(root.userData.furnitureId, root));
     this.furnitureGroup.visible = this.contextVisible;
@@ -1251,7 +1251,7 @@ class Room3DViewer {
     const appearance = sunlightAppearance(snapshot.room_vector);
     this.sunLight.intensity = appearance.sunIntensity;
     this.skyLight.intensity = appearance.ambientIntensity;
-    this.sunLight.color.setHex(0xffb36b).lerp(new THREE.Color(0xfff1d6), appearance.sunWarmth);
+    this.sunLight.color.setHex(0xffb36b).lerp(new THREE.Color(0xffefd0), appearance.sunWarmth);
     this.skyLight.color.setHex(0x8197be).lerp(new THREE.Color(0xe0e8f1), appearance.daylight);
     this.skyLight.groundColor.setHex(0x273346).lerp(new THREE.Color(0xb3a18a), appearance.daylight);
     this.scene.background.setHex(0x182334).lerp(new THREE.Color(0xeeeae2), appearance.daylight);
@@ -1330,7 +1330,9 @@ class Room3DViewer {
         if (!object.material || object.userData.baseOpacity === undefined) return;
         const kind = object.userData.kind;
         if (kind === "sunlight-patch") {
-          object.material.opacity = object.userData.baseOpacity * (selected ? 1.06 : 0.62);
+          object.material.opacity = object.userData.baseOpacity * (selected ? 1.06 : 0.85);
+        } else if (kind === "sunlight-patch-edge") {
+          object.material.opacity = object.userData.baseOpacity * (selected ? 1.15 : 0.8);
         } else if (kind === "sunlight-volume") {
           object.material.opacity = object.userData.baseOpacity * (selected ? 1.15 : 0.5);
         } else {
@@ -1790,10 +1792,7 @@ class Room3DViewer {
     this.probeGroup.visible = analysis && Boolean(this.probe);
     this.container.dataset.goalProbeVisible = String(this.probeGroup.visible);
     this.labelLayer.querySelector(".room3d-compass-legend")?.toggleAttribute("hidden", !analysis);
-    // Furniture shadows describe the room visually; analytical floor overlays stay unobstructed.
-    this.furnitureGroup.traverse((object) => {
-      if (object.isMesh && object.material.isMeshStandardMaterial) object.castShadow = !analysis;
-    });
+    this.applyFurnitureShadows();
     this.setSelectedWindow(this.selectedWindowName);
     this.applyGridVisibility();
     this.updateLabels();
@@ -1805,6 +1804,14 @@ class Room3DViewer {
     this.gridPreferences[this.presentationMode] = !this.gridPreferences[this.presentationMode];
     this.applyGridVisibility();
     this.needsRender = true;
+  }
+
+  applyFurnitureShadows() {
+    const visible = this.presentationMode === "room";
+    this.furnitureGroup.traverse((object) => {
+      if (object.isMesh && object.material.isMeshStandardMaterial) object.castShadow = visible;
+      if (object.userData.kind === "furniture-contact-shadow") object.visible = visible;
+    });
   }
 
   applyGridVisibility() {
@@ -1829,9 +1836,9 @@ class Room3DViewer {
 
   setFullscreen(active) {
     if (this.destroyed || !this.isTouchDevice) return;
-    if (active) this.touchBeforeFullscreen = this.container.classList.contains("is-touch-interacting");
+    if (active && !this.fullscreen) this.touchBeforeFullscreen = this.container.classList.contains("is-touch-interacting");
     this.fullscreen = active;
-    this.setTouchInteraction(active || this.touchBeforeFullscreen);
+    this.setTouchInteraction(active || this.arrangeFurniture || this.touchBeforeFullscreen);
     this.touchToggle.hidden = active;
   }
 
