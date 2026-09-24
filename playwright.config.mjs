@@ -4,12 +4,14 @@ const python = process.env.PYTHON || "python";
 
 export default defineConfig({
   testDir: "./tests/browser",
-  timeout: 30_000,
+  // Shared CI runners render WebGL more slowly; avoid competing browser workers.
+  workers: process.env.CI ? 1 : undefined,
+  timeout: process.env.CI ? 60_000 : 30_000,
   expect: {
-    timeout: 8_000,
+    timeout: process.env.CI ? 15_000 : 8_000,
   },
   fullyParallel: false,
-  reporter: process.env.CI ? "github" : "line",
+  reporter: process.env.CI ? [["line"], ["github"]] : "line",
   use: {
     baseURL: "http://127.0.0.1:5055",
     trace: "retain-on-failure",
